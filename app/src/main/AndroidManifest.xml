@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Scaffold deliberately has no internet, microphone, overlay, or service permissions. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <application
+      android:name=".VoiceDictationApplication"
       android:allowBackup="false"
       android:fullBackupContent="@xml/backup_rules"
       android:dataExtractionRules="@xml/data_extraction_rules"
@@ -9,6 +15,14 @@
       android:label="@string/app_name"
       android:supportsRtl="true"
       android:theme="@style/Theme.VoiceDictation">
+    <service android:name=".floating.FloatingDictationService" android:exported="true"
+        android:label="@string/floating_service_name"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:foregroundServiceType="microphone">
+      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/floating_accessibility" />
+    </service>
+    <activity android:name=".floating.FloatingSetupActivity" android:exported="false" />
     <activity
         android:name=".MainActivity"
         android:exported="true">

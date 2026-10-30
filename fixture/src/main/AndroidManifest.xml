@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries><package android:name="io.github.ilyasyoy.voicedictation" /></queries>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@android:drawable/ic_btn_speak_now" android:label="Cross-app TEST fixture" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true">
+        <activity android:name=".FixtureActivity" android:exported="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <service android:name=".FixtureKeyboard" android:label="Fixture keyboard TEST ONLY" android:permission="android.permission.BIND_INPUT_METHOD" android:exported="true">
+            <intent-filter><action android:name="android.view.InputMethod" /></intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/test_keyboard" />
+        </service>
+    </application>
+</manifest>

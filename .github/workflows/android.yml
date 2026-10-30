@@ -44,6 +44,7 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
+            fixture/build/reports/
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload debug APK

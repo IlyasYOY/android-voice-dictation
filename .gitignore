@@ -13,3 +13,6 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Runtime captures and generated proof belong in external artifacts.
+docs/runtime-evidence/

@@ -1,29 +1,33 @@
-# Architecture and scope
+# Architecture and extension points
 
-This is a deliberately small, single-module scaffold. Packages mark responsibilities; extra Gradle modules, dependency injection frameworks and backend contracts would be premature.
+One Android application module and a separate validation fixture. Compose renders immutable state and emits actions. There is no dependency-injection framework, backend, replacement keyboard, automatic retry or automatic submit.
 
-## Current flow
+## Ownership
 
-`MainActivity` obtains `DictationViewModel` via an explicit factory. The ViewModel exposes an immutable `StateFlow<TranscriptDraft>`, observed with `collectAsStateWithLifecycle`. `DictationScreen` is stateless and emits edit/load-example/clear callbacks.
+`DictationSession` owns recording, transcription, credential state and an explicitly closeable child coroutine scope. Its commands and transitions run on its owner's serial dispatcher (Main in production). It has no Activity, ViewModel or Accessibility dependency. `cancel()` stops audio/network and discards retry audio while preserving the draft; `close()` is terminal, also cancels key loading and clears credential references. Late callbacks cannot reopen a closed owner.
 
-- **domain:** `TranscriptDraft` is pure Kotlin. Editing removes the example marker; clearing is idempotent.
-- **data:** `ExampleTranscriptRepository` is a preview-only seam. Production uses a deterministic in-memory example. Tests inject a tiny fake. It is **not** the eventual transcription API.
-- **ui:** ViewModel owns state; `SavedStateHandle` retains the temporary text/example marker through recreation. This is not durable note storage or a security boundary. Android may restore saved state; users should not assume clearing this screen securely erases underlying OS storage.
+`DictationViewModel` is the Activity lifecycle adapter. Activity stop/Back cancels work; ViewModel clearing closes the session. `FloatingCapture` owns one explicit bubble tap and its original editor while a key loads or audio runs. The AccessibilityService owns Android windows, permissions, foreground notification and native connection. Closing/cancelling/disabling/unbinding closes the capture; no UI ViewModelStore is created in a service.
 
-The default application ID is `io.github.ilyasyoy.voicedictation`. It is a reversible development identifier, not a claim of a registered Play Store listing.
+`DictationSessions` is the application composition root. HTTP clients and the normal encrypted key repository are shared. Each session receives fresh PCM/recorder ownership; file recording is allocated only when needed. `VoiceDictationApplication` prepares the process-owned `RecordingFiles` store once at process startup, including service/setup/live-only entry points, before session allocation, so another owner cannot delete active/retry recordings.
 
-## Future seams, not implemented contracts
+## Ports and asynchronous boundaries
 
-When the first real feature is agreed, introduce separate recording and transcription interfaces with explicit cancellation and failure states. Decide audio format, local vs remote processing, consent, retention and costs before connecting a provider. Keep credentials outside the APK; the auth/billing design is intentionally undecided.
+- `AudioRecorder`, `PcmSource`, `Transcriber`, `RealtimeTranscriber`/`LiveSession`, and `ApiKeyStore` are injectable boundaries. Existing instrumentation factories remain in-process only.
+- Connection acquisition is a suspend port; the production adapter performs cold Request/OkHttp setup on IO and cancels a socket if cancellation wins its dispatcher return. The owner also cancels late-returned setup results. Live callbacks enter a bounded per-session event queue after the returned connection is owned, so an inline Ready callback cannot be lost. Terminal/cancel/error paths invalidate the generation, close the queue, cancel deadlines and attempt every resource cleanup independently. Old file-recorder limit callbacks are generation checked too.
+- `PcmCaptureWorker` gives each run its own cancellation flag and capture driver. The Android driver uses non-blocking reads. Stop signals the worker without a main-thread join; only that worker stops/releases its driver in `finally`. An old worker cannot adopt a new run's flag or release a new capture. A broken driver that never returns remains owned by its old worker; arbitrary threads are never forcibly killed.
+- `FloatingCapture` revalidates editor identity/caret, keyboard visibility, unlock, feature state and permissions immediately after the asynchronous key read and before starting audio. Periodic focus checks also cover key loading.
+- `FinalTextInsertion` uses a captured `EditorConnection` port. It rechecks all environmental gates after suspended preflight, immediately before one commit. `AndroidEditorConnection` performs blocking bounded surrounding-text reads on IO. Editor policy, one-attempt insertion and unconfirmed-write warnings remain conservative; no retry, rollback, full-field replacement or submit occurs.
 
-Android backup and device-transfer rules explicitly exclude all app-data domains, alongside `allowBackup=false`; see [Android backup rules](https://developer.android.com/identity/data/autobackup). This is backup configuration, not a promise of secure erasure or durable note storage.
+## Credentials and data
 
-No microphone, internet or overlay permission exists. No foreground/background service, networking library, API key field or paid endpoint exists. The disabled recording button must not be wired to fake success.
+`AndroidApiKeyStore` retains the existing AES-GCM/Android Keystore format, random IV, explicit Save/Forget, backup exclusions and namespace isolation. `SerializedApiKeyStore` serializes whole crypto/preferences operations across consumers of the same namespace, preventing a concurrent Forget from being overtaken by an earlier Save. Normal and synthetic fixture namespaces use independent locks. Storage executes on IO. Credentials never enter SavedState, logs, clipboard or artifacts; state diagnostics redact credentials and dictation text.
 
-## Testing
+File mode uses private mono AAC/M4A (24 kHz, 48 kbps), a thirty-minute safety guard and existing file/upload size limits. Live mode uses PCM16 LE mono, 24 kHz, session acknowledgement before microphone start, bounded socket/event queues, ping liveness, explicit connect/finalization deadlines and item-based partial/final reconciliation. Transport protocol and user-visible modes are unchanged.
 
-- JVM tests: empty state, example/edit provenance, clearing/repeated actions, Unicode, saved-state restoration.
-- Compose instrumentation: recording disabled, repeated example/clear, Activity recreation.
-- `assembleDebugAndroidTest` checks test compilation only. Actual execution needs an emulator or device.
+## Adding polishing work
 
-Before a real release: expand accessibility and large-font/device coverage, test task/process recreation, decide persistence and deletion guarantees, implement lifecycle-safe audio capture, and review permissions/privacy. No release signing or deployment is configured.
+Change Compose layout/copy in `DictationScreen` without owning audio there. Add state transitions to `DictationSession` with port-based tests. Add platform integrations in Android adapters/composition root. Keep editor classification in `EditorPolicy` and insertion safety in `FinalTextInsertion`; test suspension/race boundaries before extending auto-insertion. Update fixture fields/keyboards for compatibility tests rather than giving product instrumentation privileges.
+
+The debug fixture is a separate UID with harmless fields and a local deterministic WebSocket server. Debug-only opt-in uses a synthetic encrypted credential namespace. Release builds exclude fixture configuration and alternate endpoint entry points. No paid API calls are part of validation.
+
+See [review and validation](architecture-review.md), [floating contract](floating-contract.md), and [OpenAI contract](realtime-contract.md).

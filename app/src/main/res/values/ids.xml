@@ -1,0 +1,8 @@
+<resources>
+    <item name="floating_start" type="id" /><item name="floating_status" type="id" />
+    <item name="floating_preview" type="id" /><item name="floating_stop" type="id" />
+    <item name="floating_cancel" type="id" /><item name="floating_copy" type="id" />
+    <item name="floating_close" type="id" /><item name="floating_open_setup" type="id" />
+    <item name="floating_enable" type="id" /><item name="floating_disable" type="id" />
+    <item name="floating_mic" type="id" /><item name="floating_notifications" type="id" />
+</resources>
