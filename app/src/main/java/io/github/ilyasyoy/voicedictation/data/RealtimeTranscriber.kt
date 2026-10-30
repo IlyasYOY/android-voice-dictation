@@ -5,6 +5,11 @@ import io.github.ilyasyoy.voicedictation.domain.LiveTranscript
 import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import org.json.JSONObject
 
@@ -19,7 +24,7 @@ interface LiveSession {
     fun finish()
     fun cancel()
 }
-fun interface RealtimeTranscriber { fun connect(key: String, onEvent: (LiveEvent) -> Unit): LiveSession }
+fun interface RealtimeTranscriber { suspend fun connect(key: String, onEvent: (LiveEvent) -> Unit): LiveSession }
 
 /** Ping timeout detects a stalled peer even when no transcript events are expected during silence. */
 internal fun realtimeHttpClient(pingMillis: Long = 15_000): OkHttpClient = OkHttpClient.Builder()
@@ -32,9 +37,19 @@ class OpenAiRealtimeTranscriber(
     private val client: OkHttpClient = realtimeHttpClient(),
     private val endpoint: String = "wss://api.openai.com/v1/realtime?intent=transcription",
 ) : RealtimeTranscriber {
-    override fun connect(key: String, onEvent: (LiveEvent) -> Unit): LiveSession {
+    override suspend fun connect(key: String, onEvent: (LiveEvent) -> Unit): LiveSession {
         require(key.isNotEmpty() && key.all { it.code in 33..126 })
-        return Connection(client, Request.Builder().url(endpoint).header("Authorization", "Bearer $key").build(), onEvent)
+        val acquired = AtomicReference<LiveSession?>()
+        try {
+            // Request/OkHttp initialization and cold class loading must not occupy the UI thread.
+            val connected = withContext(Dispatchers.IO) {
+                Connection(client, Request.Builder().url(endpoint).header("Authorization", "Bearer $key").build(), onEvent)
+                    .also(acquired::set)
+            }
+            currentCoroutineContext().ensureActive()
+            acquired.set(null) // Transfer to the caller only after a cancellation-safe dispatcher return.
+            return connected
+        } finally { acquired.getAndSet(null)?.cancel() }
     }
 
     private class Connection(client: OkHttpClient, request: Request, private val emit: (LiveEvent) -> Unit) : LiveSession {

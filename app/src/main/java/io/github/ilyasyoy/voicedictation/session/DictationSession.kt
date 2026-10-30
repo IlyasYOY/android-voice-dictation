@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,6 +44,7 @@ class DictationSession(
     private var live: LiveSession? = null
     private var events: Channel<LiveEvent>? = null
     private var eventJob: Job? = null
+    private var connectorJob: Job? = null
     private var livePrefix = ""
     private var liveText = ""
     private var livePrefixPartial = false
@@ -124,52 +127,59 @@ class DictationSession(
         val queue = Channel<LiveEvent>(64)
         events = queue
         val overflow = AtomicBoolean()
-        try {
-            // Providers may invoke callbacks inline. Buffer until the returned connection is owned.
-            val connected = provider.connect(state.value.key) { event ->
-                val sent = queue.trySend(event)
-                if (sent.isFailure && !sent.isClosed && overflow.compareAndSet(false, true)) {
-                    scope.launch { if (current == generation) liveFailure(IOException("Live event queue full")) }
-                }
-            }
-            if (current != generation || closed) { connected.cancel(); queue.close(); return }
-            live = connected
-            eventJob = scope.launch(start = CoroutineStart.LAZY) {
-                for (event in queue) {
-                    if (current != generation) break
-                    when (event) {
-                        LiveEvent.Ready -> {
-                            if (state.value.phase != Phase.CONNECTING) continue
-                            request?.cancel(); request = null
-                            try {
-                                pcm.start(connected::append) { failure ->
-                                    scope.launch { if (current == generation) liveFailure(failure, recording = true) }
-                                }
-                                if (current != generation) continue
-                                update { it.copy(phase = Phase.RECORDING) }; startTicker()
-                            } catch (e: Exception) { liveFailure(e, recording = true) }
+        connectorJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            var unowned: LiveSession? = null
+            try {
+                // Providers may invoke callbacks inline. Buffer until the returned connection is owned.
+                val connected = provider.connect(state.value.key) { event ->
+                    val sent = queue.trySend(event)
+                    if (sent.isFailure && !sent.isClosed && overflow.compareAndSet(false, true)) {
+                        scope.launch { if (current == generation) liveFailure(IOException("Live event queue full")) }
+                    }
+                }.also { unowned = it }
+                if (current != generation || closed || !currentCoroutineContext().isActive) { queue.close(); return@launch }
+                live = connected
+                unowned = null
+                eventJob = scope.launch(start = CoroutineStart.LAZY) {
+                    for (event in queue) {
+                        if (current != generation) break
+                        when (event) {
+                            LiveEvent.Ready -> {
+                                if (state.value.phase != Phase.CONNECTING) continue
+                                request?.cancel(); request = null
+                                try {
+                                    pcm.start(connected::append) { failure ->
+                                        scope.launch { if (current == generation) liveFailure(failure, recording = true) }
+                                    }
+                                    if (current != generation) continue
+                                    update { it.copy(phase = Phase.RECORDING) }; startTicker()
+                                } catch (e: Exception) { liveFailure(e, recording = true) }
+                            }
+                            is LiveEvent.Transcript -> {
+                                if (state.value.phase !in setOf(Phase.RECORDING, Phase.FINALIZING)) continue
+                                liveText = event.text
+                                update { it.copy(text = livePrefix + event.text, livePartial = livePrefixPartial || event.partial, completedSegments = event.completed) }
+                            }
+                            LiveEvent.Finished -> {
+                                if (state.value.phase != Phase.FINALIZING) { liveFailure(InvalidTranscript()); continue }
+                                releaseLive()
+                                if (liveText.isBlank()) error(Problem.RESPONSE)
+                                else update { it.copy(phase = Phase.RESULT) }
+                            }
+                            is LiveEvent.Failure -> liveFailure(event.error)
                         }
-                        is LiveEvent.Transcript -> {
-                            if (state.value.phase !in setOf(Phase.RECORDING, Phase.FINALIZING)) continue
-                            liveText = event.text
-                            update { it.copy(text = livePrefix + event.text, livePartial = livePrefixPartial || event.partial, completedSegments = event.completed) }
-                        }
-                        LiveEvent.Finished -> {
-                            if (state.value.phase != Phase.FINALIZING) { liveFailure(InvalidTranscript()); continue }
-                            releaseLive()
-                            if (liveText.isBlank()) error(Problem.RESPONSE)
-                            else update { it.copy(phase = Phase.RESULT) }
-                        }
-                        is LiveEvent.Failure -> liveFailure(event.error)
                     }
                 }
-            }
-            eventJob?.start()
-        } catch (e: Exception) { liveFailure(e) }
+                eventJob?.start()
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (current == generation && !closed) liveFailure(e) }
+            finally { runCatching { unowned?.cancel() } }
+        }
     }
     private fun releaseLive() {
         ++generation
         request?.cancel(); request = null; ticker?.cancel(); ticker = null
+        connectorJob?.cancel(); connectorJob = null
         events?.close(); events = null; eventJob?.cancel(); eventJob = null
         // Each port must get its cleanup even if another adapter/driver fails.
         runCatching { pcm?.stop() }

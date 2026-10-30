@@ -2,6 +2,10 @@ package io.github.ilyasyoy.voicedictation.session
 
 import io.github.ilyasyoy.voicedictation.data.*
 import java.io.File
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -101,6 +105,38 @@ class DictationSessionTest {
         session.stop(); runCurrent()
         assertEquals(Problem.NETWORK, session.state.value.problem); assertFalse(session.state.value.audioBusy)
         assertEquals(1, rig.cancels); session.close()
+    }
+    @Test fun `Cancel while setup is suspended immediately settles and cancels a late connection`() = runTest {
+        val rig = Rig(); lateinit var pending: Continuation<LiveSession>
+        val session = DictationSession(backgroundScope, rig.recorder, Transcriber { _, _ -> "unused" }, rig.pcm,
+            RealtimeTranscriber { _, _ -> suspendCoroutine { pending = it } })
+        session.setKey("synthetic-key"); session.setMode(Mode.LIVE); session.start(true)
+        assertEquals(Phase.CONNECTING, session.state.value.phase); session.cancel()
+        assertEquals(Phase.IDLE, session.state.value.phase)
+        pending.resume(rig.connection); runCurrent(); advanceTimeBy(15_000); runCurrent()
+        assertEquals(1, rig.cancels); assertEquals(0, rig.starts); assertEquals(Phase.IDLE, session.state.value.phase)
+        session.close()
+    }
+    @Test fun `setup deadline closes a connection returned after timeout without opening microphone`() = runTest {
+        val rig = Rig(); lateinit var pending: Continuation<LiveSession>
+        val session = DictationSession(backgroundScope, rig.recorder, Transcriber { _, _ -> "unused" }, rig.pcm,
+            RealtimeTranscriber { _, _ -> suspendCoroutine { pending = it } })
+        session.setKey("synthetic-key"); session.setMode(Mode.LIVE); session.start(true)
+        advanceTimeBy(15_000); runCurrent(); assertEquals(Problem.NETWORK, session.state.value.problem)
+        pending.resume(rig.connection); runCurrent()
+        assertEquals(1, rig.cancels); assertEquals(0, rig.starts); session.close()
+    }
+    @Test fun `old setup failure cannot terminate an explicitly restarted session`() = runTest {
+        val rig = Rig(); lateinit var old: Continuation<LiveSession>; var count = 0
+        val session = DictationSession(backgroundScope, rig.recorder, Transcriber { _, _ -> "unused" }, rig.pcm,
+            RealtimeTranscriber { _, emit ->
+                if (count++ == 0) suspendCoroutine { old = it }
+                else { emit(LiveEvent.Ready); rig.connection }
+            })
+        session.setKey("synthetic-key"); session.setMode(Mode.LIVE); session.start(true); session.cancel(); session.start(true); runCurrent()
+        assertEquals(Phase.RECORDING, session.state.value.phase)
+        old.resumeWithException(java.io.IOException("late setup failure")); runCurrent()
+        assertEquals(Phase.RECORDING, session.state.value.phase); assertEquals(1, rig.starts); session.close()
     }
     @Test fun `state diagnostics redact both credentials and transcript`() {
         val state = DictationState(key = "private-credential", text = "private dictation")

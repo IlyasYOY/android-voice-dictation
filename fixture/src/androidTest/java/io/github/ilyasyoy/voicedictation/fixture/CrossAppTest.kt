@@ -204,8 +204,13 @@ class CrossAppTest {
         assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
         screenshot("05-cancel-no-insertion")
         startPartial(); find(appId("floating_stop")).click()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
-        assertEquals("Before voice test after", find(fixtureId("body")).text)
+        if (Build.VERSION.SDK_INT >= 33) {
+            assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
+            assertEquals("Before voice test after", find(fixtureId("body")).text)
+        } else {
+            assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 30_000))
+            assertFieldUnchanged()
+        }
         assertEquals(count + 1, connections.get())
     }
     @Test fun cFocusChangeCancelsAndNeverRetargets() {

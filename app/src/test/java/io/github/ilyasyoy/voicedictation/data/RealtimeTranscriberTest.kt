@@ -1,5 +1,6 @@
 package io.github.ilyasyoy.voicedictation.data
 
+import kotlinx.coroutines.runBlocking
 import java.util.Base64
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.CountDownLatch
@@ -36,7 +37,7 @@ class RealtimeTranscriberTest {
         }))
     }
     @After fun cleanup() { releasePeer.countDown(); session?.cancel(); client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll(); server.shutdown() }
-    private fun connect() {
+    private fun connect() = runBlocking {
         session = OpenAiRealtimeTranscriber(client, server.url("/v1/realtime?intent=transcription").toString()).connect("synthetic-key", events::add)
         val config = frames.poll(5, TimeUnit.SECONDS)!!
         assertEquals("session.update", config.getString("type"))
