@@ -6,7 +6,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.ilyasyoy.voicedictation.data.*
-import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
+import io.github.ilyasyoy.voicedictation.session.DictationSession
+import io.github.ilyasyoy.voicedictation.session.DictationSessions
 import android.content.Context
 import kotlinx.coroutines.*
 import androidx.core.content.edit
@@ -16,17 +17,16 @@ internal object DebugFloatingConfiguration {
     fun notice(context: Context): String? = if (context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE)
         .getBoolean("enabled", false)) "TEST TRANSCRIPTION · localhost · synthetic key" else null
     fun trace(context: Context, event: String) { if (notice(context) != null) android.util.Log.d("FloatingFixture", event) }
-    fun model(context: Context): DictationViewModel? {
+    fun session(context: Context, scope: CoroutineScope): DictationSession? {
         if (notice(context) == null) return null
         val port = context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE).getInt("port", 0)
         if (port !in 1024..65535) return null
-        val network = OpenAiRealtimeTranscriber(endpoint = "ws://localhost:$port/v1/realtime?intent=transcription")
+        val network = DictationSessions.fixtureTransport("ws://localhost:$port/v1/realtime?intent=transcription")
         val observed = RealtimeTranscriber { key, emit -> network.connect(key) { event ->
             if (event is LiveEvent.Failure) trace(context, "transport=${event.error.javaClass.simpleName}, cause=${event.error.cause?.javaClass?.simpleName}, pingTimeout=${event.error.cause?.message?.contains("ping") == true}")
             emit(event)
         } }
-        return DictationViewModel(AndroidAudioRecorder(context), OpenAiTranscriber(), AndroidPcmSource(), observed,
-            AndroidApiKeyStore(context, ".test.crossapp"))
+        return DictationSessions.create(context, scope, AndroidApiKeyStore(context, ".test.crossapp"), observed)
     }
 }
 class DebugFloatingSetupActivity : Activity() {

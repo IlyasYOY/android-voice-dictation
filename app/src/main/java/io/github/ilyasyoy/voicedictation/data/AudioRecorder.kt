@@ -13,17 +13,14 @@ interface AudioRecorder {
 
 /** Foreground Activity only. Never records from a service or on app launch. */
 class AndroidAudioRecorder(context: Context) : AudioRecorder {
-    private val directory = File(context.cacheDir, "dictation").apply {
-        mkdirs()
-        listFiles()?.forEach { it.delete() } // Recover recordings orphaned by process death.
-    }
+    private val files = RecordingFiles.shared(File(context.cacheDir, "dictation"))
     private var recorder: MediaRecorder? = null
     private var file: File? = null
 
     @Suppress("DEPRECATION")
     override fun start(onLimit: () -> Unit) {
         check(recorder == null)
-        val target = File.createTempFile("voice-", ".m4a", directory)
+        val target = files.create()
         file = target
         val capture = MediaRecorder()
         recorder = capture

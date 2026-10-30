@@ -134,6 +134,8 @@ class CrossAppTest {
         device.wait(Until.findObject(By.res("android", "button1")), 1000)?.click()
     }
     @Before fun prepare() {
+        device.wakeUp()
+        device.executeShellCommand("wm dismiss-keyguard")
         if (!configured) {
             configureFake(); setupUserOptIn(); configured = true
         }
@@ -182,6 +184,8 @@ class CrossAppTest {
         java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "service-after-insertion.txt").writeText(dump)
         assertFalse("Microphone foreground service must end after Stop/final", dump.contains("isForeground=true"))
         find(appId("floating_close")).click()
+        assertTrue(device.wait(Until.gone(appId("floating_close")), 15_000))
+        SystemClock.sleep(700)
         screenshot("03b-final-field-with-panel-closed")
         device.pressBack()
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
@@ -213,10 +217,17 @@ class CrossAppTest {
     }
     @Test fun dUnsupportedEditorOffersCopyWithoutWriting() {
         focusField("unsupported")
+        find(fixtureId("unsupported_body").focused(true), 30_000)
+        SystemClock.sleep(1800)
+        screenshot("07a-unsupported-focused-above-keyboard")
+        val initialConnections = connections.get(); val initialBytes = bytes.get()
         startPartial(); find(appId("floating_stop")).click()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 60_000))
         assertEquals("Unsupported stays unchanged", find(fixtureId("unsupported_body")).text)
         assertTrue(find(appId("floating_copy")).isEnabled)
+        assertEquals(initialConnections + 1, connections.get()); assertTrue(bytes.get() > initialBytes)
+        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+        checkpoint("Unsupported field unchanged; explicit Copy available; ${bytes.get() - initialBytes} PCM bytes; microphone foreground ended")
         screenshot("07-unsupported-explicit-copy")
     }
     @Test fun ePasswordAndNumericFieldsNeverShowBubble() {
@@ -257,28 +268,32 @@ class CrossAppTest {
         configureFake()
     }
     @Test fun iIndependentSecondKeyboardUsesSameBubbleAndInsertion() {
-        device.pressBack()
-        instrumentation.targetContext.startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        val imeLabel = scrollFind(label("Fixture keyboard TEST ONLY"))
-        val rowY = imeLabel.visibleCenter.y
-        val toggle = device.findObjects(By.checkable(true)).minByOrNull { kotlin.math.abs(it.visibleCenter.y - rowY) }
-        if (toggle != null && !toggle.isChecked) {
-            toggle.click()
-            device.wait(Until.findObject(By.res("android", "button1")), 10_000)?.click()
-        }
+        // Dedicated synthetic emulator: configure the independent test IME deterministically.
+        // The product never calls these shell commands or replaces the user's keyboard.
+        device.executeShellCommand("ime enable $FIXTURE/.FixtureKeyboard")
+        device.executeShellCommand("ime set $FIXTURE/.FixtureKeyboard")
+        assertEquals("$FIXTURE/.FixtureKeyboard", device.executeShellCommand("settings get secure default_input_method").trim())
         launch("$FIXTURE.FixtureActivity", server.port)
-        showPicker()
-        find(label("Fixture keyboard TEST ONLY"), 40_000).click()
-        device.pressBack(); focusField("body"); find(fixtureId("body"), 40_000)
+        find(fixtureId("body"), 40_000)
+        focusField("body")
         find(label("Fixture keyboard · TEST ONLY"), 40_000)
+        checkpoint("Second IME selected by dedicated-emulator fixture setup and its actual input window is visible")
+        SystemClock.sleep(11_000) // Expire recent visible-product-Activity grace and allow real video capture.
+        val initialConnections = connections.get(); val initialBytes = bytes.get()
         startPartial(); screenshot("14-independent-test-keyboard-live")
         find(appId("floating_stop")).click()
         assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
         assertEquals("Before voice test after", find(fixtureId("body")).text)
+        assertEquals(initialConnections + 1, connections.get()); assertTrue(bytes.get() > initialBytes)
+        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+        checkpoint("Independent keyboard insertion preserved surrounding text; ${bytes.get() - initialBytes} PCM bytes; microphone foreground ended")
         screenshot("15-independent-test-keyboard-inserted")
-        find(appId("floating_close")).click(); device.pressBack()
-        showPicker()
-        device.wait(Until.findObject(label("Android Keyboard (AOSP)")), 10_000)?.click()
+        find(appId("floating_close")).click()
+        assertTrue(device.wait(Until.gone(appId("floating_close")), 15_000))
+        SystemClock.sleep(700)
+        screenshot("18-second-ime-final-field-unobscured")
+        device.pressBack()
+        device.executeShellCommand("ime set com.android.inputmethod.latin/.LatinIME")
     }
     @Test fun jScreenOffStopsAndHidesWithoutRestart() {
         startPartial(); val count = connections.get()

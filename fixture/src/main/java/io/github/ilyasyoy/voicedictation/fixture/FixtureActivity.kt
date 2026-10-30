@@ -19,6 +19,7 @@ class FixtureActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 32, 12, 12) }
+        val viewport = ScrollView(this)
         root.addView(TextView(this).apply { setText(R.string.test_banner); textSize = 16f })
         fun field(id: Int, initial: String, type: Int, unsupported: Boolean = false): EditText {
             val editor = if (unsupported) object : EditText(this) {
@@ -45,6 +46,7 @@ class FixtureActivity : Activity() {
             editor.post {
                 editor.requestRectangleOnScreen(android.graphics.Rect(0, 0, editor.width, editor.height), true)
                 getSystemService(InputMethodManager::class.java).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+                editor.postDelayed({ editor.requestRectangleOnScreen(android.graphics.Rect(0, 0, editor.width, editor.height), true) }, 1200)
             }
         }
         fun button(label: String, id: Int = View.NO_ID, action: () -> Unit) {
@@ -64,7 +66,13 @@ class FixtureActivity : Activity() {
         val submissions = TextView(this).apply { id = R.id.submission_count; text = getString(R.string.submissions, 0) }
         root.addView(submissions)
         button("Submit TEST ONLY") { submissions.text = getString(R.string.submissions, 1) }
-        setContentView(ScrollView(this).apply { addView(root) })
+        viewport.addView(root)
+        if (Build.VERSION.SDK_INT >= 30) viewport.setOnApplyWindowInsetsListener { view, insets ->
+            val safe = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime())
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            insets
+        }
+        setContentView(viewport)
         requestedAction = { command ->
             val target = when (command.getStringExtra("field")) {
                 "body" -> body; "second" -> second; "password" -> secret; "numeric" -> numeric; "unsupported" -> unsupported

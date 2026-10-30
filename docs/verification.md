@@ -1,5 +1,7 @@
 # Prototype 0.3.0 verification — 2026-10-30
 
+Historical candidate report. For the current 0.3.1 refactor, use the [architecture review and validation](architecture-review.md).
+
 ## Completed so far
 
 - `scripts/check.sh`: PASS — debug APK, strict app/fixture lint, 43 JVM tests and compilation of both instrumentation APKs. Four new pure tests cover sensitive editor exclusion, stable original caret/session, selection/composition/legacy Copy fallback, and insertion confirmation. Existing real multipart HTTP/WebSocket and half-open regressions remain included.

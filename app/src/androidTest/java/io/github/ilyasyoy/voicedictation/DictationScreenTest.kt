@@ -16,7 +16,7 @@ import androidx.test.uiautomator.Until
 import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
 import io.github.ilyasyoy.voicedictation.data.OpenAiTranscriber
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
-import io.github.ilyasyoy.voicedictation.ui.Phase
+import io.github.ilyasyoy.voicedictation.session.Phase
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer

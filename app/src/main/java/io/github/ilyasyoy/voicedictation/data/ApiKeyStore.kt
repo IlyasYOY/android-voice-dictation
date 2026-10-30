@@ -26,7 +26,10 @@ object NoKeyStore : ApiKeyStore {
 }
 
 /** Only AES-GCM ciphertext and a random IV reach app-private preferences; key is non-exportable. */
-class AndroidApiKeyStore(context: Context, namespace: String = "") : ApiKeyStore {
+class AndroidApiKeyStore(context: Context, namespace: String = "") : ApiKeyStore by SerializedApiKeyStore(
+    EncryptedApiKeyStore(context, namespace), ApiKeyStoreLocks.namespace(namespace))
+
+private class EncryptedApiKeyStore(context: Context, namespace: String) : ApiKeyStore {
     private val alias = "voice-dictation.api-key.v1" + namespace
     private val preferences = context.applicationContext.getSharedPreferences("encrypted_api_key" + namespace, Context.MODE_PRIVATE)
     private fun keystore() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

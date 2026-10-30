@@ -20,7 +20,7 @@ Android 16 AOSP binds accessibility services with BIND_ALLOW_BACKGROUND_ACTIVITY
 
 Overlay text rendering reuses the most recently validated eligibility; it does not synchronously reread an editor on every transcript delta. Focus/window events can advance an already scheduled check and never postpone it, preventing continuous overlay events from starving focus-loss cleanup. Start and insertion still perform fresh metadata/keyboard checks.
 
-Cancel, keyboard dismissal, screen off/keyguard, loss of access, focused editor/caret change, orientation, interrupt/unbind and stream failure stop microphone/network work. Cancel also clears the ViewModelStore and observer, so a pending key load cannot start audio later. No restart/reconnect or audio replay occurs automatically. Received dictation may remain for explicit Copy while the panel remains valid; keyboard dismissal clears it.
+Cancel, keyboard dismissal, screen off/keyguard, loss of access, focused editor/caret change, orientation, interrupt/unbind and stream failure stop microphone/network work. Cancel also closes the owned DictationSession and observer, so a pending key load cannot start audio later. No restart/reconnect or audio replay occurs automatically. Received dictation may remain for explicit Copy while the panel remains valid; keyboard dismissal clears it.
 
 ## Insertion safety
 

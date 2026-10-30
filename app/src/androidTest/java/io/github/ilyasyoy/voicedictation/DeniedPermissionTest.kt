@@ -14,7 +14,7 @@ import androidx.test.uiautomator.Until
 import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
 import io.github.ilyasyoy.voicedictation.data.Transcriber
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
-import io.github.ilyasyoy.voicedictation.ui.Phase
+import io.github.ilyasyoy.voicedictation.session.Phase
 import org.junit.*
 import org.junit.Assert.*
 import java.io.File

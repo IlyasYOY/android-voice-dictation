@@ -22,12 +22,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
-import io.github.ilyasyoy.voicedictation.data.AndroidPcmSource
-import io.github.ilyasyoy.voicedictation.data.OpenAiRealtimeTranscriber
-import io.github.ilyasyoy.voicedictation.data.AndroidApiKeyStore
-import io.github.ilyasyoy.voicedictation.data.OpenAiTranscriber
 import io.github.ilyasyoy.voicedictation.ui.*
+import io.github.ilyasyoy.voicedictation.session.DictationSessions
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
 
 class MainActivity : ComponentActivity() {
@@ -47,9 +43,9 @@ class MainActivity : ComponentActivity() {
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                (testFactory?.invoke(this@MainActivity) ?: DictationViewModel(
-                    AndroidAudioRecorder(applicationContext), OpenAiTranscriber(), AndroidPcmSource(),
-                    OpenAiRealtimeTranscriber(), AndroidApiKeyStore(applicationContext))) as T
+                (testFactory?.invoke(this@MainActivity) ?: DictationViewModel { scope ->
+                    DictationSessions.create(applicationContext, scope)
+                }) as T
         })[DictationViewModel::class.java]
         setContent {
             VoiceDictationTheme {
