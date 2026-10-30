@@ -34,6 +34,9 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = true
+        // This scaffold deliberately pins a compatible baseline (docs/toolchain.md).
+        // Keep update hints visible without treating "newer exists" as a code defect.
+        informational += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }

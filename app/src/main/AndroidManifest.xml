@@ -3,6 +3,8 @@
   <!-- Scaffold deliberately has no internet, microphone, overlay, or service permissions. -->
   <application
       android:allowBackup="false"
+      android:fullBackupContent="@xml/backup_rules"
+      android:dataExtractionRules="@xml/data_extraction_rules"
       android:icon="@drawable/ic_launcher"
       android:label="@string/app_name"
       android:supportsRtl="true"

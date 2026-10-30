@@ -26,6 +26,8 @@ Verified against primary documentation on 2026-10-30. This is a conservative com
 - [Compose August 2025 release](https://android-developers.googleblog.com/2025/08/whats-new-in-jetpack-compose-august-25-release.html) identifies BOM 2025.08.00. [Compose 1.9 requirements](https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.9.0) fit this toolchain.
 - AndroidX releases: [Activity](https://developer.android.com/jetpack/androidx/releases/activity#1.10.1), [Lifecycle](https://developer.android.com/jetpack/androidx/releases/lifecycle#2.9.4), [Core](https://developer.android.com/jetpack/androidx/releases/core#1.16.0), [Test](https://developer.android.com/jetpack/androidx/releases/test).
 
+Lint keeps the three version-update advisories (`AndroidGradlePluginVersion`, `GradleDependency`, `NewerVersionAvailable`) visible at informational severity because the compatible set is intentionally pinned. Other warnings remain errors; functional, privacy and API checks are not suppressed.
+
 Versions live in `gradle/libs.versions.toml`, `app/build.gradle.kts`, the wrapper properties, and `scripts/android-env.sh`. Upgrade the compatible set deliberately and rerun all checks. No dynamic `+` or snapshot dependencies are used. This is version pinning, not a complete transitive-dependency lockfile.
 
 ## Download integrity

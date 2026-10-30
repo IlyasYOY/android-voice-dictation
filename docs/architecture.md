@@ -16,6 +16,8 @@ The default application ID is `io.github.ilyasyoy.voicedictation`. It is a rever
 
 When the first real feature is agreed, introduce separate recording and transcription interfaces with explicit cancellation and failure states. Decide audio format, local vs remote processing, consent, retention and costs before connecting a provider. Keep credentials outside the APK; the auth/billing design is intentionally undecided.
 
+Android backup and device-transfer rules explicitly exclude all app-data domains, alongside `allowBackup=false`; see [Android backup rules](https://developer.android.com/identity/data/autobackup). This is backup configuration, not a promise of secure erasure or durable note storage.
+
 No microphone, internet or overlay permission exists. No foreground/background service, networking library, API key field or paid endpoint exists. The disabled recording button must not be wired to fake success.
 
 ## Testing
