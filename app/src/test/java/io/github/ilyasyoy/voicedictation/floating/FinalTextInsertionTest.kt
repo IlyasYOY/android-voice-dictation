@@ -10,15 +10,18 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FinalTextInsertionTest {
     private fun editor() = EditorToken("test.editor", 1, "body", 1, 7, 7, false, false, 0x20001, 0, -1, -1)
+    private fun environment(current: EditorToken? = editor()) = FloatingEnvironment(current, true, true, true, true, true)
     @Test fun `lock keyboard hide disable or owner invalidation during preflight never commits`() = runTest {
-        for (gate in listOf("lock", "keyboard", "disable", "owner")) {
-            val read = CompletableDeferred<EditorSurrounding?>(); var allowed = true; var writes = 0
+        val valid = environment()
+        for ((gate, changed) in listOf("lock" to valid.copy(awake = false), "keyboard" to valid.copy(keyboard = false),
+            "disable" to valid.copy(enabled = false), "owner" to valid)) {
+            val read = CompletableDeferred<EditorSurrounding?>(); var now = valid; var owner = true; var writes = 0
             val target = object : EditorConnection {
                 override suspend fun surrounding(before: Int) = read.await()
                 override fun commit(text: String) { writes++ }
             }
-            val task = async { FinalTextInsertion.insert(editor(), "voice", target, ::editor) { allowed } }
-            runCurrent(); allowed = false; read.complete(EditorSurrounding("", 7, 0, 0)); runCurrent()
+            val task = async { FinalTextInsertion.insert(editor(), "voice", target, { now }) { owner } }
+            runCurrent(); now = changed; if (gate == "owner") owner = false; read.complete(EditorSurrounding("", 7, 0, 0)); runCurrent()
             assertEquals(gate, InsertionResult.CANCELLED, task.await()); assertEquals(0, writes)
         }
     }
@@ -29,7 +32,7 @@ class FinalTextInsertionTest {
                 override suspend fun surrounding(before: Int) = read.await()
                 override fun commit(text: String) { writes++ }
             }
-            val task = async { FinalTextInsertion.insert(editor(), "voice", target, { current }) { true } }
+            val task = async { FinalTextInsertion.insert(editor(), "voice", target, { environment(current) }) { true } }
             runCurrent(); current = changed; read.complete(EditorSurrounding("", 7, 0, 0)); runCurrent()
             assertEquals(InsertionResult.COPY, task.await()); assertEquals(0, writes)
         }
@@ -43,7 +46,7 @@ class FinalTextInsertionTest {
             }
             override fun commit(text: String) { writes++; current = current.copy(selectionStart = 12, selectionEnd = 12) }
         }
-        val task = async { FinalTextInsertion.insert(editor(), "voice", target, { current }) { true } }
+        val task = async { FinalTextInsertion.insert(editor(), "voice", target, { environment(current) }) { true } }
         runCurrent(); advanceTimeBy(250); runCurrent()
         assertEquals(InsertionResult.INSERTED, task.await()); assertEquals(1, writes); assertEquals(listOf(0, 5), lengths)
     }
@@ -54,7 +57,7 @@ class FinalTextInsertionTest {
                 override suspend fun surrounding(before: Int): EditorSurrounding? = if (writes == 0) EditorSurrounding("", 7, 0, 0) else null
                 override fun commit(text: String) { writes++; if (throwOnCommit) error("IPC response lost") }
             }
-            val task = async { FinalTextInsertion.insert(editor(), "voice", target, ::editor) { true } }
+            val task = async { FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true } }
             runCurrent(); advanceTimeBy(250); runCurrent()
             assertEquals(InsertionResult.UNCONFIRMED, task.await()); assertEquals(1, writes)
         }
@@ -64,6 +67,6 @@ class FinalTextInsertionTest {
             override suspend fun surrounding(before: Int): EditorSurrounding? = null
             override fun commit(text: String) = fail("unsupported editor must not receive a write")
         }
-        assertEquals(InsertionResult.COPY, FinalTextInsertion.insert(editor(), "voice", target, ::editor) { true })
+        assertEquals(InsertionResult.COPY, FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true })
     }
 }

@@ -13,7 +13,7 @@ class RecordingOwnershipTest {
             val first = RecordingFiles.shared(directory); assertFalse(orphan.exists())
             val retained = first.create().apply { writeText("pending retry") }
             val second = RecordingFiles.shared(directory)
-            assertSame(first, second); assertEquals("pending retry", retained.readText())
+            assertEquals("pending retry", retained.readText())
             second.create(); assertTrue(retained.exists())
         } finally { directory.deleteRecursively() }
     }

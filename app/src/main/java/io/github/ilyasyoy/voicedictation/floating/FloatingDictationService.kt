@@ -225,8 +225,8 @@ class FloatingDictationService : AccessibilityService() {
         val currentEpoch = epoch
         insertion = scope.launch {
             try {
-                val result = FinalTextInsertion.insert(token, text, input, ::editor) {
-                    currentEpoch == epoch && !disposed && FloatingPreferences.enabled(this@FloatingDictationService) && awake() && keyboardBounds() != null
+                val result = FinalTextInsertion.insert(token, text, input, ::environment) {
+                    currentEpoch == epoch && !disposed
                 }
                 if (currentEpoch == epoch) when (result) {
                     InsertionResult.INSERTED -> message = getString(R.string.floating_inserted)

@@ -6,7 +6,9 @@ import kotlinx.coroutines.*
 internal data class FloatingEnvironment(
     val editor: EditorToken?, val enabled: Boolean, val awake: Boolean, val keyboard: Boolean,
     val microphone: Boolean, val notifications: Boolean,
-)
+) {
+    val visible get() = enabled && awake && keyboard
+}
 
 /** One explicit bubble tap owns this token until close; key loading cannot outlive that ownership. */
 internal class FloatingCapture(
@@ -34,7 +36,7 @@ internal class FloatingCapture(
         }
     }
     fun start() { if (!closed) observer.start() }
-    fun eligible(now: FloatingEnvironment): Boolean = !closed && now.enabled && now.awake && now.keyboard &&
+    fun eligible(now: FloatingEnvironment): Boolean = !closed && now.visible &&
         now.microphone && now.notifications && EditorPolicy.allowed(origin) && now.editor?.let { current ->
             EditorPolicy.allowed(current) && origin.sameEditor(current) &&
                 origin.selectionStart == current.selectionStart && origin.selectionEnd == current.selectionEnd
