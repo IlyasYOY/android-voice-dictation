@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Голосовые заметки</string>
+  <string name="workspace_eyebrow">ГОЛОСОВЫЕ ЗАМЕТКИ / 01</string>
+  <string name="workspace_title">Место для ваших мыслей.</string>
+  <string name="workspace_subtitle">Основа готова. Запись голоса — следующий шаг.</string>
+  <string name="scaffold_badge">КАРКАС · ОФЛАЙН</string>
+  <string name="recording_title">Диктовка появится позже</string>
+  <string name="recording_description">Это макет приложения. Он не записывает звук и ничего не отправляет в ИИ-сервисы.</string>
+  <string name="start_dictation">Начать диктовку — не подключено</string>
+  <string name="transcript_title">Ваш черновик</string>
+  <string name="transcript_hint">Введите текст или загрузите пример ниже.</string>
+  <string name="sample_label">Пример текста · не расшифровка</string>
+  <string name="draft_label">Черновик · только на устройстве</string>
+  <string name="empty_label">Звук не записывался</string>
+  <string name="load_example">Загрузить пример</string>
+  <string name="clear_draft">Очистить</string>
+  <string name="privacy_note">Без доступа к микрофону, API-ключей и сетевых запросов. Черновики временные и не сохраняются как заметки.</string>
+</resources>

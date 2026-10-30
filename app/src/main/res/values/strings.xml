@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Voice Dictation</string>
+  <string name="workspace_eyebrow">VOICE NOTES / 01</string>
+  <string name="workspace_title">A place for your thoughts.</string>
+  <string name="workspace_subtitle">The foundation is ready. Voice recording comes next.</string>
+  <string name="scaffold_badge">OFFLINE SCAFFOLD</string>
+  <string name="recording_title">Dictation, coming next</string>
+  <string name="recording_description">This is a project preview. It does not record audio or send anything to an AI service.</string>
+  <string name="start_dictation">Start dictation — not connected</string>
+  <string name="transcript_title">Your draft</string>
+  <string name="transcript_hint">Try typing here, or load the example below.</string>
+  <string name="sample_label">Example text · not transcribed</string>
+  <string name="draft_label">Text draft · on this device only</string>
+  <string name="empty_label">No audio has been recorded</string>
+  <string name="load_example">Load example</string>
+  <string name="clear_draft">Clear draft</string>
+  <string name="privacy_note">No microphone access. No API keys. No network calls. Drafts are temporary, not saved as notes.</string>
+</resources>
