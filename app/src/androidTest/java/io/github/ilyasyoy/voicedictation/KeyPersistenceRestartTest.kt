@@ -2,7 +2,6 @@ package io.github.ilyasyoy.voicedictation
 
 import android.content.Context
 import android.os.ParcelFileDescriptor
-import android.view.WindowManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -33,7 +32,6 @@ class KeyPersistenceRestartTest {
                 MainActivity.testFactory = { DictationViewModel(AndroidAudioRecorder(it), Transcriber { _, _ -> error("No network expected") },
                     keyStore = AndroidApiKeyStore(it, ".test.restart")).also { m -> model = m } }
                 ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                    scenario.onActivity { it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
                     compose.waitUntil(30_000) { !model.state.value.keyBusy }
                     when (step) {
                         "save" -> {

@@ -3,7 +3,6 @@ package io.github.ilyasyoy.voicedictation
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.view.WindowManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -33,7 +32,6 @@ class DeniedPermissionTest {
             .also { m -> model = m; m.setKey("synthetic-test-key") } }
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
                 compose.onNodeWithTag("record").performScrollTo().performClick()
                 val deny = device.wait(Until.findObject(By.res("com.android.packageinstaller", "permission_deny_button")), 10_000)
                     ?: device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_deny_button")), 10_000)

@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.os.SystemClock
-import android.view.WindowManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.Lifecycle
@@ -47,7 +46,6 @@ class DictationScreenTest {
                 .retryOnConnectionFailure(false).build(), endpoint)).also { m -> model = m }
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     }
     @After fun cleanup() {
         if (::scenario.isInitialized) scenario.close()
