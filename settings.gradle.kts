@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AndroidVoiceDictation"
-include(":app")
+include(":app", ":fixture")

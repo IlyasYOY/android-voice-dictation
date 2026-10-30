@@ -58,7 +58,8 @@ class MainActivity : ComponentActivity() {
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
                     { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())) },
-                    onMode = model::setMode, onSave = model::saveKey, evidenceNotice = testNotice)
+                    onMode = model::setMode, onSave = model::saveKey,
+                    onFloatingSetup = { startActivity(Intent(this, io.github.ilyasyoy.voicedictation.floating.FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice)
             }
         }
     }

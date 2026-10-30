@@ -1,0 +1,11 @@
+<resources>
+    <string name="keyboard_label">Fixture keyboard TEST ONLY</string>
+    <item name="body" type="id" /><item name="second_body" type="id" /><item name="secret" type="id" />
+    <item name="payment_amount" type="id" /><item name="unsupported_body" type="id" />
+    <item name="focus_body" type="id" /><item name="focus_second" type="id" /><item name="focus_password" type="id" />
+    <item name="focus_numeric" type="id" /><item name="focus_unsupported" type="id" /><item name="submission_count" type="id" />
+    <string name="test_banner">CROSS-APP TEST · synthetic fields / transcription only</string>
+    <string name="submissions">Submissions: %1$d</string>
+    <string name="keyboard_banner">Fixture keyboard · TEST ONLY</string>
+    <string name="keyboard_description">Independent InputMethodService for compatibility tests</string>
+<item name="choose_keyboard" type="id"/><item name="enable_keyboard" type="id"/></resources>

@@ -32,6 +32,7 @@ fun DictationScreen(
     onSettings: () -> Unit,
     onMode: (Mode) -> Unit,
     onSave: () -> Unit,
+    onFloatingSetup: () -> Unit = {},
     evidenceNotice: String? = null,
 ) {
     Scaffold(topBar = {
@@ -47,6 +48,7 @@ fun DictationScreen(
                     color = MaterialTheme.colorScheme.primary)
                 Text(stringResource(R.string.title), style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.SemiBold)
+                OutlinedButton(onFloatingSetup, Modifier.fillMaxWidth().testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FilterChip(state.mode == Mode.RECORD, { onMode(Mode.RECORD) }, label = { Text(stringResource(R.string.mode_record)) },
                         enabled = !state.busy && !state.canRetry, modifier = Modifier.testTag("mode_record"))

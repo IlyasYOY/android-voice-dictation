@@ -21,3 +21,11 @@ Initial load disables actions until complete; Save/Forget are serialized by UI s
 Tests inject providers only through an internal in-process factory, never through exported intents or user-configurable endpoints. Key tests use separate namespaces so they never read or mutate a real saved credential. Screen capture is enabled only inside synthetic-data instrumentation; the user build remains secure. Live capture creates no audio files. File recordings surviving an OS kill are cleaned on next startup; deletion is ordinary filesystem deletion, not secure erasure.
 
 See [official contract](realtime-contract.md) and [verification](verification.md) for reproducible results and unverified live-provider/device coverage.
+
+## Optional cross-app feature (0.3)
+
+`FloatingDictationService` is an explicitly enabled AccessibilityService. It observes IME/focused-editor metadata, owns a non-focusable accessibility overlay and starts a microphone foreground service only on an explicit circle tap. It reuses the Live ViewModel and encrypted saved key through a dedicated ViewModelStore. Cancel clears the store and pending key observer; keyboard/focus/screen/lifecycle changes clear the session.
+
+Pure `EditorPolicy` gates sensitive editor exclusion, stable caret/session and final-only insertion. API 33+ `EditorInput` tracks input metadata/composition and captures the original native accessibility input connection. Unsupported versions/editors offer explicit Copy. No full-field replacement or Send is performed. See [contract](floating-contract.md) for the narrow read/commit confirmation and platform limits.
+
+`:fixture` is a separate validation-only application/UID with harmless fields and an independent test IME. Its instrumentation controls actual OS dialogs and a local deterministic WebSocket peer while the product runs without instrumentation privileges. Debug-only product fixture setup requires a visible confirmation, uses a separate synthetic encrypted credential namespace and localhost endpoint, and never reads normal saved keys. Release builds contain no fixture setup or alternate endpoint. The fixture APK is not part of the delivered product APK.

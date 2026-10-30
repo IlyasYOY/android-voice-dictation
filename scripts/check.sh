@@ -9,4 +9,7 @@ bash ./gradlew --no-daemon \
     :app:lintDebug \
     :app:testDebugUnitTest \
     :app:assembleDebugAndroidTest \
+    :fixture:assembleDebug \
+    :fixture:lintDebug \
+    :fixture:assembleDebugAndroidTest \
     "$@"

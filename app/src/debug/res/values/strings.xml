@@ -1,0 +1,2 @@
+<resources><string name="fixture_disclosure" translatable="false">ISOLATED TEST FIXTURE
+Synthetic credential, localhost only. This does not read or change your normal API key. Release builds contain no fixture mode. Enable only on the dedicated test emulator.</string></resources>
