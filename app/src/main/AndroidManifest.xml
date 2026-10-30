@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Scaffold deliberately has no internet, microphone, overlay, or service permissions. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <application
       android:allowBackup="false"
       android:fullBackupContent="@xml/backup_rules"
