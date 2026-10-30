@@ -43,3 +43,7 @@ The accessibility InputMethod.onFinishInput override deliberately does not call 
 - [Android 16 ActiveServices](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/services/core/java/com/android/server/am/ActiveServices.java) — shouldAllowFgsWhileInUsePermissionLocked and bound-service exemption.
 
 Live OpenAI authentication, recognition, billing and quality remain unverified; all automated network scenarios use a clearly labelled deterministic local server. No real API key is entered by the agent.
+
+## User screenshots
+
+The app does not set `FLAG_SECURE` on its Activity or accessibility overlay. Users can capture the ordinary app screen, bubble, live partials and results; transcripts may therefore appear in screenshots, screen recordings and recent-app previews. The API-key field remains permanently password-masked, with no reveal control. This policy affects only our windows and does not change other apps' protected windows, editor exclusions, OS capture restrictions or Accessibility permissions.

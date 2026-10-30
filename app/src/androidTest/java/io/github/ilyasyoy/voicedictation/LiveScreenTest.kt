@@ -5,7 +5,6 @@ import io.github.ilyasyoy.voicedictation.session.*
 import android.Manifest
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.view.WindowManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.Lifecycle
@@ -85,7 +84,6 @@ class LiveScreenTest {
                 .also { m -> model = m; m.setKey("synthetic-live-key") }
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
         click("mode_live")
     }
     @After fun cleanup() {

@@ -45,7 +45,7 @@ internal class FloatingWindow(
     private val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
     private var attached = false
     private var moved = false
@@ -91,7 +91,6 @@ internal class FloatingWindow(
         copyButton.visibility = if (!recording && canCopy) View.VISIBLE else View.GONE
         closeButton.visibility = if (!recording) View.VISIBLE else View.GONE
         setupButton.visibility = if (expanded && needsSetup) View.VISIBLE else View.GONE
-        params.flags = if (notice != null) params.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() else params.flags or WindowManager.LayoutParams.FLAG_SECURE
         if (!moved || !attached) {
             params.x = context.resources.displayMetrics.widthPixels - params.width - dp(8)
             params.y = imeTop - if (expanded) dp(240) else dp(72)
