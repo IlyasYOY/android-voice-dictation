@@ -1,3 +1,11 @@
+# Runtime evidence
+
+Version 0.3 floating workflow: [Android 16 keyboard + button](floating/01-keyboard-and-bubble.png), [live partial](floating/02-live-partial-original-field-unchanged.png), [final insertion](floating/03-final-inserted-preserving-sides.png), [keyboard dismissal](floating/04-keyboard-hidden-bubble-cleaned.png), [passing instrumented fixture log](floating/android16-first-insertion.txt).
+
+These are actual emulator frames. The fixture text and transcription are synthetic, clearly labelled, with a separate test credential namespace and localhost server. They do not demonstrate live OpenAI recognition or billing.
+
+---
+
 # Real Android 0.2.0 evidence
 
 Captured from the running Activity on Android 9 / API 28 x86_64 in the published cloud workspace. Microphone capture, HTTP/WebSocket transport, clipboard and Android Keystore are real. **Transcription responses are synthetic local-server responses; no live OpenAI or paid call was made.** The pinned test banner and masked fixture key identify synthetic-data capture; production FLAG_SECURE remains enabled.

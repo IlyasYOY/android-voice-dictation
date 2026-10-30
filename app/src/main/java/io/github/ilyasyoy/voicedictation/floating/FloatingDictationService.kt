@@ -92,6 +92,7 @@ class FloatingDictationService : AccessibilityService() {
         val keyboard = keyboardBounds()
         val current = editor()
         if (!FloatingPreferences.enabled(this) || !awake() || keyboard == null || current == null || !EditorPolicy.allowed(current)) {
+            if (model != null) DebugFloatingConfiguration.trace(this, "hide: keyboard=${keyboard != null}, editor=${current != null}, allowed=${current?.let(EditorPolicy::allowed)}, awake=${awake()}")
             closeSession(); window?.hide(); return
         }
         if (model?.state?.value?.audioBusy == true && (!microphoneGranted() || !notificationsAllowed())) {
@@ -101,6 +102,7 @@ class FloatingDictationService : AccessibilityService() {
         val origin = original
         if (origin != null && !inserting && (model?.state?.value?.audioBusy == true) &&
             (!origin.sameEditor(current) || origin.selectionStart != current.selectionStart || origin.selectionEnd != current.selectionEnd)) {
+            DebugFloatingConfiguration.trace(this, "cancel: sameEditor=${origin.sameEditor(current)}, caretSame=${origin.selectionStart == current.selectionStart && origin.selectionEnd == current.selectionEnd}")
             cancelKeepingText(getString(R.string.floating_focus_changed))
         }
         render()
@@ -175,6 +177,7 @@ class FloatingDictationService : AccessibilityService() {
         var launched = false
         observer = scope.launch {
             vm.state.collect { state ->
+                DebugFloatingConfiguration.trace(this@FloatingDictationService, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
                 if (!launched && !state.keyBusy) {
                     launched = true
                     if (!state.validKey) { message = getString(R.string.floating_need_key); needsSetup = true; endForeground() }

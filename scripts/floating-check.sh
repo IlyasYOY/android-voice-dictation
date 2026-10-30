@@ -18,7 +18,7 @@ timeout 900 adb shell am instrument -w \
     | tee fixture/build/crossapp-results/instrumentation.txt
 run_status=${PIPESTATUS[0]}
 set -e
-adb pull /sdcard/Download/crossapp-evidence fixture/build/crossapp-results/ || true
+adb pull /sdcard/Android/data/io.github.ilyasyoy.voicedictation.fixture/files/crossapp-evidence fixture/build/crossapp-results/ || true
 if [[ $run_status != 0 ]] || ! rg -q '^OK \(' fixture/build/crossapp-results/instrumentation.txt; then
     echo 'Cross-app instrumentation failed or did not report a complete result.' >&2
     exit 1

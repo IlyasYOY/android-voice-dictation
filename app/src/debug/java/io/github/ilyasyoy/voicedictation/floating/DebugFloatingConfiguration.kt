@@ -15,6 +15,7 @@ import androidx.core.content.edit
 internal object DebugFloatingConfiguration {
     fun notice(context: Context): String? = if (context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE)
         .getBoolean("enabled", false)) "TEST TRANSCRIPTION · localhost · synthetic key" else null
+    fun trace(context: Context, event: String) { if (notice(context) != null) android.util.Log.d("FloatingFixture", event) }
     fun model(context: Context): DictationViewModel? {
         if (notice(context) == null) return null
         val port = context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE).getInt("port", 0)

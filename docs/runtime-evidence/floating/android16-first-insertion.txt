@@ -1,0 +1,22 @@
+
+io.github.ilyasyoy.voicedictation.fixture.CrossAppTest:
+CHECKPOINT: Configuring isolated synthetic key and localhost server
+
+CHECKPOINT: Existing explicitly granted OS access retained; no permission changes needed
+
+CHECKPOINT: Opening harmless fixture editor
+
+CHECKPOINT: Keyboard and bubble visible
+
+CHECKPOINT: Streaming observation: connections=1, PCM bytes=216000
+
+CHECKPOINT: Live microphone/PCM/WebSocket partial received; original field unchanged
+
+CHECKPOINT: Final insertion confirmed; surrounding text preserved
+.
+
+Time: 210.636
+
+OK (1 test)
+
+

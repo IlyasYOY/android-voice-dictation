@@ -4,6 +4,7 @@ import android.content.Context
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 
 internal object DebugFloatingConfiguration {
+    fun trace(context: Context, event: String) = Unit
     fun model(context: Context): DictationViewModel? = null
     fun notice(context: Context): String? = null
 }

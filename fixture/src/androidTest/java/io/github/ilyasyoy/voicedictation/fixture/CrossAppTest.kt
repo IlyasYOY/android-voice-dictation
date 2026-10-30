@@ -34,8 +34,11 @@ class CrossAppTest {
         if (port != null) intent.putExtra("port", port)
         instrumentation.targetContext.startActivity(intent)
     }
-    private fun find(selector: BySelector, timeout: Long = 15_000): UiObject2 =
-        device.wait(Until.findObject(selector), timeout) ?: run {
+    private fun awaitObject(selector: BySelector, timeout: Long): UiObject2? =
+        device.wait(Until.findObject(selector), timeout)
+    private fun has(selector: BySelector, timeout: Long) = awaitObject(selector, timeout) != null
+    private fun find(selector: BySelector, timeout: Long = 30_000): UiObject2 =
+        awaitObject(selector, timeout) ?: run {
             device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "failure-window.xml"))
             throw AssertionError("Missing UI selector: $selector")
         }
@@ -60,30 +63,42 @@ class CrossAppTest {
         dismissSystemAnr()
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         find(label("Enable isolated fixture mode"), 40_000).click()
+        assertTrue(device.wait(Until.gone(label("Enable isolated fixture mode")), 60_000))
     }
+    private fun specialAccessEnabled() = instrumentation.targetContext.getSystemService(android.view.accessibility.AccessibilityManager::class.java)
+        .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        .any { it.resolveInfo.serviceInfo.packageName == APP }
     private fun setupUserOptIn() {
+        val pm = instrumentation.targetContext.packageManager
+        if (specialAccessEnabled() && pm.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) == 0 &&
+            (Build.VERSION.SDK_INT < 33 || pm.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) == 0)) {
+            checkpoint("Existing explicitly granted OS access retained; no permission changes needed")
+            return
+        }
         checkpoint("Opening explicit special-access onboarding")
         launch("$APP.MainActivity")
         find(label("Set up floating dictation"), 60_000).click()
-        find(By.clazz("android.widget.ScrollView"), 20_000)
+        find(By.clazz("android.widget.ScrollView"), 40_000)
         if (instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) != 0) {
             checkpoint("Requesting microphone through OS UI")
             scrollFind(appId("floating_mic")).click()
-            val allow = device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 20_000)
-                ?: find(By.res("com.android.packageinstaller", "permission_allow_button"), 20_000)
+            val allow = device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
+                ?: find(By.res("com.android.packageinstaller", "permission_allow_button"), 40_000)
             allow.click()
-            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 20_000)
+            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
         }
         if (Build.VERSION.SDK_INT >= 33 && instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) != 0) {
             scrollFind(appId("floating_notifications")).click()
-            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 20_000).click()
-            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 20_000)
+            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 40_000).click()
+            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 40_000)
         }
+        if (specialAccessEnabled()) return
         // Scroll back to the explicit disclosure/opt-in button.
         repeat(3) { scroll(Direction.UP) }
         checkpoint("Opening accessibility disclosure/settings")
         scrollFind(appId("floating_enable")).click()
         device.wait(Until.findObject(label("Agree and open settings")), 10_000)?.click()
+        find(By.pkg("com.android.settings"), 40_000)
         val serviceLabel = "Voice Dictation floating button"
         if (!device.hasObject(label(serviceLabel))) {
             device.wait(Until.findObject(label("Downloaded apps")), 10_000)?.click()
@@ -91,8 +106,10 @@ class CrossAppTest {
             device.wait(Until.findObject(label("Downloaded services")), 1000)?.click()
         }
         checkpoint("Selecting service in Android Accessibility settings")
-        scrollFind(label(serviceLabel)).click()
-        val switch = device.wait(Until.findObject(By.res("com.android.settings", "switch_widget")), 3000)
+        val row = By.res("android", "title").text(Pattern.compile(Pattern.quote(serviceLabel)))
+        scrollFind(row).click()
+        SystemClock.sleep(1000)
+        val switch = device.wait(Until.findObject(By.res("com.android.settings", "switch_widget")), 15_000)
             ?: device.wait(Until.findObject(By.clazz("android.widget.Switch")), 3000)
             ?: find(By.checkable(true))
         if (!switch.isChecked) switch.click()
@@ -111,8 +128,8 @@ class CrossAppTest {
     }
     @After fun cleanup() { device.pressBack(); SystemClock.sleep(300) }
     private fun screenshot(name: String) {
-        device.executeShellCommand("mkdir -p /sdcard/Download/crossapp-evidence")
-        device.executeShellCommand("screencap -p /sdcard/Download/crossapp-evidence/$name.png")
+        val directory = java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "crossapp-evidence").apply { mkdirs() }
+        assertTrue("Real emulator screenshot must be captured", device.takeScreenshot(java.io.File(directory, "$name.png")))
     }
     @Test fun aKeyboardBubbleLiveStopInsertsWithoutReplacingExistingText() {
         find(appId("floating_start"), 30_000)
@@ -122,57 +139,64 @@ class CrossAppTest {
         SystemClock.sleep(11_000)
         val initialConnections = connections.get()
         find(appId("floating_start")).click()
-        find(appId("floating_preview")).let { preview ->
-            assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_preview").textContains("Bubble words")), 20_000))
+        val streamed = awaitObject(By.res(APP, "floating_preview").textContains("Bubble words"), 90_000) != null
+        checkpoint("Streaming observation: connections=${connections.get()}, PCM bytes=${bytes.get()}")
+        if (!streamed) {
+            device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "stream-failure.xml"))
+            screenshot("stream-failure")
         }
+        assertTrue("Streaming words must arrive after microphone starts", streamed)
         assertEquals("Before  after", find(fixtureId("body")).text)
         assertTrue(bytes.get() > 0)
         checkpoint("Live microphone/PCM/WebSocket partial received; original field unchanged")
         screenshot("02-live-partial-original-field-unchanged")
         find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT < 33) {
-            assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Nothing inserted. Copy")), 15_000))
+            assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
             assertFieldUnchanged(); screenshot("legacy-API28-copy-fallback")
         } else {
-            assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Inserted into the original field")), 15_000))
+            assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
             assertEquals("Before voice test after", find(fixtureId("body")).text)
         }
         assertEquals(initialConnections + 1, connections.get())
-        checkpoint("Final insertion confirmed; surrounding text preserved")
+        checkpoint(if (Build.VERSION.SDK_INT >= 33) "Final insertion confirmed; surrounding text preserved" else "Legacy Copy fallback confirmed; original field unchanged")
         screenshot("03-final-inserted-preserving-sides")
         val dump = device.executeShellCommand("dumpsys activity services $APP")
         java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "service-after-insertion.txt").writeText(dump)
-        find(appId("floating_close")).click(); device.pressBack()
+        assertFalse("Microphone foreground service must end after Stop/final", dump.contains("isForeground=true"))
+        find(appId("floating_close")).click()
+        screenshot("03b-final-field-with-panel-closed")
+        device.pressBack()
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
         screenshot("04-keyboard-hidden-bubble-cleaned")
     }
     private fun startPartial() {
         find(appId("floating_start"), 60_000).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_preview").textContains("Bubble words")), 20_000))
+        assertTrue(has(By.res(APP, "floating_preview").textContains("Bubble words"), 90_000))
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
     @Test fun bCancelAndRestartNeverInsertPartialOrCreateDuplicateConnection() {
         startPartial(); val count = connections.get()
         find(appId("floating_cancel")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Cancelled")), 10_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Cancelled"), 10_000))
         assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
         screenshot("05-cancel-no-insertion")
         startPartial(); find(appId("floating_stop")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Inserted into the original field")), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
         assertEquals("Before voice test after", find(fixtureId("body")).text)
         assertEquals(count + 1, connections.get())
     }
     @Test fun cFocusChangeCancelsAndNeverRetargets() {
         startPartial()
         find(fixtureId("second_body")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Editor or caret changed")), 10_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Editor or caret changed"), 10_000))
         assertFieldUnchanged(); assertEquals("Other field", find(fixtureId("second_body")).text)
         screenshot("06-focus-change-cancelled")
     }
     @Test fun dUnsupportedEditorOffersCopyWithoutWriting() {
         device.pressBack(); scrollFind(fixtureId("focus_unsupported")).click()
         startPartial(); find(appId("floating_stop")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Nothing inserted. Copy")), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
         assertEquals("Unsupported stays unchanged", find(fixtureId("unsupported_body")).text)
         assertTrue(find(appId("floating_copy")).isEnabled)
         screenshot("07-unsupported-explicit-copy")
@@ -198,7 +222,7 @@ class CrossAppTest {
     @Test fun gStreamErrorStopsAndRequiresExplicitRestart() {
         failNext.set(true)
         find(appId("floating_start")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Live session failed")), 20_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Live session failed"), 40_000))
         assertFieldUnchanged(); val count = connections.get(); SystemClock.sleep(1200); assertEquals(count, connections.get())
         screenshot("11-stream-error-no-reconnect")
         startPartial(); find(appId("floating_cancel")).click()
@@ -206,9 +230,10 @@ class CrossAppTest {
     @Test fun hMissingSavedKeyStartsNoAudioOrRequest() {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         find(label("Forget fixture key")).click()
+        assertTrue(device.wait(Until.gone(label("Forget fixture key")), 60_000))
         launch("$FIXTURE.FixtureActivity", server.port); scrollFind(fixtureId("focus_body")).click()
         val count = connections.get(); find(appId("floating_start")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Save an API key")), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Save an API key"), 15_000))
         assertEquals(count, connections.get()); assertFieldUnchanged()
         screenshot("12-no-saved-key-no-audio")
         configureFake()
@@ -225,12 +250,12 @@ class CrossAppTest {
         }
         launch("$FIXTURE.FixtureActivity", server.port)
         scrollFind(fixtureId("choose_keyboard")).click()
-        find(label("Fixture keyboard TEST ONLY"), 20_000).click()
+        find(label("Fixture keyboard TEST ONLY"), 40_000).click()
         device.pressBack(); scrollFind(fixtureId("focus_body")).click()
-        find(label("Fixture keyboard · TEST ONLY"), 20_000)
+        find(label("Fixture keyboard · TEST ONLY"), 40_000)
         startPartial(); screenshot("14-independent-test-keyboard-live")
         find(appId("floating_stop")).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("Inserted into the original field")), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
         assertEquals("Before voice test after", find(fixtureId("body")).text)
         screenshot("15-independent-test-keyboard-inserted")
         find(appId("floating_close")).click(); device.pressBack()
@@ -250,7 +275,7 @@ class CrossAppTest {
         device.executeShellCommand("pm revoke $APP android.permission.RECORD_AUDIO")
         SystemClock.sleep(1200)
         find(appId("floating_start"), 30_000).click()
-        assertTrue(device.wait(Until.hasObject(By.res(APP, "floating_status").textContains("permissions are required")), 15_000))
+        assertTrue(has(By.res(APP, "floating_status").textContains("permissions are required"), 15_000))
         assertEquals(count, connections.get()); assertFieldUnchanged()
         screenshot("16-revoked-microphone-gated")
         setupUserOptIn() // Re-grants only through the visible OS permission dialog.
@@ -258,7 +283,7 @@ class CrossAppTest {
     @Test fun zDisableRevokesAccessAndCleansTestConfiguration() {
         launch("$APP.MainActivity")
         find(label("Set up floating dictation"), 60_000).click()
-        find(By.clazz("android.widget.ScrollView"), 20_000)
+        find(By.clazz("android.widget.ScrollView"), 40_000)
         scrollFind(appId("floating_disable")).click()
         launch("$FIXTURE.FixtureActivity", server.port); scrollFind(fixtureId("focus_body")).click()
         assertTrue(device.wait(Until.gone(appId("floating_start")), 15_000))

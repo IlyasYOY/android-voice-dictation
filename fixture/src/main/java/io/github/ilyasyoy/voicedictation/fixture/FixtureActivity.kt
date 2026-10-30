@@ -40,7 +40,10 @@ class FixtureActivity : Activity() {
         val unsupported = field(R.id.unsupported_body, "Unsupported stays unchanged", plain, true)
         fun focus(editor: EditText, position: Int = editor.text.length) {
             editor.requestFocus(); editor.setSelection(position)
-            editor.post { getSystemService(InputMethodManager::class.java).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) }
+            editor.post {
+                editor.requestRectangleOnScreen(android.graphics.Rect(0, 0, editor.width, editor.height), true)
+                getSystemService(InputMethodManager::class.java).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
         fun button(label: String, id: Int = View.NO_ID, action: () -> Unit) {
             root.addView(Button(this).apply { text = label; this.id = id; setOnClickListener { action() } }, LinearLayout.LayoutParams(-1, 52))
