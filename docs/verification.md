@@ -9,6 +9,11 @@
 - The successful cross-app flow: AOSP keyboard visible → circle → wait beyond recent-Activity grace → actual microphone AudioRecord PCM over actual WebSocket → live partial visible while original field unchanged → Stop → final native insertion → keyboard dismissal removes circle. Server received **216,000 PCM bytes**, one connection. `Before  after` became `Before voice test after`. Final service dump shows `startRequested=false` and no ongoing microphone foreground state.
 - Four actual screenshots are in [floating evidence](runtime-evidence/floating/). They show a clearly labelled synthetic fixture and test transcription; no real API key, real account, user message, paid API call or OpenAI recognition was used.
 
+- The updated controller repeats the Android 16 end-to-end successfully: **1/1 PASS**, 234.352 seconds, **124,800 PCM bytes**, original sides preserved and final foreground service stopped. [Final-candidate log](runtime-evidence/floating/android16-final-insertion.txt). An additional screenshot closes the panel to show the resulting field unobscured.
+- Android 16 cancellation/explicit restart: **1/1 PASS**, 239.12 seconds; Cancel leaves the field unchanged with no automatic connection/replay, the next explicit start inserts final text once. This run preceded the later rendering/scheduling optimization; its regression is being repeated.
+- Android 9/API 28 floating workflow: **1/1 PASS**, 73.562 seconds, **268,800 PCM bytes**. Copy fallback is explicitly shown and original field stays unchanged. A separate recorded repeat passed in 115.264 seconds with 192,000 PCM bytes. These precede the final rendering optimization. [API 28 evidence](runtime-evidence/floating/api28/).
+- The API 28 recording is actual screenrecord/H.264 with no audio; its 39-second excerpt (80–119 seconds) decodes successfully. No image/mockup UI is substituted for runtime evidence.
+
 ## Verification in progress
 
 The complete cross-app safety matrix, second IME, video, final exact-head CI/artifact identities and native Library delivery are being completed. Do not treat compiled tests or earlier failed automation attempts as runtime passes. The historical [0.2 report](verification-v0.2.md) documents earlier in-app evidence and its limits.

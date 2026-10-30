@@ -14,6 +14,8 @@ import androidx.annotation.RequiresApi
 
 /** No accounts, user data or real messages. The product app runs in a separate, uninstrumented UID. */
 class FixtureActivity : Activity() {
+    private var requestedAction: ((Intent) -> Unit)? = null
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); requestedAction?.invoke(intent) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 32, 12, 12) }
@@ -63,6 +65,15 @@ class FixtureActivity : Activity() {
         root.addView(submissions)
         button("Submit TEST ONLY") { submissions.text = getString(R.string.submissions, 1) }
         setContentView(ScrollView(this).apply { addView(root) })
+        requestedAction = { command ->
+            val target = when (command.getStringExtra("field")) {
+                "body" -> body; "second" -> second; "password" -> secret; "numeric" -> numeric; "unsupported" -> unsupported
+                else -> null
+            }
+            target?.let { focus(it, if (it === body) 7 else it.text.length) }
+            if (command.getBooleanExtra("picker", false)) getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+        }
+        root.post { requestedAction?.invoke(intent) }
     }
     companion object { private const val APP = "io.github.ilyasyoy.voicedictation" }
 }

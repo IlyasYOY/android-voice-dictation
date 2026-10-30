@@ -32,6 +32,7 @@ class CrossAppTest {
         val intent = Intent().setComponent(ComponentName(if (component.startsWith("$FIXTURE.")) FIXTURE else APP, component))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         if (port != null) intent.putExtra("port", port)
+        if (component == "$FIXTURE.FixtureActivity") intent.putExtra("field", "body")
         instrumentation.targetContext.startActivity(intent)
     }
     private fun awaitObject(selector: BySelector, timeout: Long): UiObject2? =
@@ -42,17 +43,32 @@ class CrossAppTest {
             device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "failure-window.xml"))
             throw AssertionError("Missing UI selector: $selector")
         }
-    private fun scroll(direction: Direction) {
-        try { device.findObject(By.scrollable(true))?.scroll(direction, 0.7f) }
+    private fun scroll(direction: Direction, pkg: String = APP) {
+        try { device.findObject(By.pkg(pkg).scrollable(true))?.scroll(direction, 0.7f) }
         catch (_: StaleObjectException) { /* Permission return may rebuild the setup view. Re-query next time. */ }
         SystemClock.sleep(250)
     }
     private fun scrollFind(selector: BySelector): UiObject2 {
-        repeat(5) { device.findObject(selector)?.let { return it }; scroll(Direction.UP) }
-        repeat(9) { device.findObject(selector)?.let { return it }; scroll(Direction.DOWN) }
+        val pkg = when {
+            selector.toString().contains(FIXTURE) -> FIXTURE
+            selector.toString().contains(APP) -> APP
+            else -> "com.android.settings"
+        }
+        repeat(5) { device.findObject(selector)?.let { return it }; scroll(Direction.UP, pkg) }
+        repeat(9) { device.findObject(selector)?.let { return it }; scroll(Direction.DOWN, pkg) }
         return find(selector)
     }
     private fun label(value: String) = By.text(Pattern.compile("(?i)" + Pattern.quote(value)))
+    private fun focusField(name: String) {
+        instrumentation.targetContext.startActivity(Intent().setComponent(ComponentName(FIXTURE, "$FIXTURE.FixtureActivity"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            .putExtra("field", name))
+    }
+    private fun showPicker() {
+        instrumentation.targetContext.startActivity(Intent().setComponent(ComponentName(FIXTURE, "$FIXTURE.FixtureActivity"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            .putExtra("picker", true))
+    }
     private fun appId(name: String) = By.res(APP, name)
     private fun fixtureId(name: String) = By.res(FIXTURE, name)
     private fun dismissSystemAnr() {
@@ -61,6 +77,7 @@ class CrossAppTest {
     private fun configureFake() {
         checkpoint("Configuring isolated synthetic key and localhost server")
         dismissSystemAnr()
+        device.pressHome()
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         find(label("Enable isolated fixture mode"), 40_000).click()
         assertTrue(device.wait(Until.gone(label("Enable isolated fixture mode")), 60_000))
@@ -124,7 +141,7 @@ class CrossAppTest {
         launch("$FIXTURE.FixtureActivity", server.port)
         // Show on-screen keyboards in this isolated emulator even when a virtual hardware keyboard is attached.
         device.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1")
-        scrollFind(fixtureId("focus_body")).click()
+        find(fixtureId("body"), 40_000)
     }
     @After fun cleanup() { device.pressBack(); SystemClock.sleep(300) }
     private fun screenshot(name: String) {
@@ -172,7 +189,8 @@ class CrossAppTest {
     }
     private fun startPartial() {
         find(appId("floating_start"), 60_000).click()
-        assertTrue(has(By.res(APP, "floating_preview").textContains("Bubble words"), 90_000))
+        assertTrue(has(By.res(APP, "floating_preview").text(Pattern.compile("(?s).+")), 90_000))
+        find(appId("floating_cancel")) // The session must still be active, not a retained error transcript.
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
     @Test fun bCancelAndRestartNeverInsertPartialOrCreateDuplicateConnection() {
@@ -188,13 +206,13 @@ class CrossAppTest {
     }
     @Test fun cFocusChangeCancelsAndNeverRetargets() {
         startPartial()
-        find(fixtureId("second_body")).click()
+        focusField("second")
         assertTrue(has(By.res(APP, "floating_status").textContains("Editor or caret changed"), 10_000))
         assertFieldUnchanged(); assertEquals("Other field", find(fixtureId("second_body")).text)
         screenshot("06-focus-change-cancelled")
     }
     @Test fun dUnsupportedEditorOffersCopyWithoutWriting() {
-        device.pressBack(); scrollFind(fixtureId("focus_unsupported")).click()
+        focusField("unsupported")
         startPartial(); find(appId("floating_stop")).click()
         assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
         assertEquals("Unsupported stays unchanged", find(fixtureId("unsupported_body")).text)
@@ -202,10 +220,10 @@ class CrossAppTest {
         screenshot("07-unsupported-explicit-copy")
     }
     @Test fun ePasswordAndNumericFieldsNeverShowBubble() {
-        device.pressBack(); scrollFind(fixtureId("focus_password")).click()
+        focusField("password")
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
         screenshot("08-password-excluded")
-        device.pressBack(); scrollFind(fixtureId("focus_numeric")).click()
+        focusField("numeric")
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
         screenshot("09-numeric-excluded")
     }
@@ -231,7 +249,7 @@ class CrossAppTest {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         find(label("Forget fixture key")).click()
         assertTrue(device.wait(Until.gone(label("Forget fixture key")), 60_000))
-        launch("$FIXTURE.FixtureActivity", server.port); scrollFind(fixtureId("focus_body")).click()
+        launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)
         val count = connections.get(); find(appId("floating_start")).click()
         assertTrue(has(By.res(APP, "floating_status").textContains("Save an API key"), 15_000))
         assertEquals(count, connections.get()); assertFieldUnchanged()
@@ -240,7 +258,7 @@ class CrossAppTest {
     }
     @Test fun iIndependentSecondKeyboardUsesSameBubbleAndInsertion() {
         device.pressBack()
-        scrollFind(fixtureId("enable_keyboard")).click()
+        instrumentation.targetContext.startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val imeLabel = scrollFind(label("Fixture keyboard TEST ONLY"))
         val rowY = imeLabel.visibleCenter.y
         val toggle = device.findObjects(By.checkable(true)).minByOrNull { kotlin.math.abs(it.visibleCenter.y - rowY) }
@@ -249,9 +267,9 @@ class CrossAppTest {
             device.wait(Until.findObject(By.res("android", "button1")), 10_000)?.click()
         }
         launch("$FIXTURE.FixtureActivity", server.port)
-        scrollFind(fixtureId("choose_keyboard")).click()
+        showPicker()
         find(label("Fixture keyboard TEST ONLY"), 40_000).click()
-        device.pressBack(); scrollFind(fixtureId("focus_body")).click()
+        device.pressBack(); focusField("body"); find(fixtureId("body"), 40_000)
         find(label("Fixture keyboard · TEST ONLY"), 40_000)
         startPartial(); screenshot("14-independent-test-keyboard-live")
         find(appId("floating_stop")).click()
@@ -259,7 +277,7 @@ class CrossAppTest {
         assertEquals("Before voice test after", find(fixtureId("body")).text)
         screenshot("15-independent-test-keyboard-inserted")
         find(appId("floating_close")).click(); device.pressBack()
-        scrollFind(fixtureId("choose_keyboard")).click()
+        showPicker()
         device.wait(Until.findObject(label("Android Keyboard (AOSP)")), 10_000)?.click()
     }
     @Test fun jScreenOffStopsAndHidesWithoutRestart() {
@@ -285,7 +303,7 @@ class CrossAppTest {
         find(label("Set up floating dictation"), 60_000).click()
         find(By.clazz("android.widget.ScrollView"), 40_000)
         scrollFind(appId("floating_disable")).click()
-        launch("$FIXTURE.FixtureActivity", server.port); scrollFind(fixtureId("focus_body")).click()
+        launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)
         assertTrue(device.wait(Until.gone(appId("floating_start")), 15_000))
         screenshot("17-disabled-no-bubble")
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)

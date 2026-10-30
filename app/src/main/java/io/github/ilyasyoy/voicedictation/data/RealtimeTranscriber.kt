@@ -92,7 +92,7 @@ class OpenAiRealtimeTranscriber(
                     } catch (_: Exception) { fail(InvalidTranscript()) }
                 }
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = synchronized(lock) {
-                    fail(if (response != null) ApiFailure(response.code) else IOException())
+                    fail(if (response != null) ApiFailure(response.code) else IOException(t))
                 }
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = synchronized(lock) {
                     if (!terminal) fail(IOException())

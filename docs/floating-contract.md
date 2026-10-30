@@ -18,6 +18,8 @@ On the icon tap, the already system-bound AccessibilityService is promoted to a 
 
 Android 16 AOSP binds accessibility services with BIND_ALLOW_BACKGROUND_ACTIVITY_STARTS and BIND_INCLUDE_CAPABILITIES. ActiveServices permits while-in-use foreground starts for processes with the corresponding bound-service permission. This is an implementation-supported strategy rather than a promise about all OEMs. Runtime verification must use a separate fixture UID, not product instrumentation, and wait beyond the recent visible-Activity grace period.
 
+Overlay text rendering reuses the most recently validated eligibility; it does not synchronously reread an editor on every transcript delta. Focus/window events can advance an already scheduled check and never postpone it, preventing continuous overlay events from starving focus-loss cleanup. Start and insertion still perform fresh metadata/keyboard checks.
+
 Cancel, keyboard dismissal, screen off/keyguard, loss of access, focused editor/caret change, orientation, interrupt/unbind and stream failure stop microphone/network work. Cancel also clears the ViewModelStore and observer, so a pending key load cannot start audio later. No restart/reconnect or audio replay occurs automatically. Received dictation may remain for explicit Copy while the panel remains valid; keyboard dismissal clears it.
 
 ## Insertion safety

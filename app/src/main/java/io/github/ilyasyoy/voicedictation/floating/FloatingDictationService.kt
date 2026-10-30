@@ -47,10 +47,12 @@ class FloatingDictationService : AccessibilityService() {
     private var message: String? = null
     private var needsSetup = false
     private var imeTop = 0
+    private var editorEligible = false
+    private var nextRefreshAt = Long.MAX_VALUE
     private var disposed = false
     private var receiverRegistered = false
-    private val refresh = Runnable { updateVisibility() }
-    private val screenOff = object : BroadcastReceiver() { override fun onReceive(context: Context?, intent: Intent?) { closeSession(); window?.hide() } }
+    private val refresh = Runnable { nextRefreshAt = Long.MAX_VALUE; updateVisibility() }
+    private val screenOff = object : BroadcastReceiver() { override fun onReceive(context: Context?, intent: Intent?) { editorEligible = false; closeSession(); window?.hide() } }
 
     @RequiresApi(33)
     override fun onCreateInputMethod(): InputMethod = EditorInput(this) { scheduleRefresh() }.also { editorInput = it }
@@ -65,7 +67,14 @@ class FloatingDictationService : AccessibilityService() {
         scheduleRefresh()
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
-    private fun scheduleRefresh() { if (!disposed) { handler.removeCallbacks(refresh); handler.postDelayed(refresh, 150) } }
+    private fun scheduleRefresh(delay: Long = 150) {
+        if (disposed) return
+        val due = SystemClock.uptimeMillis() + delay
+        // A stream of overlay/window events may bring a check forward, never postpone an existing one.
+        if (due < nextRefreshAt) {
+            handler.removeCallbacks(refresh); nextRefreshAt = due; handler.postDelayed(refresh, delay)
+        }
+    }
     private fun keyboardBounds(): Rect? = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
         ?.let { Rect().apply { it.getBoundsInScreen(this) } }
     private fun editor(): EditorToken? {
@@ -92,12 +101,14 @@ class FloatingDictationService : AccessibilityService() {
         val keyboard = keyboardBounds()
         val current = editor()
         if (!FloatingPreferences.enabled(this) || !awake() || keyboard == null || current == null || !EditorPolicy.allowed(current)) {
+            editorEligible = false
             if (model != null) DebugFloatingConfiguration.trace(this, "hide: keyboard=${keyboard != null}, editor=${current != null}, allowed=${current?.let(EditorPolicy::allowed)}, awake=${awake()}")
             closeSession(); window?.hide(); return
         }
         if (model?.state?.value?.audioBusy == true && (!microphoneGranted() || !notificationsAllowed())) {
             cancelKeepingText(getString(R.string.floating_need_permission)); needsSetup = true
         }
+        editorEligible = true
         imeTop = keyboard.top
         val origin = original
         if (origin != null && !inserting && (model?.state?.value?.audioBusy == true) &&
@@ -106,10 +117,10 @@ class FloatingDictationService : AccessibilityService() {
             cancelKeepingText(getString(R.string.floating_focus_changed))
         }
         render()
-        handler.removeCallbacks(refresh); handler.postDelayed(refresh, 400)
+        scheduleRefresh(400)
     }
     private fun render() {
-        if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null || editor()?.let(EditorPolicy::allowed) != true) { window?.hide(); return }
+        if (!editorEligible || !FloatingPreferences.enabled(this) || !awake()) { window?.hide(); return }
         val state = model?.state?.value
         val active = state?.audioBusy == true || state?.keyBusy == true
         val status = message ?: when (state?.phase) {
@@ -205,6 +216,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun insert(text: String, partial: Boolean) {
         insertionAttempted = true; finishRequested = false
+        if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
         val token = original; val current = editor(); val input = connection
         if (partial || token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {

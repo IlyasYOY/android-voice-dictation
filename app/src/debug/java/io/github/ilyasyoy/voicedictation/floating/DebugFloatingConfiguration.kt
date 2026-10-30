@@ -20,8 +20,12 @@ internal object DebugFloatingConfiguration {
         if (notice(context) == null) return null
         val port = context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE).getInt("port", 0)
         if (port !in 1024..65535) return null
-        return DictationViewModel(AndroidAudioRecorder(context), OpenAiTranscriber(), AndroidPcmSource(),
-            OpenAiRealtimeTranscriber(endpoint = "ws://localhost:$port/v1/realtime?intent=transcription"),
+        val network = OpenAiRealtimeTranscriber(endpoint = "ws://localhost:$port/v1/realtime?intent=transcription")
+        val observed = RealtimeTranscriber { key, emit -> network.connect(key) { event ->
+            if (event is LiveEvent.Failure) trace(context, "transport=${event.error.javaClass.simpleName}, cause=${event.error.cause?.javaClass?.simpleName}, pingTimeout=${event.error.cause?.message?.contains("ping") == true}")
+            emit(event)
+        } }
+        return DictationViewModel(AndroidAudioRecorder(context), OpenAiTranscriber(), AndroidPcmSource(), observed,
             AndroidApiKeyStore(context, ".test.crossapp"))
     }
 }
