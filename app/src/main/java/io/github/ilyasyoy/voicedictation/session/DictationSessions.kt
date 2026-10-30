@@ -13,7 +13,6 @@ internal object DictationSessions {
     private val realtimeClient by lazy { realtimeHttpClient() }
     private val realtime by lazy { OpenAiRealtimeTranscriber(realtimeClient) }
     private val fileMode = Transcriber { audio, key -> withContext(Dispatchers.IO) { fileTranscriber.transcribe(audio, key) } }
-    // Construct shared clients off Main; socket ownership is transferred by the adapter's suspend connect.
     private val liveMode = RealtimeTranscriber { key, emit ->
         val transport = withContext(Dispatchers.IO) { realtime }
         transport.connect(key, emit)

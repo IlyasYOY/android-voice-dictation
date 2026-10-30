@@ -1,0 +1,8 @@
+
+io.github.ilyasyoy.voicedictation.OrphanCleanupRestartTest:.
+
+Time: 0.088
+
+OK (1 test)
+
+

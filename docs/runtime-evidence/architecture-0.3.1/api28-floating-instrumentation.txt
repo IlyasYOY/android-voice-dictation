@@ -1,0 +1,28 @@
+
+io.github.ilyasyoy.voicedictation.fixture.CrossAppTest:
+CHECKPOINT: Configuring isolated synthetic key and localhost server
+
+CHECKPOINT: Opening explicit special-access onboarding
+
+CHECKPOINT: Opening accessibility disclosure/settings
+
+CHECKPOINT: Selecting service in Android Accessibility settings
+
+CHECKPOINT: Opening harmless fixture editor
+
+CHECKPOINT: Keyboard and bubble visible
+
+CHECKPOINT: Streaming observation: connections=1, PCM bytes=326318
+
+CHECKPOINT: Live microphone/PCM/WebSocket partial received; original field unchanged
+
+CHECKPOINT: Legacy Copy fallback confirmed; original field unchanged
+.
+CHECKPOINT: Opening harmless fixture editor
+.
+
+Time: 205.651
+
+OK (2 tests)
+
+
