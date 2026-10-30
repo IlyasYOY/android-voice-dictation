@@ -23,6 +23,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
+import io.github.ilyasyoy.voicedictation.data.AndroidPcmSource
+import io.github.ilyasyoy.voicedictation.data.OpenAiRealtimeTranscriber
+import io.github.ilyasyoy.voicedictation.data.AndroidApiKeyStore
 import io.github.ilyasyoy.voicedictation.data.OpenAiTranscriber
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
@@ -45,16 +48,17 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 (testFactory?.invoke(this@MainActivity) ?: DictationViewModel(
-                    AndroidAudioRecorder(applicationContext), OpenAiTranscriber())) as T
+                    AndroidAudioRecorder(applicationContext), OpenAiTranscriber(), AndroidPcmSource(),
+                    OpenAiRealtimeTranscriber(), AndroidApiKeyStore(applicationContext))) as T
         })[DictationViewModel::class.java]
         setContent {
             VoiceDictationTheme {
                 val state by model.state.collectAsStateWithLifecycle()
-                BackHandler(state.busy || state.canRetry) { model.cancel() }
+                BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
                     { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())) },
-                    evidenceNotice = testNotice)
+                    onMode = model::setMode, onSave = model::saveKey, evidenceNotice = testNotice)
             }
         }
     }

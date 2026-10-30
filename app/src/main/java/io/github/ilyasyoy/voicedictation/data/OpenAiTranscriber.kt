@@ -1,5 +1,6 @@
 package io.github.ilyasyoy.voicedictation.data
 
+import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -25,13 +26,13 @@ class InvalidTranscript : IOException()
 /** Endpoint injection is for tests only; the shipped application always uses HTTPS OpenAI. */
 class OpenAiTranscriber(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .callTimeout(90, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(80, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false)
+        .callTimeout(10, TimeUnit.MINUTES).connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.MINUTES).writeTimeout(2, TimeUnit.MINUTES).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).build(),
     private val endpoint: HttpUrl = "https://api.openai.com/v1/audio/transcriptions".toHttpUrl(),
 ) : Transcriber {
     override suspend fun transcribe(audio: File, key: String): String {
-        require(audio.length() in 1..20_000_000)
+        require(audio.length() in 1..AudioPolicy.UPLOAD_BYTES)
         require(key.isNotBlank() && key.none { it.isWhitespace() || it.code < 32 })
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", "gpt-transcribe")

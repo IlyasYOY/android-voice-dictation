@@ -73,9 +73,9 @@ class DictationViewModelTest {
         val m = model(); m.setKey("key"); m.start(true); fail = true; m.stop(); runCurrent(); m.forgetKey()
         assertEquals("", m.state.value.key); assertFalse(audio.exists()); assertFalse(m.state.value.canRetry)
     }
-    @Test fun `two minute limit stops and uploads once`() = runTest {
+    @Test fun `generous safety boundary stops without truncating recording`() = runTest {
         val m = model(); m.setKey("key"); m.start(true)
-        advanceTimeBy(120_000); runCurrent()
+        advanceTimeBy(1_800_000); runCurrent()
         assertEquals(Phase.RESULT, m.state.value.phase); assertEquals(1, calls); assertFalse(audio.exists())
     }
     @Test fun `leaving an error discards retry and preserves existing text`() = runTest {
@@ -97,5 +97,36 @@ class DictationViewModelTest {
         m.setKey("key"); m.edit("keep"); m.start(true); m.stop(); runCurrent()
         assertEquals(Problem.RESPONSE, m.state.value.problem); assertEquals("keep", m.state.value.text)
         assertTrue(m.state.value.canRetry); m.cancel()
+    }
+    @Test fun `saved key is restored and Forget removes storage`() = runTest {
+        val store = object : io.github.ilyasyoy.voicedictation.data.ApiKeyStore {
+            var stored: String? = null
+            override suspend fun load() = stored
+            override suspend fun save(key: String) { stored = key }
+            override suspend fun forget() { stored = null }
+        }
+        val m = DictationViewModel(recorder, Transcriber { _, _ -> "text" }, keyStore = store)
+        runCurrent(); m.setKey("synthetic-persist-test"); assertNull(store.stored)
+        m.saveKey(); runCurrent(); assertTrue(m.state.value.keySaved)
+        val restarted = DictationViewModel(recorder, Transcriber { _, _ -> "text" }, keyStore = store)
+        runCurrent(); assertEquals("synthetic-persist-test", restarted.state.value.key)
+        restarted.forgetKey(); runCurrent(); assertNull(store.stored); assertEquals("", restarted.state.value.key)
+    }
+    @Test fun `safety stop retains whole recording on network error for retry`() = runTest {
+        val m = model(); m.setKey("key"); fail = true; m.start(true)
+        advanceTimeBy(1_800_000); runCurrent()
+        assertEquals(Problem.NETWORK, m.state.value.problem); assertTrue(audio.exists()); assertEquals("audio", audio.readText())
+        assertTrue(m.state.value.canRetry); fail = false; m.retry(); runCurrent(); assertFalse(audio.exists())
+    }
+    @Test fun `failed key storage does not claim save success and Forget remains available`() = runTest {
+        val store = object : io.github.ilyasyoy.voicedictation.data.ApiKeyStore {
+            override suspend fun load(): String? = null
+            override suspend fun save(key: String) { throw java.io.IOException() }
+            override suspend fun forget() = Unit
+        }
+        val m = DictationViewModel(recorder, Transcriber { _, _ -> "text" }, keyStore = store)
+        runCurrent(); m.setKey("synthetic-key"); m.saveKey(); runCurrent()
+        assertEquals(Problem.STORAGE, m.state.value.problem); assertFalse(m.state.value.keySaved); assertFalse(m.state.value.keyBusy)
+        m.forgetKey(); runCurrent(); assertEquals("", m.state.value.key)
     }
 }

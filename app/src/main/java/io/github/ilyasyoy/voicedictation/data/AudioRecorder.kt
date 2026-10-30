@@ -3,6 +3,7 @@ package io.github.ilyasyoy.voicedictation.data
 import android.content.Context
 import android.media.MediaRecorder
 import java.io.File
+import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 
 interface AudioRecorder {
     fun start(onLimit: () -> Unit)
@@ -30,10 +31,11 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
             capture.setAudioSource(MediaRecorder.AudioSource.MIC)
             capture.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             capture.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            capture.setAudioSamplingRate(44100)
-            capture.setAudioEncodingBitRate(96000)
-            capture.setMaxDuration(120_000)
-            capture.setMaxFileSize(20_000_000)
+            capture.setAudioSamplingRate(24000)
+            capture.setAudioChannels(1)
+            capture.setAudioEncodingBitRate(AudioPolicy.BIT_RATE)
+            capture.setMaxDuration(AudioPolicy.MAX_SECONDS * 1000)
+            capture.setMaxFileSize(AudioPolicy.FILE_BYTES)
             capture.setOutputFile(target.absolutePath)
             capture.setOnInfoListener { _, what, _ ->
                 if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED ||
