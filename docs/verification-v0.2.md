@@ -1,5 +1,7 @@
 # Prototype 0.2.0 verification — 2026-10-30
 
+Historical report. Current refactor results and limitations are in the [architecture review](architecture-review.md).
+
 Changes requested in the same private draft PR: elapsed-only timer with a generous internal guard, explicit encrypted key Save/Forget, and genuine microphone-streaming transcription transport in a separate Live mode. Existing environment onboarding, SDK, AVD and shared scripts were preserved. No new SDK installation/license acceptance, real credential setup, paid API call, public publication or merge was performed.
 
 ## Completed checks
@@ -17,9 +19,9 @@ The initial ten-test Android attempt passed nine scenarios but timed out waiting
 
 ## Evidence and delivery
 
-[Eleven real screenshots, short clip, full recording and machine reports](runtime-evidence/README.md). Every evidence screen has a synthetic-server/key-test label; FLAG_SECURE is cleared only in test processes using synthetic credentials. User screenshots remain protected. The recording tests send actual encoded/PCM bytes to local servers, whose transcript responses are deterministic and synthetic. This proves transport/state/UI plumbing, not recognition quality.
+Eleven real screenshots, a short clip, full recording and machine reports were delivered separately through Library; generated proof is excluded from Git. Every evidence screen has a synthetic-server/key-test label; FLAG_SECURE is cleared only in test processes using synthetic credentials. User screenshots remain protected. The recording tests send actual encoded/PCM bytes to local servers, whose transcript responses are deterministic and synthetic. This proves transport/state/UI plumbing, not recognition quality.
 
-The updated APK and evidence archive are delivered through native Library when supported; the PR also retains evidence privately and CI publishes APK/reports for seven days. Library's earlier helper tools/list 401 was not a blanket denial: the direct create route succeeded. Final delivery records the exact pushed SHA, terminal CI run/artifact IDs, native Library identities and local APK checksum separately.
+The APK and evidence archive were delivered through Library; CI publishes generated APK/reports separately for seven days. Delivery records retain the exact pushed SHA, CI and Library identities, and local APK checksum. These external artifacts are preserved during repository cleanup.
 
 ## Reproduce
 
@@ -32,4 +34,4 @@ Use a dedicated emulator with an existing licensed SDK. Run `./scripts/check.sh`
 - Runtime verified on API 28 only; API 36 compiled/linted. Modern microphone privacy toggles, physical-device vendors, dark theme, large fonts and screen readers remain unverified.
 - Floating overlay, automatic insertion, accessibility service, keyboard, backend credential exchange and background capture remain outside scope.
 - Session transcript is memory-only. Explicit Save persists the encrypted API key; Forget deletes payload and Keystore alias. OS/device compromise and secure-erasure guarantees are outside this prototype. Process-killed file recordings are cleaned on next startup.
-- Debug signing can differ between CI runs; the Library APK has the local cloud debug signature. Production updates need a stable release signature, which is not configured. Main remains unchanged and PR #1 remains draft/unmerged.
+- Debug signing can differ between CI runs; the Library APK has the local cloud debug signature. Production updates need a stable release signature, which is not configured. Current PR/merge status is recorded in GitHub; this is a historical report.

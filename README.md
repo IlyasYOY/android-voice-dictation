@@ -51,7 +51,7 @@ Debug-подпись может различаться между CI-сборк�
 
 JVM-тесты проверяют реальные HTTP/WebSocket сообщения на локальных серверах. Android-тесты используют настоящие MediaRecorder, AudioRecord, системные разрешения, AES-GCM/Keystore, Activity и буфер обмена. Проверка ключа изолирована отдельным тестовым namespace; реальные пользовательские credentials не читаются и не меняются. Скриншоты помечены тестовым сервером; они не являются доказательством живого OpenAI-распознавания.
 
-[Точный отчёт](docs/verification.md), [скриншоты и видео](docs/runtime-evidence/README.md), [официальные API-контракты](docs/realtime-contract.md), [архитектура](docs/architecture.md), [ревью и проверка 0.3.1](docs/architecture-review.md).
+[Точный отчёт](docs/verification.md), [официальные API-контракты](docs/realtime-contract.md), [архитектура](docs/architecture.md), [ревью и проверка 0.3.1](docs/architecture-review.md).
 
 ## Что остаётся отдельно
 
