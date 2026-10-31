@@ -17,8 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,14 +37,25 @@ fun DictationScreen(
     onClear: () -> Unit, onForget: () -> Unit, onSettings: () -> Unit, onMode: (Mode) -> Unit,
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
 ) {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
     LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
     BackHandler(settingsOpen) { settingsOpen = false }
     Scaffold(topBar = {
-        if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
-            Text(evidenceNotice, Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp),
-                color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelSmall)
+        Column {
+            if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                Text(evidenceNotice, Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelSmall)
+            }
+            // Save/Forget happen in Settings: failures must stay visible even while its form is scrolled.
+            if (settingsOpen && state.problem == Problem.STORAGE) Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                Text(stringResource(R.string.storage_error), Modifier.fillMaxWidth()
+                    .then(if (evidenceNotice == null) Modifier.statusBarsPadding() else Modifier)
+                    .padding(16.dp).testTag("problem").semantics { liveRegion = LiveRegionMode.Polite },
+                    color = MaterialTheme.colorScheme.onErrorContainer)
+            }
         }
     }) { insets ->
         Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
@@ -91,13 +106,13 @@ fun DictationScreen(
                     enabled = !state.busy)
                 if (state.keyBusy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("key_progress"))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onSave, Modifier.testTag("save_key"), enabled = state.validKey && !state.keySaved && !state.busy) {
+                    Button({ focus.clearFocus(); keyboard?.hide(); onSave() }, Modifier.testTag("save_key"), enabled = state.validKey && !state.keySaved && !state.busy) {
                         Text(stringResource(R.string.save_key))
                     }
                 }
                 if (state.keySaved) Text(stringResource(R.string.key_saved), Modifier.testTag("key_saved"), style = MaterialTheme.typography.bodySmall)
                 else if (state.hasSavedKey) Text(stringResource(R.string.key_changed), style = MaterialTheme.typography.bodySmall)
-                if (state.key.isNotEmpty() || state.hasSavedKey || state.problem == Problem.STORAGE) TextButton(onForget, Modifier.testTag("forget"), enabled = !state.busy) {
+                if (state.key.isNotEmpty() || state.hasSavedKey || state.problem == Problem.STORAGE) TextButton({ focus.clearFocus(); keyboard?.hide(); onForget() }, Modifier.testTag("forget"), enabled = !state.busy) {
                     Text(stringResource(R.string.forget))
                 }
                 Text(stringResource(R.string.privacy), style = MaterialTheme.typography.bodySmall)                        }
