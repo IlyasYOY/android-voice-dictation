@@ -63,7 +63,7 @@ class FloatingSetupActivity : ComponentActivity() {
         val recovery = FloatingFeedback.processOwned
         if (recovery.text.isNotBlank()) {
             layout.addView(TextView(this).apply { text=getString(R.string.current_recover); textSize=18f; setTextColor(ink); setPadding(0,dp(16),0,dp(8)) })
-            layout.addView(TextView(this).apply { text=recovery.text; textSize=17f; setTextColor(ink); setTextIsSelectable(true) })
+            layout.addView(TextView(this).apply { id=R.id.floating_preview; text=recovery.text; textSize=17f; setTextColor(ink); setTextIsSelectable(true) })
             button(R.string.copy, R.id.floating_copy) {
                 val clip=android.content.ClipData.newPlainText(getString(R.string.transcript),recovery.text)
                 if (Build.VERSION.SDK_INT>=33) clip.description.extras=android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE",true) }

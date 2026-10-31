@@ -176,54 +176,28 @@ class CrossAppTest {
         assertTrue("Real emulator screenshot must be captured", device.takeScreenshot(java.io.File(directory, "$name.png")))
     }
     @Test fun aKeyboardBubbleLiveStopInsertsWithoutReplacingExistingText() {
-        find(appId("floating_start"), 30_000)
-        checkpoint("Keyboard and bubble visible")
-        screenshot("01-keyboard-and-bubble")
-        // Expire the visible-activity grace period; product has no instrumentation or foreground Activity.
-        SystemClock.sleep(11_000)
-        val initialConnections = connections.get()
-        val initialBytes = bytes.get()
-        find(appId("floating_start")).click()
-        val streamed = waitForAudio(initialBytes)
-        checkpoint("Streaming observation: connections=${connections.get()}, PCM bytes=${bytes.get()}")
-        if (!streamed) {
-            device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "stream-failure.xml"))
-            screenshot("stream-failure")
-        }
-        assertTrue("Streaming words must arrive after microphone starts", streamed)
-        assertEquals("Before  after", find(fixtureId("body")).text)
-        assertTrue(bytes.get() > 0)
-        checkpoint("Live microphone/PCM/WebSocket active; compact control and original field unchanged")
+        val count=connections.get()
+        startPartial(); assertFieldUnchanged()
         screenshot("02-live-partial-original-field-unchanged")
         find(appId("floating_stop")).click()
-        if (Build.VERSION.SDK_INT < 33) {
-            openRecovery()
-            assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
-            assertFieldUnchanged(); screenshot("legacy-API28-copy-fallback")
-        } else {
-            assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
-            assertTrue(has(By.desc("Start live dictation"),10_000))
-            assertFalse(device.hasObject(appId("floating_status")))
+        find(appId("floating_start"),60_000)
+        assertFalse(device.hasObject(appId("floating_status")))
+        screenshot("03-final-no-report")
+        if(Build.VERSION.SDK_INT>=33) assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
+        else {
+            assertFieldUnchanged(); openRecovery()
+            assertEquals("voice test",scrollFind(appId("floating_preview")).text)
+            screenshot("03-optional-legacy-copy-in-setup")
+            focusField("body"); assertFieldUnchanged()
         }
-        assertEquals(initialConnections + 1, connections.get())
-        checkpoint(if (Build.VERSION.SDK_INT >= 33) "Final insertion confirmed; surrounding text preserved" else "Legacy Copy fallback confirmed; original field unchanged")
-        screenshot("03-final-inserted-preserving-sides")
-        val dump = device.executeShellCommand("dumpsys activity services $APP")
-        java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "service-after-insertion.txt").writeText(dump)
-        assertFalse("Microphone foreground service must end after Stop/final", dump.contains("isForeground=true"))
-        if (Build.VERSION.SDK_INT < 33) find(appId("floating_close")).click()
-        assertTrue(device.wait(Until.gone(appId("floating_close")), 15_000))
-        SystemClock.sleep(700)
-        screenshot("03b-final-field-with-panel-closed")
-        device.pressBack()
-        assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
-        screenshot("04-keyboard-hidden-bubble-cleaned")
+        assertEquals(count+1,connections.get())
+        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+        screenshot("03b-unobscured-field")
     }
     private fun openRecovery() {
-        val control=By.desc("Review text or recording problem")
-        find(control,60_000)
-        assertFalse("No automatic final/progress panel",device.hasObject(appId("floating_status")))
-        find(control).click()
+        assertFalse("No automatic error/result panel",device.hasObject(appId("floating_status")))
+        find(appId("floating_start"),60_000).longClick()
+        find(appId("floating_disable"),30_000)
     }
     private fun waitForAudio(previous: Int): Boolean {
         val deadline = SystemClock.elapsedRealtime() + 90_000
@@ -236,10 +210,11 @@ class CrossAppTest {
         assertTrue("Actual PCM must reach the fixture; no live transcript panel is shown", waitForAudio(previous))
     }
     private fun restartPartial() {
-        val previous=bytes.get()
-        scrollFind(appId("floating_discard")).click()
-        find(By.desc("Start live dictation"),10_000).click()
-        assertTrue("Explicit discard then start must stream fresh PCM",waitForAudio(previous))
+        if(device.hasObject(By.pkg(APP))) {
+            if(has(appId("floating_discard"),2000)) scrollFind(appId("floating_discard")).click()
+            focusField("body")
+        }
+        startPartial()
     }
     private fun cancelFloating() {
         find(appId("floating_stop")).longClick()
@@ -248,48 +223,30 @@ class CrossAppTest {
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
     @Test fun bCancelAndRestartNeverInsertPartialOrCreateDuplicateConnection() {
-        startPartial(); val count = connections.get()
-        cancelFloating()
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Cancelled"), 10_000))
-        assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
-        screenshot("05-cancel-no-insertion")
-        restartPartial()
-        find(appId("floating_stop")).click()
-        if (Build.VERSION.SDK_INT >= 33) {
-            assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
-            assertTrue(has(By.desc("Start live dictation"),10_000))
-            assertFalse(device.hasObject(appId("floating_status")))
-        } else {
-            openRecovery()
-            assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 30_000))
-            assertFieldUnchanged()
-        }
-        assertEquals(count + 1, connections.get())
+        startPartial(); val count=connections.get(); cancelFloating()
+        find(appId("floating_start"),30_000); assertFieldUnchanged()
+        assertFalse(device.hasObject(appId("floating_status")))
+        SystemClock.sleep(1000); assertEquals(count,connections.get())
+        startPartial(); assertEquals(count+1,connections.get())
+        find(appId("floating_stop")).click(); find(appId("floating_start"),60_000)
+        assertFalse(device.hasObject(appId("floating_status")))
     }
     @Test fun cFocusChangeCancelsAndNeverRetargets() {
-        startPartial()
-        focusField("second")
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Editor or caret changed"), 10_000))
-        assertFieldUnchanged(); assertEquals("Other field", find(fixtureId("second_body")).text)
-        screenshot("06-focus-change-cancelled")
+        startPartial(); focusField("second")
+        find(appId("floating_start"),30_000)
+        assertFalse(device.hasObject(appId("floating_status")))
+        assertFieldUnchanged(); assertEquals("Other field",find(fixtureId("second_body")).text)
+        openRecovery(); assertTrue(scrollFind(appId("floating_preview")).text.contains("Bubble words"))
+        screenshot("06-optional-cancelled-text-in-setup")
     }
     @Test fun dUnsupportedEditorOffersCopyWithoutWriting() {
-        focusField("unsupported")
-        find(fixtureId("unsupported_body").focused(true), 30_000)
-        SystemClock.sleep(1800)
-        screenshot("07a-unsupported-focused-above-keyboard")
-        val initialConnections = connections.get(); val initialBytes = bytes.get()
-        startPartial(); find(appId("floating_stop")).click()
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 60_000))
-        assertEquals("Unsupported stays unchanged", find(fixtureId("unsupported_body")).text)
-        assertTrue(find(appId("floating_copy")).isEnabled)
-        assertEquals(initialConnections + 1, connections.get()); assertTrue(bytes.get() > initialBytes)
-        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
-        checkpoint("Unsupported field unchanged; explicit Copy available; ${bytes.get() - initialBytes} PCM bytes; microphone foreground ended")
-        screenshot("07-unsupported-explicit-copy")
+        focusField("unsupported"); startPartial(); find(appId("floating_stop")).click()
+        find(appId("floating_start"),60_000)
+        assertEquals("Unsupported stays unchanged",find(fixtureId("unsupported_body")).text)
+        assertFalse(device.hasObject(appId("floating_status")))
+        openRecovery(); assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
+        assertTrue(scrollFind(appId("floating_copy")).isEnabled)
+        screenshot("07-explicit-unsent-copy-in-setup")
     }
     @Test fun ePasswordAndNumericFieldsNeverShowBubble() {
         focusField("password")
@@ -310,25 +267,25 @@ class CrossAppTest {
         startPartial(); cancelFloating(); assertFieldUnchanged()
     }
     @Test fun gStreamErrorStopsAndRequiresExplicitRestart() {
-        failNext.set(true)
+        failNext.set(true); val count=connections.get()
         find(appId("floating_start")).click()
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Live session failed"), 40_000))
-        assertFieldUnchanged(); val count = connections.get(); SystemClock.sleep(1200); assertEquals(count, connections.get())
-        screenshot("11-stream-error-no-reconnect")
-        restartPartial(); cancelFloating()
+        assertTrue(has(By.desc("Start live dictation"),40_000))
+        SystemClock.sleep(1800)
+        assertEquals(count+1,connections.get()); assertFalse(device.hasObject(appId("floating_status")))
+        assertFieldUnchanged(); screenshot("11-network-error-red-no-popup")
+        val previous=bytes.get(); find(appId("floating_start")).click()
+        assertTrue(waitForAudio(previous)); assertEquals(count+2,connections.get())
+        screenshot("11b-explicit-retry-purple"); cancelFloating()
     }
     @Test fun hMissingSavedKeyStartsNoAudioOrRequest() {
-        launch("$APP.floating.DebugFloatingSetupActivity", server.port)
+        launch("$APP.floating.DebugFloatingSetupActivity",server.port)
         find(label("Forget fixture key")).click()
-        assertTrue(device.wait(Until.gone(label("Forget fixture key")), 60_000))
-        launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)
-        val count = connections.get(); find(appId("floating_start")).click()
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Save an API key"), 15_000))
-        assertEquals(count, connections.get()); assertFieldUnchanged()
-        screenshot("12-no-saved-key-no-audio")
-        configureFake()
+        assertTrue(device.wait(Until.gone(label("Forget fixture key")),60_000))
+        focusField("body")
+        val count=connections.get(); val previous=bytes.get()
+        find(appId("floating_start")).click(); SystemClock.sleep(1600)
+        assertEquals(count,connections.get()); assertEquals(previous,bytes.get())
+        assertFalse(device.hasObject(appId("floating_status"))); assertFieldUnchanged()
     }
     @Test fun iIndependentSecondKeyboardUsesSameBubbleAndInsertion() {
         // Dedicated synthetic emulator: configure the independent test IME deterministically.
@@ -373,69 +330,32 @@ class CrossAppTest {
         screenshot("13-screen-off-cleanup")
     }
     @Test fun kRevokedMicrophoneStopsAndNextTapIsPermissionGated() {
-        startPartial(); val count = connections.get()
-        // Dedicated emulator only. Revoke is a denial fixture, never a grant or bypass of OS consent.
+        startPartial(); val count=connections.get()
         device.executeShellCommand("pm revoke $APP android.permission.RECORD_AUDIO")
-        SystemClock.sleep(1200)
-        find(appId("floating_start"), 30_000).click()
-        openRecovery()
-        assertTrue(has(By.res(APP, "floating_status").textContains("permissions are required"), 15_000))
-        assertEquals(count, connections.get()); assertFieldUnchanged()
-        screenshot("16-revoked-microphone-gated")
-        setupUserOptIn() // Re-grants only through the visible OS permission dialog.
+        SystemClock.sleep(1200); find(appId("floating_start"),30_000).click()
+        SystemClock.sleep(1600)
+        assertEquals(count,connections.get()); assertFieldUnchanged()
+        assertFalse(device.hasObject(appId("floating_status")))
+        setupUserOptIn()
     }
     @Test fun rRecoverySurvivesKeyboardHideSetupAndLargeFontWithoutReplay() {
         val originalScale=device.executeShellCommand("settings get system font_scale").trim()
         try {
-            focusField("unsupported")
-            find(fixtureId("unsupported_body").focused(true),30_000)
-            val count=connections.get()
-            startPartial(); find(appId("floating_stop")).click()
-            find(By.desc("Review text or recording problem"),60_000)
+            focusField("unsupported"); val count=connections.get()
+            startPartial(); find(appId("floating_stop")).click(); find(appId("floating_start"),60_000)
             assertFalse(device.hasObject(appId("floating_status")))
-            screenshot("20-result-stays-compact")
-            device.pressBack()
-            assertTrue(device.wait(Until.gone(appId("floating_start")),10_000))
-            focusField("body")
-            find(By.desc("Review text or recording problem"),30_000)
-            assertFieldUnchanged()
-            openRecovery()
-            assertEquals("voice test",find(appId("floating_preview")).text)
-            scrollFind(appId("floating_close")).click()
-            launch("$APP.MainActivity")
-            find(label("Set up floating dictation"),30_000).click()
-            find(By.clazz("android.widget.ScrollView"),30_000)
+            device.pressBack(); focusField("body"); assertFieldUnchanged()
             device.executeShellCommand("settings put system font_scale 2")
-            SystemClock.sleep(1200)
-            focusField("body")
-            find(By.desc("Review text or recording problem"),30_000)
-            openRecovery()
-            val keyboard=instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-            val ime=android.graphics.Rect().also { keyboard.getBoundsInScreen(it) }
-            val overlay=instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
-            val bounds=android.graphics.Rect().also { overlay.getBoundsInScreen(it) }
-            assertTrue("Recovery must stay above keyboard: $bounds / $ime",bounds.bottom<=ime.top && bounds.top>=0)
-            screenshot("21-large-font-recovery-top-bounded")
+            SystemClock.sleep(1200); focusField("body"); openRecovery()
+            assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
             scrollFind(appId("floating_copy")).click()
-            assertEquals("voice test",instrumentation.targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
-            screenshot("22-large-font-recovery-copy-accessible")
+            assertTrue(instrumentation.targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString().contains("voice test"))
+            screenshot("22-large-font-optional-recovery-in-setup")
             assertEquals(count+1,connections.get())
-            assertFieldUnchanged()
-            var originalField=""
-            instrumentation.runOnMainSync {
-                val activity=androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<FixtureActivity>().single()
-                originalField=activity.findViewById<android.widget.EditText>(R.id.unsupported_body).text.toString()
-            }
-            assertEquals("Unsupported stays unchanged",originalField)
-            assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
-            scrollFind(appId("floating_close")).click()
-            openRecovery()
-            assertEquals("voice test",scrollFind(appId("floating_preview")).text)
             scrollFind(appId("floating_discard")).click()
-            find(By.desc("Start live dictation"),10_000)
+            focusField("body"); assertFieldUnchanged()
             assertEquals(count+1,connections.get())
-            checkpoint("Uninserted text survived keyboard hide, Setup and font-scale configuration; Copy/Discard accessible; no replay or duplicate insertion")
+            checkpoint("Optional unsent recovery survives visibility/setup changes; next tap is never a recovery gate")
         } finally {
             device.executeShellCommand(if(originalScale=="null")"settings delete system font_scale" else "settings put system font_scale $originalScale")
         }

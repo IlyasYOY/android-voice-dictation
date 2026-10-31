@@ -18,13 +18,19 @@ import org.junit.*
 import org.junit.Assert.*
 import java.io.File
 
-/** Run before permission-granting tests, on an install with RECORD_AUDIO revoked. */
+/** Dedicated emulator fixture: reset only this app's microphone decision, then use real OS dialogs. */
 class DeniedPermissionTest {
     @get:Rule val compose = createEmptyComposeRule()
     @Test fun deniedPermissionCanBeRequestedAgainWithoutBackgroundRecording() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val device = UiDevice.getInstance(instrumentation)
+        for (command in listOf("pm revoke ${context.packageName} ${Manifest.permission.RECORD_AUDIO}",
+            "pm clear-permission-flags ${context.packageName} ${Manifest.permission.RECORD_AUDIO} user-set user-fixed")) {
+            instrumentation.uiAutomation.executeShellCommand(command).use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+            }
+        }
         assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.RECORD_AUDIO))
         lateinit var model: DictationViewModel
         MainActivity.testNotice = "PERMISSION TEST · no OpenAI call"
