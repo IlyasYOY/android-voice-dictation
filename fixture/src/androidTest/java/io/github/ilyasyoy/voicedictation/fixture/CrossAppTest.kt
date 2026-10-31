@@ -366,8 +366,11 @@ class CrossAppTest {
         screenshot("24-record-repeat-no-popup")
         openRecovery()
         scrollFind(appId("floating_retry_audio")).click()
-        assertTrue(device.wait(Until.gone(appId("floating_retry_audio")),30_000))
+        // Setup rebuilds its view while retry starts; a transiently absent button is not completion.
+        val retryDeadline=SystemClock.elapsedRealtime()+30_000
+        while(fileRequests.get()<uploaded+3 && SystemClock.elapsedRealtime()<retryDeadline)SystemClock.sleep(100)
         assertEquals(uploaded+3,fileRequests.get())
+        assertTrue(device.wait(Until.gone(appId("floating_retry_audio")),30_000))
         assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
         screenshot("25-explicit-saved-audio-retry-no-editor-replay")
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
