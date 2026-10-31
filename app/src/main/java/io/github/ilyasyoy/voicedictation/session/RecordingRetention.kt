@@ -42,7 +42,10 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     override fun beginSession() {liveId=null}
     override fun stopped(audio:File,seconds:Int) = stored {repository.duration(audio,seconds)}
     override fun receivedText(audio:File):String? = stored {repository.record(audio)?.let {repository.receivedText(it.id)}}
-    override fun restoreDraft():String? = if(mainDraft)stored {repository.savedText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN)} else null
+    override fun restoreDraft():String? = if(mainDraft)stored {
+        val restored=repository.savedDraft(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN)
+        sourceId=restored.sourceId;restored.text
+    } else null
     override fun saveDraft(text:String) {
         if(text.isBlank() || sourceId?.let {repository.record(it)}==null)sourceId=null
         if(mainDraft)stored {repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN,text,sourceId)}
@@ -70,7 +73,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
             else -> SavedRecordingFailure.SERVICE
         }
         val token = attempts[audio]
-        if (token != null) { repository.failed(token, failure); attempts.remove(audio) }
+        if (token != null) { try {repository.failed(token, failure)} finally {attempts.remove(audio)} }
         else repository.markFailed(audio, failure)
         Unit
     }

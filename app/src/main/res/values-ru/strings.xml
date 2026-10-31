@@ -101,7 +101,7 @@
   <string name="saved_unavailable">Запись требует внимания. Её данные сохранены.</string>
   <string name="saved_pending">Ожидает распознавания</string>
   <string name="saved_live_text">Текст Live · локального аудиофайла нет</string>
-  <string name="saved_audio_kept">Аудио сохранено для будущего прослушивания</string>
+  <string name="saved_audio_kept">Аудио сохранено</string>
   <string name="saved_delete">Удалить запись</string>
   <string name="saved_delete_confirm">Удалить эту запись, её аудио и сохранённый текст?</string>
   <string name="saved_more">Показать ещё</string>

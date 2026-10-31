@@ -9,3 +9,7 @@ The existing process-owned recovery collection is shared by both entry points as
 Saved recordings are available from the main screen and by holding the idle floating control. Both routes focus the existing explicit Retry/Discard section. This does not introduce permanent storage/history: the index remains in memory, files remain private cache, and process restart uses the existing orphan sweep. Durable storage/history is the subsequent milestone.
 
 Tests use synthetic first/last sample markers, delayed/failing key ports and deterministic network failures to verify ordering, complete-file ownership, no automatic reconnect retry and cleanup. These tests do not establish recognition quality, real-device microphone latency or preservation of an actual spoken first word. Runtime evidence must name the tested commit/device and distinguish executed tests from compilation.
+
+## VD004 storage update
+
+The later durable-storage milestone replaces the process-only cache/index described above. Both successful audio and transcript are retained until explicit discard; stopped pending audio survives process death/reboot. See [durable storage](durable-recordings.md). Record/Live start ordering and no automatic upload remain unchanged.

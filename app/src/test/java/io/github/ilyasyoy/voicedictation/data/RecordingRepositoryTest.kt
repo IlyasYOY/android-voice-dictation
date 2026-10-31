@@ -101,4 +101,31 @@ class RecordingRepositoryTest {
         assertEquals(setOf("format","id","createdAt","updatedAt","status","seconds","transcript","attempt","kind","partial"),properties.stringPropertyNames())
         assertThrows(IllegalArgumentException::class.java) {store.audio("../../outside")}
     }
+    @Test fun deletionKeepsItsTombstoneUntilAudioIsDurablyGoneAndRestartFinishes() {
+        val deleting=RecordingRepository(root,deletion=object:RecordingDeletion {
+            override fun delete(file:File) {
+                if(file.name=="record.properties") {
+                    assertFalse("Audio must be gone before tombstone unlink",File(file.parentFile,"audio.m4a").exists())
+                    throw IOException("crash before tombstone unlink")
+                }
+                super.delete(file)
+            }
+        })
+        val audio=capture(deleting);val id=checkNotNull(deleting.record(audio)).id
+        assertThrows(IOException::class.java) {deleting.discard(id)}
+        assertTrue(File(audio.parentFile,"record.properties").exists())
+        assertFalse(audio.exists());assertTrue(repository().records().isEmpty())
+    }
+    @Test fun crashAfterTombstoneUnlinkLeavesNoPrivateAudioOrUnavailableGhost() {
+        val deleting=RecordingRepository(root,deletion=object:RecordingDeletion {
+            override fun delete(file:File) {
+                super.delete(file)
+                if(file.name=="record.properties")throw IOException("crash after tombstone unlink")
+            }
+        })
+        val audio=capture(deleting);val id=checkNotNull(deleting.record(audio)).id
+        assertThrows(IOException::class.java) {deleting.discard(id)}
+        assertFalse(audio.exists());assertTrue(repository().records().isEmpty())
+    }
+
 }

@@ -15,6 +15,14 @@ internal enum class SavedRecordingStatus { CAPTURING, PENDING, UPLOADING, FAILED
 internal enum class SavedRecordingFailure { KEY, AUTH, NETWORK, SERVICE, STORAGE }
 internal enum class RecordingTextSlot { MAIN, FLOATING }
 internal enum class SavedRecordingKind { RECORD, LIVE }
+internal data class SavedRecordingDraft(val text:String,val sourceId:String?) {
+    override fun toString()="SavedRecordingDraft(textLength=${text.length}, sourceId=$sourceId)"
+}
+internal interface RecordingDeletion {
+    fun delete(file:File) {Files.deleteIfExists(file.toPath())}
+    fun sync(directory:File) {AtomicRecordingCommit.syncDirectory(directory)}
+}
+internal object DurableRecordingDeletion:RecordingDeletion
 internal data class SavedRecording(
     val id: String,
     val createdAt: Long,
@@ -58,6 +66,7 @@ internal class RecordingRepository(
     private val root: File,
     private val clock: () -> Long = System::currentTimeMillis,
     private val commit: RecordingCommit = AtomicRecordingCommit,
+    private val deletion:RecordingDeletion=DurableRecordingDeletion,
 ) {
     private val rows = linkedMapOf<String, SavedRecording>()
     private val reserved = mutableSetOf<String>()
@@ -68,8 +77,15 @@ internal class RecordingRepository(
         private set
 
     init {
-        check(root.mkdirs() || root.isDirectory) { "Recording directory unavailable" }
+        val created=root.mkdirs()
+        check(created || root.isDirectory) { "Recording directory unavailable" }
+        if(created)root.parentFile?.let(AtomicRecordingCommit::syncDirectory)
         root.listFiles()?.filter { it.isDirectory && validId(it.name) }?.forEach { directory ->
+            // A crash after the final tombstone unlink may leave an empty directory, never audio.
+            if(directory.listFiles()?.isEmpty()==true) {
+                runCatching {deletion.delete(directory);deletion.sync(root)}
+                return@forEach
+            }
             val record = try { read(directory) } catch (_: Exception) {
                 SavedRecording(directory.name, directory.lastModified(), clock(), SavedRecordingStatus.UNAVAILABLE)
             }
@@ -96,14 +112,15 @@ internal class RecordingRepository(
     @Synchronized fun record(id: String): SavedRecording? = rows[id]
     @Synchronized fun receivedText(id:String):String?=received[id]
     @Synchronized fun receivedTexts():Map<String,String> = received.toMap()
-    @Synchronized fun savedText(slot: RecordingTextSlot): String {
+    @Synchronized fun savedText(slot: RecordingTextSlot): String = savedDraft(slot).text
+    @Synchronized fun savedDraft(slot: RecordingTextSlot): SavedRecordingDraft {
         val file = File(root, "${slot.name.lowercase()}-text.properties")
-        if (!file.exists()) return ""
+        if (!file.exists()) return SavedRecordingDraft("",null)
         val values = Properties().apply { file.inputStream().use { load(it) } }
         require(values.getProperty("format") == "1")
         val source=values.getProperty("sourceId")
-        if(source!=null && rows[source]?.status in listOf(null,SavedRecordingStatus.DELETING))return ""
-        return values.getProperty("text") ?: throw IOException("Missing saved text")
+        if(source!=null && rows[source]?.status in listOf(null,SavedRecordingStatus.DELETING))return SavedRecordingDraft("",null)
+        return SavedRecordingDraft(values.getProperty("text") ?: throw IOException("Missing saved text"),source)
     }
     @Synchronized fun saveText(slot: RecordingTextSlot, text: String,sourceId:String?=null) {
         val file=File(root,"${slot.name.lowercase()}-text.properties")
@@ -242,8 +259,12 @@ internal class RecordingRepository(
             }
         }
         val folder = directory(id)
-        folder.listFiles()?.forEach { Files.deleteIfExists(it.toPath()) }
-        Files.deleteIfExists(folder.toPath()); AtomicRecordingCommit.syncDirectory(root)
+        val tombstone=metadata(id)
+        // The deletion intent must outlive every audio/text byte and its directory sync.
+        folder.listFiles()?.filter {it!=tombstone}?.forEach {deletion.delete(it)}
+        deletion.sync(folder)
+        deletion.delete(tombstone);deletion.sync(folder)
+        deletion.delete(folder);deletion.sync(root)
         rows.remove(id); reserved -= id; received.remove(id);changed()
     }
 

@@ -101,7 +101,7 @@
   <string name="saved_unavailable">Recording needs attention. Its data has been kept.</string>
   <string name="saved_pending">Awaiting transcription</string>
   <string name="saved_live_text">Live transcript · no local audio file</string>
-  <string name="saved_audio_kept">Audio saved for future playback</string>
+  <string name="saved_audio_kept">Audio saved</string>
   <string name="saved_delete">Delete recording</string>
   <string name="saved_delete_confirm">Delete this recording, its audio and saved text?</string>
   <string name="saved_more">Show more</string>

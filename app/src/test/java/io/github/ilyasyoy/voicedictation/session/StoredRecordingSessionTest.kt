@@ -74,4 +74,34 @@ class StoredRecordingSessionTest {
         assertTrue(capture.audio.exists());session.close()
         assertEquals(SavedRecordingStatus.INTERRUPTED,store().records().single().status)
     }
+    @Test fun oneExplicitRetryAfterDiskRecoverySavesReceivedResponseWithoutNewNetwork()=runTest {
+        var failed=false;var calls=0
+        val store=store(RecordingCommit {target,values ->
+            if(failed)throw IOException("disk full")
+            AtomicRecordingCommit.write(target,values)
+        })
+        val capture=Capture(store)
+        val session=DictationSession(backgroundScope,capture,Transcriber {_,_->calls++;failed=true;"Known paid response"},recordings=StoredRecordingRetention(store))
+        session.setKey("synthetic-key");session.start(true);session.stop();runCurrent()
+        assertEquals(Problem.LOCAL_STORAGE,session.state.value.problem);assertEquals(1,calls)
+        failed=false;session.retry();runCurrent()
+        assertEquals(Phase.RESULT,session.state.value.phase);assertEquals(1,calls)
+        assertEquals("Known paid response",store().records().single().transcript)
+        assertTrue(capture.audio.exists());session.close()
+    }
+    @Test fun restoredMainDraftKeepsItsDeletionLinkThroughBackgroundAndClose()=runTest {
+        val first=store();val audio=first.allocate().apply {writeText("audio")};first.finalized(audio)
+        first.complete(checkNotNull(first.beginUpload(audio)),"Saved words")
+        val id=checkNotNull(first.record(audio)).id
+        first.saveText(RecordingTextSlot.MAIN,"Saved words",id)
+        val restored=store()
+        val session=DictationSession(backgroundScope,Capture(restored),Transcriber {_,_->error("no upload")},recordings=StoredRecordingRetention(restored,true))
+        assertEquals("Saved words",session.state.value.text)
+        session.cancel() // Main opens Saved recordings; background checkpoints the restored draft.
+        assertEquals(id,restored.savedDraft(RecordingTextSlot.MAIN).sourceId)
+        assertTrue(restored.discard(id));session.refreshDraft()
+        assertEquals("",session.state.value.text);session.close()
+        assertEquals("",store().savedText(RecordingTextSlot.MAIN));assertFalse(audio.exists())
+    }
+
 }
