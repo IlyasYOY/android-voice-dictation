@@ -71,14 +71,14 @@ class SecondRoundAcceptanceTest {
             window=FloatingWindow(context,{starts++;feedback.resetSignal();render()},{},{},{},{},recover={recoveries++})
             try {
                 feedback.complete(InsertionResult.UNCONFIRMED,"Possibly inserted","Copy required","Unconfirmed")
-                render(); assertFalse(feedback.available); assertFalse(feedback.error)
+                render(); assertEquals("Possibly inserted",feedback.text); assertNull(feedback.message); assertFalse(feedback.error)
                 val view=checkNotNull(root)
                 view.findViewById<View>(R.id.floating_start).performClick(); assertEquals(1,starts)
                 feedback.offer("Definitely unsent","Network failure",error=true); render()
                 assertEquals(View.GONE,view.findViewById<View>(R.id.floating_status).visibility)
                 assertEquals(View.GONE,view.findViewById<View>(R.id.floating_preview).visibility)
                 view.findViewById<View>(R.id.floating_start).performClick(); assertEquals(2,starts)
-                assertEquals("Definitely unsent",feedback.text); assertFalse(feedback.error)
+                assertTrue(feedback.text.endsWith("Definitely unsent")); assertFalse(feedback.error)
                 view.findViewById<View>(R.id.floating_start).performLongClick(); assertEquals(1,recoveries)
                 assertEquals(2,starts)
             } finally {window.hide()}

@@ -26,10 +26,11 @@ internal object DictationSessions {
     }
 
     fun create(context: Context, scope: CoroutineScope, keyStore: ApiKeyStore? = null,
-               liveTranscriber: RealtimeTranscriber? = null, initialMode: Mode = Mode.RECORD): DictationSession {
+               liveTranscriber: RealtimeTranscriber? = null, initialMode: Mode = Mode.RECORD,
+               fileTranscriber: Transcriber? = null): DictationSession {
         val app = context.applicationContext
         prepare(app)
-        return DictationSession(scope, DeferredAudioRecorder { AndroidAudioRecorder(app) }, fileMode,
+        return DictationSession(scope, DeferredAudioRecorder { AndroidAudioRecorder(app) }, fileTranscriber ?: fileMode,
             AndroidPcmSource(), liveTranscriber ?: liveMode, keyStore ?: keys(app), initialMode)
     }
 

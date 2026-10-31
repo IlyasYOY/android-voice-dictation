@@ -126,7 +126,8 @@ class FloatingDictationService : AccessibilityService() {
         val active = state?.audioBusy == true || state?.keyBusy == true
         val status = feedback.message ?: when (state?.phase) {
             Phase.CONNECTING -> getString(R.string.live_connect_status)
-            Phase.RECORDING -> getString(R.string.live_stream_status) + " · " + state.elapsed
+            Phase.RECORDING -> getString(if(state.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording) + " · " + state.elapsed
+            Phase.TRANSCRIBING -> getString(R.string.transcribing)
             Phase.FINALIZING -> getString(R.string.live_finish_status)
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
@@ -174,7 +175,7 @@ class FloatingDictationService : AccessibilityService() {
         fun action(value: String, request: Int) = PendingIntent.getService(this, request,
             Intent(this, FloatingDictationService::class.java).setAction(value), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_current_notification).setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> R.string.live_stream_status; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
+            .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> if(model?.state?.value?.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording; Phase.TRANSCRIBING -> R.string.transcribing; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
             .setOngoing(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .addAction(0, getString(R.string.stop_live), action(STOP, 1)).addAction(0, getString(R.string.floating_cancel), action(CANCEL, 2)).build()
     }
@@ -193,13 +194,14 @@ class FloatingDictationService : AccessibilityService() {
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
                 if (state.phase == Phase.ERROR) offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
+                if (state.phase == Phase.TRANSCRIBING) endForeground()
                 if (state.phase == Phase.RESULT) {
                     endForeground()
                     if (finishRequested && !insertionAttempted) insert(state.text, state.livePartial)
                 }
                 if (foreground && microphoneGranted()) getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
                 render()
-            })
+            }, mode = ModePreferences.load(this))
         capture?.start()
     }
     private fun invalidStart() {
@@ -271,6 +273,10 @@ class FloatingDictationService : AccessibilityService() {
         // Stop all resources/clear editor ownership independently of pending user text.
         // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
         val state = model?.state?.value
+        if (retainCurrent && commitAttempted && !discardFeedback && state != null) {
+            // The write may already have happened: retain only passive text, never a failure/retry gate.
+            feedback.retain(state.text); feedback.resetSignal()
+        }
         if (retainCurrent && !commitAttempted && !discardFeedback && state != null && (state.text.isNotBlank() || (state.busy && !feedback.available))) {
             feedback.offer(state.text, getString(when {
                 inserting || (insertionAttempted && state.phase == Phase.RESULT) -> R.string.floating_unconfirmed

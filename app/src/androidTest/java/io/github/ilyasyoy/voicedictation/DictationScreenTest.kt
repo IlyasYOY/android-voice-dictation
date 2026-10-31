@@ -107,9 +107,19 @@ class DictationScreenTest {
         assertEquals("synthetic-test-key", model.state.value.key); assertNoAudio(); assertEquals(0, server.requestCount)
     }
     @Test fun backCancelsUploadAndIgnoresLateResponse() {
-        key(); server.enqueue(MockResponse().setBody("{\"text\":\"late\"}").setBodyDelay(3, TimeUnit.SECONDS))
-        click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500); click("stop"); waitPhase(Phase.TRANSCRIBING)
-        device.pressBack(); waitPhase(Phase.IDLE); assertNoAudio(); SystemClock.sleep(3300)
-        assertEquals("", model.state.value.text)
+        val release=java.util.concurrent.CountDownLatch(1)
+        server.dispatcher=object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest):MockResponse {
+                release.await(30,TimeUnit.SECONDS)
+                return MockResponse().setBody("{\"text\":\"late\"}")
+            }
+        }
+        try {
+            key(); click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500)
+            click("stop"); waitPhase(Phase.TRANSCRIBING)
+            device.pressBack(); waitPhase(Phase.IDLE); assertNoAudio()
+            release.countDown(); SystemClock.sleep(500)
+            assertEquals("",model.state.value.text)
+        } finally { release.countDown() }
     }
 }

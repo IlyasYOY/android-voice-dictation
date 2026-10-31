@@ -18,15 +18,14 @@ import org.junit.*
 import org.junit.Assert.*
 import java.io.File
 
-/** Dedicated emulator fixture: reset only this app's microphone decision, then use real OS dialogs. */
+/** Run with microphone revoked before instrumentation; clear stale denial flags, then use real OS dialogs. */
 class DeniedPermissionTest {
     @get:Rule val compose = createEmptyComposeRule()
     @Test fun deniedPermissionCanBeRequestedAgainWithoutBackgroundRecording() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val device = UiDevice.getInstance(instrumentation)
-        for (command in listOf("pm revoke ${context.packageName} ${Manifest.permission.RECORD_AUDIO}",
-            "pm clear-permission-flags ${context.packageName} ${Manifest.permission.RECORD_AUDIO} user-set user-fixed")) {
+        for (command in listOf("pm clear-permission-flags ${context.packageName} ${Manifest.permission.RECORD_AUDIO} user-set user-fixed")) {
             instrumentation.uiAutomation.executeShellCommand(command).use {
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
             }

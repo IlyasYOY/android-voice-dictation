@@ -19,6 +19,7 @@ internal class FloatingCapture(
     private val onInvalid: () -> Unit,
     private val onMissingKey: () -> Unit,
     private val onState: (DictationState) -> Unit,
+    private val mode: Mode = Mode.RECORD,
 ) : AutoCloseable {
     private var closed = false
     private val observer = scope.launch(start = CoroutineStart.LAZY) {
@@ -30,7 +31,7 @@ internal class FloatingCapture(
                 // This fresh check is after the asynchronous key read, immediately before audio start.
                 if (!eligible(environment())) { onInvalid(); return@collect }
                 if (!state.validKey) onMissingKey()
-                else { session.setMode(Mode.LIVE); session.start(true) }
+                else { session.setMode(mode); session.start(true) }
             }
             if (!closed) onState(state)
         }

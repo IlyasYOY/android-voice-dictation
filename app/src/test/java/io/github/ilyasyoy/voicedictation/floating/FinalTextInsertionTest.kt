@@ -81,7 +81,7 @@ class FinalTextInsertionTest {
             val task=async { FinalTextInsertion.insert(editor(),"Words $it",target,{environment()},{attempts++}) { true } }
             runCurrent(); advanceTimeBy(250); runCurrent()
             assertTrue(feedback.complete(task.await(),"Words $it","Copy","Unconfirmed"))
-            assertFalse(feedback.available); assertFalse(feedback.error)
+            assertEquals("Words $it",feedback.text); assertNull(feedback.message); assertFalse(feedback.error)
         }
         assertEquals(2,writes); assertEquals(2,attempts)
     }

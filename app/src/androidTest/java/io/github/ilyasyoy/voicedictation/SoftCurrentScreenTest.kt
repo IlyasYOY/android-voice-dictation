@@ -45,7 +45,7 @@ class SoftCurrentScreenTest {
                 compose.onNodeWithTag("close_settings").assertExists()
                 compose.waitForIdle()
                 UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
-                compose.waitForIdle()
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("open_settings").fetchSemanticsNodes().size==1 }
                 compose.onNodeWithTag("open_settings").assertExists()
                 assertFalse(model.state.value.audioBusy)
                 assertEquals("A thought kept in this session.",model.state.value.text)

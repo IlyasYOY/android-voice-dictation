@@ -14,8 +14,11 @@ internal class FloatingFeedback {
     var error = false
     val available get() = text.isNotBlank() || message != null || needsSetup
     fun offer(text: String, message: String, needsSetup: Boolean = false, error: Boolean = false) {
-        if (text.isNotBlank() && text != this.text) this.text = listOf(this.text,text).filter(String::isNotBlank).joinToString("\n\n")
+        retain(text)
         this.message=message; this.needsSetup=needsSetup; this.error=error; expanded=false
+    }
+    fun retain(text: String) {
+        if(text.isNotBlank() && text!=this.text) this.text=listOf(this.text,text).filter(String::isNotBlank).joinToString("\n\n")
     }
     fun dismiss() { expanded=false }
     fun resetSignal() { message=null; needsSetup=false; error=false; expanded=false }
@@ -24,7 +27,8 @@ internal class FloatingFeedback {
     @Suppress("UNUSED_PARAMETER")
     fun complete(result: InsertionResult, text: String, fallback: String, unconfirmed: String): Boolean {
         return when (result) {
-            InsertionResult.INSERTED, InsertionResult.UNCONFIRMED -> { resetSignal(); true }
+            InsertionResult.INSERTED -> { resetSignal(); true }
+            InsertionResult.UNCONFIRMED -> { retain(text); resetSignal(); true }
             InsertionResult.COPY -> { offer(text,fallback); false }
             InsertionResult.CANCELLED -> false
         }

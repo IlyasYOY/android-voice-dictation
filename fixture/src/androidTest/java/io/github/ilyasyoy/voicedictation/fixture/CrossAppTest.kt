@@ -81,6 +81,8 @@ class CrossAppTest {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         find(label("Enable isolated fixture mode"), 40_000).click()
         assertTrue(device.wait(Until.gone(label("Enable isolated fixture mode")), 60_000))
+        launch("$APP.floating.DebugFloatingSetupActivity",server.port)
+        find(label("Use Live fixture mode")).click()
     }
     private fun specialAccessEnabled() = instrumentation.targetContext.getSystemService(android.view.accessibility.AccessibilityManager::class.java)
         .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
@@ -167,7 +169,7 @@ class CrossAppTest {
         find(appId("floating_start"),30_000)
         device.findObject(By.desc("Review text or recording problem"))?.let {
             it.click(); scrollFind(appId("floating_discard")).click()
-            find(By.desc("Start live dictation"),10_000)
+            find(By.desc("Start dictation"),10_000)
         }
     }
     @After fun cleanup() { device.pressBack(); SystemClock.sleep(300) }
@@ -269,7 +271,7 @@ class CrossAppTest {
     @Test fun gStreamErrorStopsAndRequiresExplicitRestart() {
         failNext.set(true); val count=connections.get()
         find(appId("floating_start")).click()
-        assertTrue(has(By.desc("Start live dictation"),40_000))
+        assertTrue(has(By.desc("Start dictation"),40_000))
         SystemClock.sleep(1800)
         assertEquals(count+1,connections.get()); assertFalse(device.hasObject(appId("floating_status")))
         assertFieldUnchanged(); screenshot("11-network-error-red-no-popup")
@@ -304,7 +306,7 @@ class CrossAppTest {
         find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT >= 33) {
             assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
-            assertTrue(has(By.desc("Start live dictation"),10_000))
+            assertTrue(has(By.desc("Start dictation"),10_000))
             assertFalse(device.hasObject(appId("floating_status")))
         } else {
             openRecovery()
@@ -337,6 +339,28 @@ class CrossAppTest {
         assertEquals(count,connections.get()); assertFieldUnchanged()
         assertFalse(device.hasObject(appId("floating_status")))
         setupUserOptIn()
+    }
+    @Test fun qDefaultRecordUploadsOnlyAfterStopAndNextTapStartsNormally() {
+        launch("$APP.floating.DebugFloatingSetupActivity",server.port)
+        find(label("Use default Record fixture mode")).click(); focusField("body")
+        val streams=connections.get(); val uploaded=fileRequests.get()
+        repeat(2) { turn ->
+            find(appId("floating_start"),30_000).click()
+            find(appId("floating_stop"),30_000)
+            SystemClock.sleep(1800)
+            assertEquals("Record must not start a streaming connection",streams,connections.get())
+            assertEquals("No upload before Stop",uploaded+turn,fileRequests.get())
+            screenshot("23-record-local-$turn")
+            find(appId("floating_stop")).click()
+            val end=SystemClock.elapsedRealtime()+30_000
+            while(fileRequests.get()<uploaded+turn+1 && SystemClock.elapsedRealtime()<end)SystemClock.sleep(100)
+            assertEquals(uploaded+turn+1,fileRequests.get()); assertTrue(fileBytes.get()>0)
+            find(appId("floating_start"),30_000)
+            assertFalse("No result/recovery popup",device.hasObject(appId("floating_status")))
+        }
+        screenshot("24-record-repeat-no-popup")
+        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+        checkpoint("Default floating Record used real MediaRecorder; two explicit Stop uploads, zero WebSocket connections, no intercepting recovery popup")
     }
     @Test fun rRecoverySurvivesKeyboardHideSetupAndLargeFontWithoutReplay() {
         val originalScale=device.executeShellCommand("settings get system font_scale").trim()
@@ -378,6 +402,8 @@ class CrossAppTest {
         private const val FIXTURE = "io.github.ilyasyoy.voicedictation.fixture"
         private lateinit var server: MockWebServer
         private val connections = AtomicInteger()
+        private val fileRequests = AtomicInteger()
+        private val fileBytes = AtomicInteger()
         private val bytes = AtomicInteger()
         private val failNext = AtomicBoolean()
         private var configured = false
@@ -388,7 +414,12 @@ class CrossAppTest {
             Configurator.getInstance().waitForIdleTimeout = 0
             server = MockWebServer().apply {
                 dispatcher = object : Dispatcher() {
-                    override fun dispatch(request: RecordedRequest): MockResponse = MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if(request.path?.startsWith("/v1/audio/transcriptions")==true) {
+                            fileRequests.incrementAndGet(); fileBytes.addAndGet(request.bodySize.toInt())
+                            return MockResponse().setBody("{\"text\":\"voice test\"}")
+                        }
+                        return MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
                         private var sent = false; private var commits = 0
                         override fun onOpen(webSocket: WebSocket, response: Response) { connections.incrementAndGet() }
                         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -412,6 +443,7 @@ class CrossAppTest {
                         }
                         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
                     })
+                    }
                 }
                 start()
             }
