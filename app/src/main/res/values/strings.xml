@@ -82,7 +82,7 @@
   <string name="current_idle">Make room for a thought</string>
   <string name="current_processing">Processing</string>
   <string name="current_add_key">Add your API key in Settings</string>
-  <string name="current_tap_hint">Tap Record to begin. Your words stay yours.</string>
+  <string name="current_tap_hint">Tap to begin. Tap again to stop.</string>
   <string name="current_bubble_hint">Tap to stop · Hold for controls</string>
   <string name="current_controls">Recording controls</string>
   <string name="current_bubble_help">Tap the wave to start or stop. Hold it for an explicit Cancel control. Cancel keeps received text and discards unsent audio; notification controls remain available.</string>

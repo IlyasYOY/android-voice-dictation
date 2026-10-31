@@ -82,7 +82,7 @@
   <string name="current_idle">Место для вашей мысли</string>
   <string name="current_processing">Обработка</string>
   <string name="current_add_key">Добавить API key в настройках</string>
-  <string name="current_tap_hint">Нажмите «Записать», чтобы начать.</string>
+  <string name="current_tap_hint">Нажмите, чтобы начать. Ещё раз — чтобы остановить.</string>
   <string name="current_bubble_hint">Нажмите, чтобы остановить · Удерживайте для действий</string>
   <string name="current_controls">Управление записью</string>
   <string name="current_bubble_help">Нажмите на волну для начала или остановки. Удерживайте для явной отмены. Отмена сохраняет полученный текст и удаляет неотправленный звук; действия доступны и в уведомлении.</string>

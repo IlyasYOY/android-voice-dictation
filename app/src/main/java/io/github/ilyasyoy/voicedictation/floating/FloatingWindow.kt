@@ -60,7 +60,7 @@ internal class FloatingWindow(
         popup?.dismiss()
         popup = PopupMenu(context, icon).apply {
             menu.add(context.getString(R.string.current_controls)).isEnabled = false
-            menu.add(context.getString(R.string.floating_cancel)).setOnMenuItemClickListener { cancel(); true }
+            menu.add(Menu.NONE, R.id.floating_cancel, Menu.NONE, context.getString(R.string.floating_cancel)).setOnMenuItemClickListener { cancel(); true }
             setOnDismissListener { popup = null }
             show()
         }
@@ -94,14 +94,14 @@ internal class FloatingWindow(
         }
     }
     init { initialize() }
-    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false) {
+    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false) {
         this.imeTop = imeTop; active = recording
         val panel = expanded && !active
         params.width = if (panel) minOf(dp(280),context.resources.displayMetrics.widthPixels-dp(16)) else dp(64)
         root.setPadding(if(panel)dp(16) else 0, if(panel)dp(8) else 0, if(panel)dp(16) else 0, if(panel)dp(12) else 0)
         root.background = GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) }
         root.elevation = dp(3).toFloat()
-        mark.visual = when { processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE }
+        mark.visual = when { processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE }
         icon.isLongClickable = active
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
         icon.contentDescription = if(active) context.getString(R.string.current_bubble_hint) else context.getString(R.string.floating_start)

@@ -128,7 +128,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, expanded, state?.text ?: retainedText, status, active, !(state?.text ?: retainedText).isBlank(), needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING) }
+        try { window?.render(imeTop, expanded, state?.text ?: retainedText, status, active, !(state?.text ?: retainedText).isBlank(), needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, state?.problem != null) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
