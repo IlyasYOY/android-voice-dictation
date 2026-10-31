@@ -4,7 +4,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
 import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
 import io.github.ilyasyoy.voicedictation.data.Transcriber
 import io.github.ilyasyoy.voicedictation.session.Mode
@@ -29,7 +28,7 @@ class SoftCurrentScreenTest {
                 .also { model=it; it.setKey("synthetic-design-key"); it.edit("A thought kept in this session.") }
         }
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 assertEquals(Mode.RECORD, model.state.value.mode)
                 capture("01-main-session")
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
@@ -44,7 +43,7 @@ class SoftCurrentScreenTest {
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
                 compose.onNodeWithTag("close_settings").assertExists()
                 compose.waitForIdle()
-                UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+                scenario.onActivity { activity -> activity.onBackPressedDispatcher.onBackPressed() }
                 compose.waitUntil(10_000) { compose.onAllNodesWithTag("open_settings").fetchSemanticsNodes().size==1 }
                 compose.onNodeWithTag("open_settings").assertExists()
                 assertFalse(model.state.value.audioBusy)

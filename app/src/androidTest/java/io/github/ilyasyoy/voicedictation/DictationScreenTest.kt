@@ -117,7 +117,7 @@ class DictationScreenTest {
         try {
             key(); click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500)
             click("stop"); waitPhase(Phase.TRANSCRIBING)
-            device.pressBack(); waitPhase(Phase.IDLE); assertNoAudio()
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; waitPhase(Phase.IDLE); assertNoAudio()
             release.countDown(); SystemClock.sleep(500)
             assertEquals("",model.state.value.text)
         } finally { release.countDown() }

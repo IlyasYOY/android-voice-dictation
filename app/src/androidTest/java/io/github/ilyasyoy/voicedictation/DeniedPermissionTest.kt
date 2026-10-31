@@ -40,7 +40,13 @@ class DeniedPermissionTest {
                 compose.onNodeWithTag("record").performScrollTo().performClick()
                 val deny = device.wait(Until.findObject(By.res("com.android.packageinstaller", "permission_deny_button")), 10_000)
                     ?: device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_deny_button")), 10_000)
-                assertNotNull("Microphone system permission dialog", deny); deny!!.click()
+                val denyAction=deny ?: device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)deny|don.t allow"))),10_000)
+                if(denyAction==null) {
+                    val out=File(context.getExternalFilesDir(null),"permission-diagnostic").apply {mkdirs()}
+                    device.dumpWindowHierarchy(File(out,"dialog-window.xml"))
+                    device.takeScreenshot(File(out,"dialog-screen.png"))
+                }
+                assertNotNull("Microphone system permission dialog",denyAction); denyAction!!.click()
                 compose.waitUntil(30_000) { model.state.value.phase == Phase.ERROR }
                 compose.onNodeWithTag("problem").assertExists()
                 val out = File(context.getExternalFilesDir(null), "evidence").apply { mkdirs() }
@@ -56,7 +62,8 @@ class DeniedPermissionTest {
                 compose.onNodeWithTag("record").performScrollTo().performClick()
                 val allow = device.wait(Until.findObject(By.res("com.android.packageinstaller", "permission_allow_button")), 10_000)
                     ?: device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 10_000)
-                assertNotNull(allow); allow!!.click()
+                val allowAction=allow ?: device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)allow|while using the app"))),10_000)
+                assertNotNull(allowAction); allowAction!!.click()
                 compose.waitUntil(30_000) { model.state.value.phase == Phase.RECORDING }
                 compose.onNodeWithTag("cancel").performScrollTo().performClick()
                 assertTrue(File(context.cacheDir, "dictation").listFiles().orEmpty().isEmpty())
