@@ -132,7 +132,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank(), feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || FloatingRecordingRecovery.processOwned.count>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -193,7 +193,10 @@ class FloatingDictationService : AccessibilityService() {
             onMissingKey = { offerRecovery("",getString(R.string.floating_need_key),true) },
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
-                if (state.phase == Phase.ERROR) offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
+                if (state.phase == Phase.ERROR) {
+                    if(state.canRetry) session.takeRetryRecording()?.let(FloatingRecordingRecovery.processOwned::retain)
+                    offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
+                }
                 if (state.phase == Phase.TRANSCRIBING) endForeground()
                 if (state.phase == Phase.RESULT) {
                     endForeground()

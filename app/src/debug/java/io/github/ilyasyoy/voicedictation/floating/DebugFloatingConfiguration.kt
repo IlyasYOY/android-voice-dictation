@@ -17,6 +17,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** Debug fixture opt-in only; arbitrary endpoints/real keys can never be redirected here. */
 internal object DebugFloatingConfiguration {
+    suspend fun transcribeRetained(context: Context,audio: java.io.File): String? {
+        if(notice(context)==null)return null
+        val port=context.getSharedPreferences("floating_fixture",Context.MODE_PRIVATE).getInt("port",0)
+        require(port in 1024..65535)
+        val key=AndroidApiKeyStore(context,".test.crossapp").load() ?: throw java.io.IOException("Missing fixture key")
+        return OpenAiTranscriber(endpoint="http://localhost:$port/v1/audio/transcriptions".toHttpUrl()).transcribe(audio,key)
+    }
     fun notice(context: Context): String? = if (context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE)
         .getBoolean("enabled", false)) "TEST TRANSCRIPTION · localhost · synthetic key" else null
     fun trace(context: Context, event: String) { if (notice(context) != null) android.util.Log.d("FloatingFixture", event) }

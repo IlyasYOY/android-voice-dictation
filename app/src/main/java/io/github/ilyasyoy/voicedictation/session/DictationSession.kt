@@ -208,6 +208,14 @@ class DictationSession(
         catch (_: Exception) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.RECORDING) }
     }
     fun retry() { if (!state.value.busy && state.value.canRetry && state.value.validKey) upload() }
+    /** Transfer failed-file ownership before closing an overlay session; no credential/editor travels. */
+    fun takeRetryRecording(): File? {
+        if(closed || state.value.busy || !state.value.canRetry) return null
+        val audio=pendingAudio ?: return null
+        pendingAudio=null
+        update { it.copy(canRetry=false) }
+        return audio
+    }
     private fun upload() {
         val audio = pendingAudio ?: return
         val key = state.value.key

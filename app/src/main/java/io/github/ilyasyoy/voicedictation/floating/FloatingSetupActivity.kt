@@ -21,8 +21,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.github.ilyasyoy.voicedictation.R
+import io.github.ilyasyoy.voicedictation.session.DictationSessions
+import kotlinx.coroutines.*
 
 class FloatingSetupActivity : ComponentActivity() {
+    private var closing=false
+    private val retryScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { render() }
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
     override fun onResume() { super.onResume(); render() }
@@ -38,7 +42,8 @@ class FloatingSetupActivity : ComponentActivity() {
         layout.addView(TextView(this).apply { text = getString(R.string.floating_service_name); textSize = 26f; setTextColor(ink); setPadding(0,0,0,dp(20)) })
         layout.addView(TextView(this).apply { text = getString(R.string.floating_setup_summary); textSize = 16f; setTextColor(ink); setPadding(0,dp(12),0,dp(12)) })
         layout.addView(TextView(this).apply { text = getString(if (enabled && connected) R.string.floating_enabled else R.string.floating_disabled) })
-        fun button(label: Int, id: Int = 0, onClick: () -> Unit) { layout.addView(Button(this).apply {
+        fun button(label: Int, id: Int = 0, enabled: Boolean = true, onClick: () -> Unit) { layout.addView(Button(this).apply {
+            isEnabled=enabled
             text = getString(label); if (id != 0) this.id = id; isAllCaps = false; setTextColor(ink); minHeight = dp(52)
             background = GradientDrawable().apply { setColor(if(dark)P.NightSurface else 0xFFE7DDF2.toInt()); cornerRadius=dp(24).toFloat() }
             layoutParams = LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) }
@@ -61,6 +66,23 @@ class FloatingSetupActivity : ComponentActivity() {
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) layout.addView(TextView(this).apply { text = getString(R.string.floating_need_notification) })
         layout.addView(TextView(this).apply { text=getString(R.string.current_bubble_help); textSize=14f; setTextColor(ink); setPadding(0,dp(16),0,dp(16)) })
         val recovery = FloatingFeedback.processOwned
+        val recordings=FloatingRecordingRecovery.processOwned
+        if(recordings.count>0) {
+            layout.addView(TextView(this).apply { text=getString(R.string.current_saved_recordings,recordings.count); textSize=17f; setTextColor(ink) })
+            button(R.string.current_retry_recording,R.id.floating_retry_audio,!recordings.retrying) {
+                retryScope.launch {
+                    try {
+                        val text=recordings.retry { file -> DebugFloatingConfiguration.transcribeRetained(this@FloatingSetupActivity,file)
+                            ?: DictationSessions.transcribeRetained(this@FloatingSetupActivity,file) }
+                        if(text!=null) { recovery.retain(text); recovery.resetSignal() }
+                    } catch(e: CancellationException) { throw e }
+                    catch(_: Exception) { recovery.offer("",getString(R.string.floating_stream_error),error=true) }
+                    finally { if(!closing && !isDestroyed)render() }
+                }
+                render()
+            }
+            button(R.string.current_discard_recordings,R.id.floating_discard_audio,!recordings.retrying) { recordings.discard(); render() }
+        }
         if (recovery.text.isNotBlank()) {
             layout.addView(TextView(this).apply { text=getString(R.string.current_recover); textSize=18f; setTextColor(ink); setPadding(0,dp(16),0,dp(8)) })
             layout.addView(TextView(this).apply { id=R.id.floating_preview; text=recovery.text; textSize=17f; setTextColor(ink); setTextIsSelectable(true) })
@@ -76,4 +98,5 @@ class FloatingSetupActivity : ComponentActivity() {
         for (i in 0 until layout.childCount) (layout.getChildAt(i) as? TextView)?.setTextColor(ink)
         setContentView(ScrollView(this).apply { setBackgroundColor(paper); addView(layout) })
     }
+    override fun onDestroy() { closing=true; retryScope.cancel(); super.onDestroy() }
 }

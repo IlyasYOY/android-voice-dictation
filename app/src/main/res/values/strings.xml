@@ -85,4 +85,7 @@
     <string name="current_discard">Discard text</string>
     <string name="current_recover">Available text</string>
     <string name="current_dismiss">Dismiss</string>
+  <string name="current_saved_recordings">Saved audio awaiting upload: %1$d</string>
+  <string name="current_retry_recording">Retry saved recording</string>
+  <string name="current_discard_recordings">Discard saved audio</string>
 </resources>

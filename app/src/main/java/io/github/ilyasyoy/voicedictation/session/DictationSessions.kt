@@ -38,4 +38,8 @@ internal object DictationSessions {
         val transport = withContext(Dispatchers.IO) { OpenAiRealtimeTranscriber(realtimeClient, endpoint) }
         transport.connect(key, emit)
     }
+    suspend fun transcribeRetained(context: Context, audio: File): String {
+        val key=keys(context).load() ?: throw java.io.IOException("Missing key")
+        return fileMode.transcribe(audio,key)
+    }
 }

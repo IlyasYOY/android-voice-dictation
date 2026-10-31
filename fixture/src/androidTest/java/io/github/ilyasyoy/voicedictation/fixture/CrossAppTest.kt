@@ -344,6 +344,7 @@ class CrossAppTest {
         launch("$APP.floating.DebugFloatingSetupActivity",server.port)
         find(label("Use default Record fixture mode")).click(); focusField("body")
         val streams=connections.get(); val uploaded=fileRequests.get()
+        failFileNext.set(true)
         repeat(2) { turn ->
             find(appId("floating_start"),30_000).click()
             find(appId("floating_stop"),30_000)
@@ -359,8 +360,14 @@ class CrossAppTest {
             assertFalse("No result/recovery popup",device.hasObject(appId("floating_status")))
         }
         screenshot("24-record-repeat-no-popup")
+        openRecovery()
+        scrollFind(appId("floating_retry_audio")).click()
+        assertTrue(device.wait(Until.gone(appId("floating_retry_audio")),30_000))
+        assertEquals(uploaded+3,fileRequests.get())
+        assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
+        screenshot("25-explicit-saved-audio-retry-no-editor-replay")
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
-        checkpoint("Default floating Record used real MediaRecorder; two explicit Stop uploads, zero WebSocket connections, no intercepting recovery popup")
+        checkpoint("Default floating Record used real MediaRecorder; two explicit Stop uploads plus one explicit saved-audio retry, zero WebSocket connections, no intercepting recovery popup")
     }
     @Test fun rRecoverySurvivesKeyboardHideSetupAndLargeFontWithoutReplay() {
         val originalScale=device.executeShellCommand("settings get system font_scale").trim()
@@ -403,6 +410,7 @@ class CrossAppTest {
         private lateinit var server: MockWebServer
         private val connections = AtomicInteger()
         private val fileRequests = AtomicInteger()
+        private val failFileNext=AtomicBoolean()
         private val fileBytes = AtomicInteger()
         private val bytes = AtomicInteger()
         private val failNext = AtomicBoolean()
@@ -417,6 +425,7 @@ class CrossAppTest {
                     override fun dispatch(request: RecordedRequest): MockResponse {
                         if(request.path?.startsWith("/v1/audio/transcriptions")==true) {
                             fileRequests.incrementAndGet(); fileBytes.addAndGet(request.bodySize.toInt())
+                            if(failFileNext.compareAndSet(true,false))return MockResponse().setResponseCode(503)
                             return MockResponse().setBody("{\"text\":\"voice test\"}")
                         }
                         return MockResponse().withWebSocketUpgrade(object : WebSocketListener() {

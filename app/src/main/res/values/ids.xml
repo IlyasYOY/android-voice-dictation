@@ -1,4 +1,6 @@
 <resources>
+    <item type="id" name="floating_retry_audio" />
+    <item type="id" name="floating_discard_audio" />
     <item name="floating_start" type="id" /><item name="floating_status" type="id" />
     <item name="floating_preview" type="id" /><item name="floating_stop" type="id" />
     <item name="floating_cancel" type="id" /><item name="floating_copy" type="id" />
