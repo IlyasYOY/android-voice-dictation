@@ -76,8 +76,8 @@
   <string name="floating_setup_summary">Optional Accessibility access shows a movable live-dictation button beside your keyboard. Read and accept the access explanation before enabling. Recording starts only when you tap the circle.</string>
   <string name="current_settings">Settings</string>
   <string name="current_settings_intro">A little space for the details.</string>
-  <string name="current_mode">Transcription</string>
-  <string name="current_mode_detail">Recording uploads after Stop. Live streams while recording. Both require a valid API key.</string>
+  <string name="current_mode">In-app transcription</string>
+  <string name="current_mode_detail">Recording uploads after Stop. Live streams while recording. Both require a valid API key. The floating button uses Live.</string>
   <string name="current_change">Change</string>
   <string name="current_idle">Make room for a thought</string>
   <string name="current_processing">Processing</string>

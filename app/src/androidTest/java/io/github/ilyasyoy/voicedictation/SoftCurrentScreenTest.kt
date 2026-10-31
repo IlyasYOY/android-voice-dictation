@@ -14,6 +14,13 @@ import org.junit.Assert.*
 
 class SoftCurrentScreenTest {
     @get:Rule val compose = createEmptyComposeRule()
+    private fun capture(name: String) {
+        compose.waitForIdle()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        for (command in listOf("mkdir -p /sdcard/Download/soft-current-evidence", "screencap -p /sdcard/Download/soft-current-evidence/$name.png")) {
+            automation.executeShellCommand(command).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+        }
+    }
     @Test fun settingsNavigationKeepsDraftAndRequiresExplicitModeChoice() {
         lateinit var model: DictationViewModel
         MainActivity.testNotice = "DESIGN TEST · synthetic draft · no API call"
@@ -24,9 +31,14 @@ class SoftCurrentScreenTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
                 assertEquals(Mode.RECORD, model.state.value.mode)
+                capture("01-main-session")
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
+                capture("02-settings")
+                compose.onNodeWithTag("api_key").performScrollTo()
+                capture("03-settings-key-masked")
                 compose.onNodeWithTag("mode_live").performScrollTo().performClick()
                 compose.onNodeWithTag("close_settings").performScrollTo().performClick()
+                capture("04-main-live-selected")
                 assertEquals(Mode.LIVE, model.state.value.mode)
                 assertEquals("A thought kept in this session.",model.state.value.text)
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()

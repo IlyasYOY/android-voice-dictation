@@ -96,6 +96,7 @@ class CrossAppTest {
         launch("$APP.MainActivity")
         find(label("Set up floating dictation"), 60_000).click()
         find(By.clazz("android.widget.ScrollView"), 40_000)
+        screenshot("00-floating-setup")
         if (instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) != 0) {
             checkpoint("Requesting microphone through OS UI")
             scrollFind(appId("floating_mic")).click()
@@ -333,6 +334,7 @@ class CrossAppTest {
         launch("$APP.MainActivity")
         find(label("Set up floating dictation"), 60_000).click()
         find(By.clazz("android.widget.ScrollView"), 40_000)
+        screenshot("00-floating-setup")
         scrollFind(appId("floating_disable")).click()
         launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)
         assertTrue(device.wait(Until.gone(appId("floating_start")), 15_000))

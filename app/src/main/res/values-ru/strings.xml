@@ -76,8 +76,8 @@
   <string name="floating_setup_summary">Необязательный доступ через специальные возможности добавляет перемещаемую кнопку live-диктовки рядом с клавиатурой. Перед включением прочитайте и подтвердите объяснение доступа. Запись начинается только по нажатию кружка.</string>
   <string name="current_settings">Настройки</string>
   <string name="current_settings_intro">Немного места для деталей.</string>
-  <string name="current_mode">Распознавание</string>
-  <string name="current_mode_detail">В режиме записи звук отправляется после Stop. В режиме Live — во время записи. Оба режима требуют API key.</string>
+  <string name="current_mode">Распознавание в приложении</string>
+  <string name="current_mode_detail">В режиме записи звук отправляется после Stop. В режиме Live — во время записи. Оба режима требуют API key. Плавающая кнопка использует Live.</string>
   <string name="current_change">Изменить</string>
   <string name="current_idle">Место для вашей мысли</string>
   <string name="current_processing">Обработка</string>
