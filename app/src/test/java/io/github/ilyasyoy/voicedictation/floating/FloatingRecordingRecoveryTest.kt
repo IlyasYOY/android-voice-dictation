@@ -65,4 +65,34 @@ class FloatingRecordingRecoveryTest {
             assertFalse(file.exists());assertEquals(0,recovery.count)
         } finally {file.delete()}
     }
+    @Test fun replacementObserverSeesControlsReenabledAfterOldCancellationUnwinds()=runTest {
+        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file,RecordingRetryFailure.AUTH)
+        val cleanup=CompletableDeferred<Unit>()
+        try {
+            val retry=launch {recovery.retry { try {awaitCancellation()} finally {withContext(NonCancellable){cleanup.await()}} }}
+            runCurrent();retry.cancel();runCurrent()
+            assertTrue(recovery.state.value.retrying)
+            val observed=mutableListOf<RecordingRecoveryState>()
+            val replacement=backgroundScope.launch {recovery.state.collect {observed+=it}}
+            runCurrent();cleanup.complete(Unit);retry.join();runCurrent()
+            assertTrue(observed.any {it.retrying})
+            assertFalse(observed.last().retrying);assertEquals(1,observed.last().count)
+            assertEquals(RecordingRetryFailure.AUTH,observed.last().failure)
+            assertTrue(file.exists());replacement.cancel()
+        } finally {cleanup.complete(Unit);recovery.discard();file.delete()}
+    }
+    @Test fun missingKeyAndAuthAndNetworkFailuresHaveDistinctRetainedGuidance()=runTest {
+        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file)
+        try {
+            for((error,expected) in listOf(
+                MissingSavedKey() to RecordingRetryFailure.KEY,
+                ApiFailure(401) to RecordingRetryFailure.AUTH,
+                IOException("offline") to RecordingRetryFailure.NETWORK)) {
+                try {recovery.retry {throw error};fail("failure expected")}catch(_:IOException){}
+                assertEquals(expected,recovery.state.value.failure)
+                assertEquals(1,recovery.state.value.count);assertFalse(recovery.state.value.retrying);assertTrue(file.exists())
+            }
+        } finally {recovery.discard();file.delete()}
+    }
+
 }

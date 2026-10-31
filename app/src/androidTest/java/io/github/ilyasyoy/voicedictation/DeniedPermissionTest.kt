@@ -18,18 +18,14 @@ import org.junit.*
 import org.junit.Assert.*
 import java.io.File
 
-/** Run with microphone revoked before instrumentation; clear stale denial flags, then use real OS dialogs. */
+/** Run on a fresh install or with microphone revoked; exercise the real OS dialogs. */
 class DeniedPermissionTest {
     @get:Rule val compose = createEmptyComposeRule()
     @Test fun deniedPermissionCanBeRequestedAgainWithoutBackgroundRecording() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val device = UiDevice.getInstance(instrumentation)
-        for (command in listOf("pm clear-permission-flags ${context.packageName} ${Manifest.permission.RECORD_AUDIO} user-set user-fixed")) {
-            instrumentation.uiAutomation.executeShellCommand(command).use {
-                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
-            }
-        }
+        dismissStaleSystemUiAnr(instrumentation)
         assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.RECORD_AUDIO))
         lateinit var model: DictationViewModel
         MainActivity.testNotice = "PERMISSION TEST · no OpenAI call"

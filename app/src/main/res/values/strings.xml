@@ -88,4 +88,7 @@
   <string name="current_saved_recordings">Saved audio awaiting upload: %1$d</string>
   <string name="current_retry_recording">Retry saved recording</string>
   <string name="current_discard_recordings">Discard saved audio</string>
+  <string name="current_retry_key_error">Upload failed. Open the app Settings and save a valid API key, then retry. Your recording is still saved.</string>
+  <string name="current_retry_network_error">Upload failed. Check your connection, then retry. Your recording is still saved.</string>
+  <string name="current_retry_service_error">The service could not transcribe this recording. Check your account or try later. Your recording is still saved.</string>
 </resources>

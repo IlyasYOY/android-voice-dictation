@@ -39,7 +39,9 @@ internal object DictationSessions {
         transport.connect(key, emit)
     }
     suspend fun transcribeRetained(context: Context, audio: File): String {
-        val key=keys(context).load() ?: throw java.io.IOException("Missing key")
+        val key=keys(context).load() ?: throw MissingSavedKey()
         return fileMode.transcribe(audio,key)
     }
 }
+
+internal class MissingSavedKey : java.io.IOException("Saved key unavailable")

@@ -34,6 +34,7 @@ class MotionSmokeTest {
         assertTrue(predicate())
     }
     @Test fun flowingShapeShowsRealConnectingCaptureAndResultWithoutSpinnerOrReports() {
+        dismissStaleSystemUiAnr(instrumentation)
         val idleTimeout=Configurator.getInstance().waitForIdleTimeout
         Configurator.getInstance().waitForIdleTimeout=0
         val oldScale=shell("settings get global animator_duration_scale")

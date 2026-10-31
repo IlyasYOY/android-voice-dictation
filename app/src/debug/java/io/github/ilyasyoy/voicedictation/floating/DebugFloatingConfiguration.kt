@@ -21,7 +21,7 @@ internal object DebugFloatingConfiguration {
         if(notice(context)==null)return null
         val port=context.getSharedPreferences("floating_fixture",Context.MODE_PRIVATE).getInt("port",0)
         require(port in 1024..65535)
-        val key=AndroidApiKeyStore(context,".test.crossapp").load() ?: throw java.io.IOException("Missing fixture key")
+        val key=AndroidApiKeyStore(context,".test.crossapp").load() ?: throw io.github.ilyasyoy.voicedictation.session.MissingSavedKey()
         return OpenAiTranscriber(endpoint="http://localhost:$port/v1/audio/transcriptions".toHttpUrl()).transcribe(audio,key)
     }
     fun notice(context: Context): String? = if (context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE)

@@ -28,7 +28,11 @@ class FloatingSetupActivity : ComponentActivity() {
     private var closing=false
     private val retryScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { render() }
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        retryScope.launch { FloatingRecordingRecovery.processOwned.state.collect { if(!closing)render() } }
+        render()
+    }
     override fun onResume() { super.onResume(); render() }
     private fun render() {
         val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -69,6 +73,17 @@ class FloatingSetupActivity : ComponentActivity() {
         val recordings=FloatingRecordingRecovery.processOwned
         if(recordings.count>0) {
             layout.addView(TextView(this).apply { text=getString(R.string.current_saved_recordings,recordings.count); textSize=17f; setTextColor(ink) })
+            recordings.state.value.failure?.let { failure ->
+                layout.addView(TextView(this).apply {
+                    id=R.id.floating_audio_problem
+                    text=getString(when(failure) {
+                        RecordingRetryFailure.KEY,RecordingRetryFailure.AUTH -> R.string.current_retry_key_error
+                        RecordingRetryFailure.NETWORK -> R.string.current_retry_network_error
+                        RecordingRetryFailure.SERVICE -> R.string.current_retry_service_error
+                    })
+                    textSize=16f;setTextColor(ink);accessibilityLiveRegion=android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
+                })
+            }
             button(R.string.current_retry_recording,R.id.floating_retry_audio,!recordings.retrying) {
                 retryScope.launch {
                     try {
