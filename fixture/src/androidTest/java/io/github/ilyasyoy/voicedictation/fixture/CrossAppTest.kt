@@ -199,7 +199,8 @@ class CrossAppTest {
     private fun openRecovery() {
         assertFalse("No automatic error/result panel",device.hasObject(appId("floating_status")))
         find(appId("floating_start"),60_000).longClick()
-        find(appId("floating_disable"),30_000)
+        // Recovery intentionally opens scrolled to retained audio/text, below the permission controls.
+        find(By.clazz("android.widget.ScrollView").pkg(APP),30_000)
     }
     private fun waitForAudio(previous: Int): Boolean {
         val deadline = SystemClock.elapsedRealtime() + 90_000
