@@ -65,7 +65,7 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
     override fun cancel() {
         recorder?.let { runCatching { it.stop() }; it.release() }
         recorder = null
-        file?.let { target -> files.record(target)?.let { files.discard(it.id) } }
+        file?.let { target -> files.discardOwned(target) }
         file = null
     }
 }

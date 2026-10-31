@@ -31,14 +31,16 @@ class SavedRecordingsActivity:Activity() {
     private var visibleCount=20
     private val owner get()=RecordingRecovery.processOwned
     private var scroll:ScrollView?=null
+    private var observer:Job?=null
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private val dark get()=resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK==Configuration.UI_MODE_NIGHT_YES
     private val ink get()=if(dark)P.NightText else P.Plum
     override fun onCreate(state:Bundle?) {
         super.onCreate(state);WindowCompat.setDecorFitsSystemWindows(window,false);DictationSessions.prepare(this)
         visibleCount=state?.getInt("visible_count",20) ?: 20
-        scope.launch {owner.state.collect {if(!closing)render()}}
     }
+    override fun onStart() {super.onStart();observer=scope.launch {owner.state.collect {if(!closing)render()}}}
+    override fun onStop() {observer?.cancel();observer=null;super.onStop()}
     private fun render() {
         val offset=scroll?.scrollY ?: 0
         val state=owner.state.value
@@ -92,7 +94,7 @@ class SavedRecordingsActivity:Activity() {
             }
             val canRetry=record.kind==SavedRecordingKind.RECORD && record.status in setOf(SavedRecordingStatus.PENDING,SavedRecordingStatus.FAILED,SavedRecordingStatus.INTERRUPTED) &&
                 (repository?.audio(record.id)?.length() ?: 0)>0
-            if(canRetry)button(row,getString(if(received!=null)R.string.saved_save_received else R.string.current_retry_recording),R.id.floating_retry_audio,!state.retrying) {
+            if(canRetry)button(row,getString(if(received!=null)R.string.saved_save_received else R.string.current_retry_recording),R.id.floating_retry_audio,!state.retrying && record.id !in state.ownedIds) {
                 scope.launch {
                     try {
                         val text=owner.retry(record.id) {audio -> DebugFloatingConfiguration.transcribeRetained(this@SavedRecordingsActivity,audio)
@@ -102,7 +104,7 @@ class SavedRecordingsActivity:Activity() {
                     catch(_:Exception) { /* The ledger keeps the recording and exposes its typed failure. */ }
                 }
             }
-            button(row,getString(R.string.saved_delete),R.id.saved_delete,!state.retrying) {
+            button(row,getString(R.string.saved_delete),R.id.saved_delete,!state.retrying && record.id !in state.ownedIds) {
                 AlertDialog.Builder(this).setMessage(R.string.saved_delete_confirm)
                     .setPositiveButton(R.string.saved_delete) {_,_->owner.discard(record.id)}
                     .setNegativeButton(android.R.string.cancel,null).show()

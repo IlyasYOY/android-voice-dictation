@@ -210,6 +210,7 @@ class DictationSession(
         // Each port must get its cleanup even if another adapter/driver fails.
         runCatching { pcm?.stop() }
         runCatching { live?.cancel() }; live = null
+        runCatching {recordings.endSession()}
     }
     private fun liveFailure(e: Exception, recording: Boolean = false) {
         releaseLive()

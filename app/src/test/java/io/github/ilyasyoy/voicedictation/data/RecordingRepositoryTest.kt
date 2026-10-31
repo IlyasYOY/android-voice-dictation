@@ -111,7 +111,7 @@ class RecordingRepositoryTest {
                 super.delete(file)
             }
         })
-        val audio=capture(deleting);val id=checkNotNull(deleting.record(audio)).id
+        val audio=capture(deleting);deleting.retain(audio);val id=checkNotNull(deleting.record(audio)).id
         assertThrows(IOException::class.java) {deleting.discard(id)}
         assertTrue(File(audio.parentFile,"record.properties").exists())
         assertFalse(audio.exists());assertTrue(repository().records().isEmpty())
@@ -123,9 +123,22 @@ class RecordingRepositoryTest {
                 if(file.name=="record.properties")throw IOException("crash after tombstone unlink")
             }
         })
-        val audio=capture(deleting);val id=checkNotNull(deleting.record(audio)).id
+        val audio=capture(deleting);deleting.retain(audio);val id=checkNotNull(deleting.record(audio)).id
         assertThrows(IOException::class.java) {deleting.discard(id)}
         assertFalse(audio.exists());assertTrue(repository().records().isEmpty())
+    }
+
+    @Test fun historyCannotDeleteAnActiveCaptureButItsStoppedOwnerCanCancelIt() {
+        val store=repository();val audio=store.allocate().apply {writeText("active audio")}
+        val id=checkNotNull(store.record(audio)).id
+        assertFalse(store.discard(id));assertTrue(audio.exists());assertTrue(id in store.ownedIds())
+        assertTrue(store.discardOwned(audio));assertFalse(audio.exists());assertTrue(store.records().isEmpty())
+    }
+    @Test fun liveCheckpointCannotBeDeletedUntilItsSessionReleasesOwnership() {
+        val store=repository()
+        val id=checkNotNull(store.liveText(null,"received words",true,3,active=true))
+        assertFalse(store.discard(id));assertTrue(id in store.ownedIds())
+        store.releaseText(id);assertTrue(store.discard(id));assertTrue(repository().records().isEmpty())
     }
 
 }

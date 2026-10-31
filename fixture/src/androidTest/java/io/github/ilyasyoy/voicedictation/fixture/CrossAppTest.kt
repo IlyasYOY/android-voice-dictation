@@ -28,6 +28,7 @@ import org.junit.runners.MethodSorters
 /** Instrumentation belongs to the fixture UID, not the product UID. No product instrumentation exemptions. */
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class CrossAppTest {
+    @get:Rule val testName=org.junit.rules.TestName()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val device get() = UiDevice.getInstance(instrumentation)
     private fun checkpoint(value: String) { instrumentation.sendStatus(2, android.os.Bundle().apply { putString("stream", "\nCHECKPOINT: $value\n") }) }
@@ -160,9 +161,12 @@ class CrossAppTest {
     @Before fun prepare() {
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
+        val passiveRecovery=testName.methodName in setOf("vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload",
+            "wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart")
         if (!configured) {
-            configureFake(); setupUserOptIn(); configured = true
+            configureFake(); if(!passiveRecovery)setupUserOptIn(); configured = true
         }
+        if(passiveRecovery) {checkpoint("Main saved-recording recovery requires no microphone or Accessibility grant");return}
         checkpoint("Opening harmless fixture editor")
         launch("$FIXTURE.FixtureActivity", server.port)
         // Show on-screen keyboards in this isolated emulator even when a virtual hardware keyboard is attached.

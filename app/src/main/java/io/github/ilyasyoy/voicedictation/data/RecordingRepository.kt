@@ -112,6 +112,8 @@ internal class RecordingRepository(
     @Synchronized fun record(id: String): SavedRecording? = rows[id]
     @Synchronized fun receivedText(id:String):String?=received[id]
     @Synchronized fun receivedTexts():Map<String,String> = received.toMap()
+    @Synchronized fun ownedIds():Set<String> = reserved.toSet()
+    @Synchronized fun releaseText(id:String?) {if(id!=null && reserved.remove(id))changed()}
     @Synchronized fun savedText(slot: RecordingTextSlot): String = savedDraft(slot).text
     @Synchronized fun savedDraft(slot: RecordingTextSlot): SavedRecordingDraft {
         val file = File(root, "${slot.name.lowercase()}-text.properties")
@@ -137,12 +139,13 @@ internal class RecordingRepository(
     @Synchronized fun duration(file:File,seconds:Int) {
         val record=checkNotNull(record(file));save(record.copy(durationSeconds=seconds.coerceAtLeast(0),updatedAt=clock()))
     }
-    @Synchronized fun liveText(id:String?,text:String,partial:Boolean,seconds:Int):String? {
+    @Synchronized fun liveText(id:String?,text:String,partial:Boolean,seconds:Int,active:Boolean=false):String? {
         if(text.isBlank())return id
         val previous=id?.let(rows::get)
         val now=clock()
         val record=previous ?: SavedRecording(UUID.randomUUID().toString(),now,now,SavedRecordingStatus.INTERRUPTED,kind=SavedRecordingKind.LIVE)
         if(previous==null) {check(directory(record.id).mkdir());AtomicRecordingCommit.syncDirectory(root)}
+        if(active)reserved+=record.id else reserved-=record.id
         save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
             status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
         return record.id
@@ -162,8 +165,8 @@ internal class RecordingRepository(
         check(directory(id).mkdir()) { "Recording directory unavailable" }
         AtomicRecordingCommit.syncDirectory(root)
         val now = clock()
-        save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
         reserved += id
+        save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
         return audio(id)
     }
 
@@ -245,10 +248,17 @@ internal class RecordingRepository(
 
     @Synchronized fun discard(id: String): Boolean {
         val record = rows[id] ?: return false
-        if (uploading.any { it.id == id }) return false
+        if (id in reserved || uploading.any { it.id == id }) return false
         save(record.copy(status = SavedRecordingStatus.DELETING, updatedAt = clock()))
         erase(id)
         return true
+    }
+    /** Only the stopped capture/session owner may release its reservation for explicit Cancel. */
+    @Synchronized fun discardOwned(file:File):Boolean {
+        val record=record(file) ?: return false
+        if(uploading.any {it.id==record.id})return false
+        reserved-=record.id
+        return discard(record.id)
     }
     private fun erase(id: String) {
         RecordingTextSlot.entries.forEach {slot ->

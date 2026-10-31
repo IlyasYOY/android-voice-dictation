@@ -9,6 +9,7 @@ import java.io.IOException
 /** Session file-ownership boundary. Implementations never receive credentials or editor state. */
 interface RecordingRetention {
     fun beginSession() = Unit
+    fun endSession() = Unit
     fun stopped(audio:File,seconds:Int) = Unit
     fun receivedText(audio:File):String? = null
     fun beforeUpload(audio: File)
@@ -38,8 +39,10 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     private val attempts = mutableMapOf<File, RecordingUpload>()
     private var sourceId:String?=null
     private var liveId:String?=null
+    private var liveActive=false
     private fun <T> stored(action: () -> T): T = try { action() } catch (e: Exception) { throw RecordingStorageFailure(e) }
-    override fun beginSession() {liveId=null}
+    override fun beginSession() {liveId=null;liveActive=true}
+    override fun endSession() {liveActive=false;repository.releaseText(liveId)}
     override fun stopped(audio:File,seconds:Int) = stored {repository.duration(audio,seconds)}
     override fun receivedText(audio:File):String? = stored {repository.record(audio)?.let {repository.receivedText(it.id)}}
     override fun restoreDraft():String? = if(mainDraft)stored {
@@ -51,7 +54,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
         if(mainDraft)stored {repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN,text,sourceId)}
     }
     override fun liveText(text:String,partial:Boolean,seconds:Int) = stored {
-        liveId=repository.liveText(liveId,text,partial,seconds);sourceId=liveId
+        liveId=repository.liveText(liveId,text,partial,seconds,liveActive);sourceId=liveId
     }
     override fun beforeUpload(audio: File) = stored {
         check(audio !in attempts)
@@ -83,7 +86,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     }
     override fun discard(audio: File) = stored {
         release(audio)
-        repository.record(audio)?.let { check(repository.discard(it.id)) }
+        repository.record(audio)?.let { check(repository.discardOwned(audio)) }
         Unit
     }
 }
