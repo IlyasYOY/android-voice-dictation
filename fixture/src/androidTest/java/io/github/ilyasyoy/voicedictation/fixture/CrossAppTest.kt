@@ -162,7 +162,8 @@ class CrossAppTest {
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
         val passiveRecovery=testName.methodName in setOf("vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload",
-            "wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart")
+            "wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart",
+            "xDurableMainSuccessSurvivesProcessDeathAndExplicitDelete")
         if (!configured) {
             configureFake(); if(!passiveRecovery)setupUserOptIn(); configured = true
         }
@@ -464,6 +465,28 @@ class CrossAppTest {
         assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
         assertEquals(1,fileRequests.get())
         checkpoint("Upgrade + real reboot + manual retry passed: every audio byte matched; successful audio/text survived process death; explicit delete survived restart; exactly one explicit post-reboot HTTP and zero WS")
+    }
+    /** Separate fresh-guest proof, after OfflineRecordRuntimeTest; does not claim legacy/reboot continuity. */
+    @Test fun xDurableMainSuccessSurvivesProcessDeathAndExplicitDelete() {
+        val expected="Recorded offline. Uploaded by explicit retry."
+        openSavedFromMain()
+        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        device.executeShellCommand("am force-stop $APP")
+        openSavedFromMain()
+        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        assertFalse(device.hasObject(appId("floating_retry_audio")))
+        assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        screenshot("44-main-success-audio-text-after-process-death")
+        scrollFind(appId("saved_delete")).click();find(By.res("android","button1")).click()
+        find(By.text("No saved recordings yet."),30_000)
+        screenshot("45-main-explicit-delete-complete")
+        device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
+        SystemClock.sleep(1800)
+        assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
+        assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        checkpoint("Fresh guest: main offline/manual-retry success audio and text survived process death; explicit delete survived restart; zero recovery HTTP/WS; separate from interrupted legacy reboot UI run")
     }
     @Test fun zDisableRevokesAccessAndCleansTestConfiguration() {
         launch("$APP.MainActivity")

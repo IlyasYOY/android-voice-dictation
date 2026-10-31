@@ -1,4 +1,4 @@
-# VD004 durable recording foundation (in progress)
+# VD004 durable recording foundation
 
 PR4 merged at `e68bcfe0cd7b9ed9bf50e6937b61be738ea64635`. VD004 is a separate branch/PR. The existing Soft Current interface, explicit Record/Live actions, microphone permissions and one-attempt editor insertion remain the product contract. Swipe history is the next milestone.
 
@@ -22,4 +22,10 @@ VD004 adds a small real Saved recordings screen with explicit Retry/Copy/Delete,
 
 ## Validation
 
-Desktop file-store tests cover committed Stop audio, interrupted capture/upload restoration, failed response commits, transcript-before-audio cleanup, approved audio retention, stale/concurrent attempt rejection, idempotent interrupted migration, unknown metadata preservation and a credential-free closed schema. Main/floating capture, session results, manual recovery and startup restoration are integrated. The first full check passed 104 JVM tests plus strict lint, APK/test compilation and minified release. Additional durable-retry tests and the upgrade/reboot fixture are being validated; runtime checks, exact final CI/review and APK delivery remain pending. Deliver actual screenshots and a concise manual acceptance checklist; no video.
+115 JVM tests cover committed Stop audio, interrupted capture/upload restoration, failed response commits, approved successful-audio retention, stale/concurrent attempt rejection, idempotent interrupted migration, unknown metadata, credential-free schema, active capture deletion protection, deletion-tombstone interruptions and restored draft-source deletion linkage. The failed-disk-commit regression verifies one explicit retry saves the already-received response without another network call. Strict app/fixture lint, debug/test APKs and minified release are required by `scripts/check.sh` and CI.
+
+Actual API28 filesystem instrumentation passed: atomic rename/directory sync, reopened audio/transcript/draft and explicit deletion. An actual accepted 0.5.0 capture produced 82,615 bytes, SHA-256 `7a9b682601fe704e768b09027d30993a5e2c4aacf8e11e6eb98465dca7469f85`. Installing 0.6.0 with `adb install -r` and no data clear passed legacy-import UI validation: Audio saved, manual Retry, zero startup HTTP/WebSocket requests. After a real guest reboot those exact bytes/hash remained and the ledger restored INTERRUPTED. The subsequent UI-retry phase aborted before retry because Android system_server crashed in SurfaceControl finalization; complete legacy reboot-to-UI-retry is not claimed passed.
+
+A fresh API28 guest is used separately for main-screen capture/retry/process-death/deletion checks. Do not treat its data as continuity of the legacy upgrade recording. The fixture methods `u/v/w` are host-orchestrated upgrade/reboot phases; `x` follows the separate `OfflineRecordRuntimeTest` success. They intentionally skip optional Accessibility/microphone setup when only reading/retrying/deleting saved audio.
+
+Exact final results, screenshot provenance and manual acceptance steps accompany the versioned APK. No generated media/logs are committed. Samsung acoustic first-word capture and API33+ insertion remain unverified by this software-emulated filesystem test. Deliver actual screenshots and a concise manual checklist; no video.
