@@ -18,6 +18,7 @@ import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 import io.github.ilyasyoy.voicedictation.session.Phase
 import io.github.ilyasyoy.voicedictation.session.RecordingRecovery
 import io.github.ilyasyoy.voicedictation.session.StoredRecordingRetention
+import io.github.ilyasyoy.voicedictation.session.DictationSessions
 import io.github.ilyasyoy.voicedictation.data.AndroidRecordingStorage
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -45,6 +46,7 @@ class DictationScreenTest {
         shell("pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}")
         MainActivity.testNotice = "TEST SERVER · synthetic text · no OpenAI call"
         MainActivity.testFactory = {
+            DictationSessions.prepare(it)
             DictationViewModel(AndroidAudioRecorder(it), OpenAiTranscriber(OkHttpClient.Builder()
                 .retryOnConnectionFailure(false).build(), endpoint),recordings=StoredRecordingRetention(AndroidRecordingStorage.repository(it))).also { m -> model = m }
         }
@@ -100,7 +102,14 @@ class DictationScreenTest {
         key(); server.enqueue(MockResponse().setResponseCode(500).setBody("private error"))
         server.enqueue(MockResponse().setBody("{\"text\":\"Recovered via explicit retry.\"}"))
         click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1600); click("stop")
-        waitPhase(Phase.ERROR); screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
+        waitPhase(Phase.ERROR)
+        compose.onNodeWithTag("problem").assertTextEquals(context.getString(R.string.error))
+        compose.onNodeWithTag("status").assertDoesNotExist()
+        compose.onNodeWithTag("cancel").assertDoesNotExist()
+        compose.onNodeWithTag("open_settings").assertIsEnabled()
+        compose.onNodeWithText(context.getString(R.string.current_settings)).assertDoesNotExist()
+        compose.onNodeWithTag("saved_recordings").performScrollTo().assertIsDisplayed()
+        screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
         click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
     }
     @Test fun cancelAndBackgroundStopRealMicrophone() {

@@ -26,7 +26,7 @@ class SecondRoundAcceptanceTest {
         var state by mutableStateOf(DictationState(key="synthetic-key"))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { it.setContent { VoiceDictationTheme {
-                DictationScreen(state,{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {state=state.copy(mode=it)}, {})
+                DictationScreen(state,{}, {}, {}, {}, {}, {}, {}, {}, {}, {state=state.copy(mode=it)}, {})
             } } }
             val gear=compose.onNodeWithTag("open_settings").getUnclippedBoundsInRoot()
             val cloud=compose.onNodeWithTag("record").getUnclippedBoundsInRoot()

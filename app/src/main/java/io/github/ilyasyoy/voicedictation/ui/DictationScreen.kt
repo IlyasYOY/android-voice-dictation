@@ -34,7 +34,7 @@ import io.github.ilyasyoy.voicedictation.R
 fun DictationScreen(
     state: DictationState, onKey: (String) -> Unit, onRecord: () -> Unit, onStop: () -> Unit,
     onCancel: () -> Unit, onRetry: () -> Unit, onEdit: (String) -> Unit, onCopy: () -> Unit,
-    onClear: () -> Unit, onForget: () -> Unit, onSettings: () -> Unit, onMode: (Mode) -> Unit,
+    onClear: () -> Unit, onForget: () -> Unit, onMode: (Mode) -> Unit,
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
     savedRecordings: Int = 0, onSavedRecordings: () -> Unit = onFloatingSetup,
 ) {
@@ -136,7 +136,11 @@ fun DictationScreen(
                 ModeSelector(state.mode, !state.busy && !state.canRetry, onMode)
                 Column(Modifier.fillMaxWidth().heightIn(min = 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.phase !in setOf(Phase.IDLE, Phase.RESULT)) Text(stringResource(when (state.phase) {
+                if (state.problem != null) {
+                    Text(stringResource(R.string.error), Modifier.testTag("problem")
+                        .semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
+                }
+                if (state.phase !in setOf(Phase.IDLE, Phase.RESULT, Phase.ERROR)) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.connecting
                     Phase.FINALIZING -> R.string.finalizing
                     Phase.RECORDING -> if (state.mode == Mode.LIVE) R.string.live_recording else R.string.recording
@@ -144,24 +148,15 @@ fun DictationScreen(
                     else -> R.string.error
                 }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (recording) Text(state.elapsed, Modifier.testTag("timer"), style = MaterialTheme.typography.titleLarge)
-                if (state.mode == Mode.RECORD && (state.audioBusy || state.canRetry)) TextButton(onCancel, Modifier.testTag("cancel")) {
+                if (state.mode == Mode.RECORD && state.audioBusy) TextButton(onCancel, Modifier.testTag("cancel")) {
                     Text(stringResource(if (state.mode == Mode.LIVE) R.string.cancel_live else R.string.cancel))
                 }
-                if (!state.validKey && !state.audioBusy) TextButton({ settingsOpen = true }, Modifier.testTag("add_key")) { Text(stringResource(R.string.current_add_key)) }
+                if (!state.validKey && !state.audioBusy && state.problem == null) TextButton({ settingsOpen = true }, Modifier.testTag("add_key")) { Text(stringResource(R.string.current_add_key)) }
                 if (state.mode == Mode.LIVE && state.audioBusy) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.live_connect_status; Phase.RECORDING -> R.string.live_stream_status; else -> R.string.live_finish_status
                 }), Modifier.testTag("live_status"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (state.safetyStopped) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
-                state.problem?.let { problem ->
-                    Text(stringResource(when (problem) {
-                        Problem.KEY -> R.string.key_error; Problem.STORAGE -> R.string.storage_error; Problem.LOCAL_STORAGE -> R.string.recording_storage_error; Problem.PERMISSION -> R.string.permission_error
-                        Problem.RECORDING -> R.string.record_error; Problem.NETWORK -> if (state.mode == Mode.LIVE) R.string.live_network_error else R.string.network_error
-                        Problem.AUTH -> R.string.auth_error; Problem.QUOTA -> R.string.quota_error; Problem.SERVER -> R.string.server_error; Problem.RESPONSE -> R.string.response_error
-                    }), Modifier.testTag("problem"), color = MaterialTheme.colorScheme.error)
-                    if (problem == Problem.PERMISSION) TextButton(onSettings, Modifier.testTag("settings")) { Text(stringResource(R.string.settings)) }
-                    if (problem in setOf(Problem.KEY, Problem.STORAGE, Problem.AUTH)) TextButton({ settingsOpen = true }) { Text(stringResource(R.string.current_settings)) }
-                }
+                if (state.safetyStopped && state.problem == null) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 if (state.canRetry) Button(onRetry, Modifier.testTag("retry"), enabled = state.validKey && !state.keyBusy) { Text(stringResource(R.string.retry)) }
                 if (state.text.isNotBlank() || state.phase == Phase.RESULT) {
                     OutlinedTextField(state.text, onEdit, Modifier.fillMaxWidth().testTag("transcript"), label = { Text(stringResource(R.string.transcript)) },
