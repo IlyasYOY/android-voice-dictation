@@ -2,6 +2,12 @@ package io.github.ilyasyoy.voicedictation
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.graphics.drawable.GradientDrawable
+import android.widget.TextView
+import android.widget.Button
+import io.github.ilyasyoy.voicedictation.ui.design.SoftCurrentPalette as P
 import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
@@ -77,4 +83,41 @@ class ScreenshotPolicyTest {
             } finally { window.hide() }
         }
     }
+    @Test fun reusedFloatingWindowRefreshesTextAndButtonsWithSystemTheme() {
+        val base = instrumentation.targetContext
+        fun themed(mode: Int) = base.createConfigurationContext(Configuration(base.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or mode
+        })
+        var theme = themed(Configuration.UI_MODE_NIGHT_NO)
+        var root: View? = null
+        val manager = object : WindowManager by base.getSystemService(WindowManager::class.java) {
+            override fun addView(view: View, params: ViewGroup.LayoutParams) { root=view }
+            override fun updateViewLayout(view: View, params: ViewGroup.LayoutParams) { root=view }
+            override fun removeView(view: View) = Unit
+        }
+        val context = object : ContextWrapper(base) {
+            override fun getResources(): Resources = theme.resources
+            override fun getSystemService(name: String): Any? = if(name==Context.WINDOW_SERVICE)manager else super.getSystemService(name)
+        }
+        instrumentation.runOnMainSync {
+            val window = FloatingWindow(context, {}, {}, {}, {}, {})
+            try {
+                for (night in listOf(false,true,false)) {
+                    theme=themed(if(night)Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+                    window.render(800,true,"Synthetic result","Ready",false,true,true,null)
+                    val view=checkNotNull(root)
+                    val ink=if(night)P.NightText else P.Plum
+                    assertEquals(ink,view.findViewById<TextView>(R.id.floating_status).currentTextColor)
+                    assertEquals(ink,view.findViewById<TextView>(R.id.floating_preview).currentTextColor)
+                    for(id in listOf(R.id.floating_copy,R.id.floating_close,R.id.floating_open_setup,R.id.floating_cancel)) {
+                        val button=view.findViewById<Button>(id)
+                        assertEquals(ink,button.currentTextColor)
+                        assertEquals(if(night)P.Night else 0xFFE7DDF2.toInt(),button.backgroundTintList!!.defaultColor)
+                    }
+                    assertEquals(if(night)P.NightSurface else P.Paper,(view.background as GradientDrawable).color!!.defaultColor)
+                }
+            } finally { window.hide() }
+        }
+    }
+
 }

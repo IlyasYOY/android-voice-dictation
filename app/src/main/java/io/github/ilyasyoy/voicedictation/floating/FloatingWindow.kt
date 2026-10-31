@@ -104,6 +104,10 @@ internal class FloatingWindow(
     init { initialize() }
     fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false) {
         this.imeTop = imeTop; active = recording
+        // The service survives configuration changes; every reused view must follow the current palette.
+        for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton)) view.setTextColor(ink)
+        val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
+        for (button in listOf(copyButton, closeButton, setupButton, cancelButton)) button.backgroundTintList = buttonColor
         panel = expanded && !active
         lastNotice = notice
         if (!active) controlsOpen = false
