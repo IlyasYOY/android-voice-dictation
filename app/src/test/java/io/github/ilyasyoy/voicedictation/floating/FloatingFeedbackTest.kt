@@ -4,35 +4,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FloatingFeedbackTest {
-    @Test fun readyOrUnconfirmedTextNeverLooksLikeSuccessfulInsertionAndSurvivesDismiss() {
+    @Test fun unverifiedInsertionSettlesSilentlyWithoutRetainingOrReplayingPossiblyInsertedText() {
         val feedback=FloatingFeedback()
-        for (result in listOf(InsertionResult.COPY,InsertionResult.UNCONFIRMED)) {
-            assertFalse(feedback.complete(result,"Unsaved final words","Copy required","Check field first"))
-            assertTrue(feedback.available)
-            assertFalse(feedback.expanded) // No automatic report.
-            feedback.expanded=true
-            assertEquals("Unsaved final words",feedback.text)
-            feedback.dismiss()
-            assertTrue(feedback.available)
-            assertEquals("Unsaved final words",feedback.text)
-            assertEquals(if (result==InsertionResult.COPY) "Copy required" else "Check field first",feedback.message)
+        repeat(3) {
+            assertTrue(feedback.complete(InsertionResult.UNCONFIRMED,"Possibly inserted","Copy required","Unconfirmed"))
+            assertFalse(feedback.available); assertFalse(feedback.expanded); assertFalse(feedback.error)
+            assertEquals("",feedback.text); assertNull(feedback.message)
         }
     }
-    @Test fun onlyConfirmedInsertionReturnsToIdleWithoutAReport() {
+    @Test fun genuinelyUnsentTextSurvivesNewSessionsAndSilentSuccessUntilExplicitDiscard() {
         val feedback=FloatingFeedback()
-        feedback.offer("Uninserted", "Copy required",true); feedback.expanded=true
-        assertTrue(feedback.complete(InsertionResult.INSERTED,"Final words","Copy required","Unconfirmed"))
-        assertFalse(feedback.available); assertFalse(feedback.expanded)
-        assertEquals("",feedback.text); assertNull(feedback.message); assertFalse(feedback.needsSetup)
+        assertFalse(feedback.complete(InsertionResult.COPY,"Unsent words","Copy required","Unconfirmed"))
+        feedback.resetSignal() // Starting again must not erase optional recovery.
+        assertEquals("Unsent words",feedback.text); assertNull(feedback.message)
+        for(result in listOf(InsertionResult.INSERTED,InsertionResult.UNCONFIRMED)) {
+            assertTrue(feedback.complete(result,"New words","Copy required","Unconfirmed"))
+            assertEquals("Unsent words",feedback.text); assertFalse(feedback.error)
+        }
+        feedback.offer("Another unsent result","Network failed",error=true)
+        assertEquals("Unsent words\n\nAnother unsent result",feedback.text)
+        feedback.discard(); assertFalse(feedback.available)
     }
-    @Test fun errorAndCancellationRemainRecoverableUntilExplicitDiscard() {
+    @Test fun realFailureIsRedAndRetryClearsOnlyTheSignal() {
         val feedback=FloatingFeedback()
-        feedback.offer("Partial words","Network error")
-        feedback.dismiss()
+        feedback.offer("Partial words","Network error",error=true)
+        assertTrue(feedback.error); assertFalse(feedback.expanded)
+        feedback.resetSignal()
+        assertFalse(feedback.error); assertNull(feedback.message)
         assertEquals("Partial words",feedback.text)
-        assertFalse(feedback.complete(InsertionResult.CANCELLED,"","",""))
-        assertEquals("Partial words",feedback.text)
-        feedback.discard()
-        assertFalse(feedback.available)
+        feedback.dismiss(); assertEquals("Partial words",feedback.text)
     }
 }

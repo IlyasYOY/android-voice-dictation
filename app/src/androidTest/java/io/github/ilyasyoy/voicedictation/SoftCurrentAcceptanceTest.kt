@@ -66,9 +66,9 @@ class SoftCurrentAcceptanceTest {
                         }
                 }
                 assertModeLabelsFit()
-                compose.onNodeWithTag("mode_live").performClick().assertIsSelected()
+                compose.onNodeWithTag("mode_live").performScrollTo().performClick().assertIsSelected()
                 assertEquals(Mode.LIVE,state.mode)
-                compose.onNodeWithTag("mode_record").performClick().assertIsSelected()
+                compose.onNodeWithTag("mode_record").performScrollTo().performClick().assertIsSelected()
                 assertEquals(Mode.RECORD,state.mode)
                 capture("main-$width-font-$font")
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
@@ -80,7 +80,7 @@ class SoftCurrentAcceptanceTest {
                 compose.onNodeWithTag("mode_live").assertIsNotEnabled()
                 compose.onNodeWithTag("mode_record").assertIsNotEnabled()
                 assertModeLabelsFit()
-                compose.onNodeWithTag("stop").assertContentDescriptionEquals("Stop")
+                compose.onNodeWithTag("stop").performScrollTo().assertContentDescriptionEquals("Stop")
                 val stopBounds=compose.onNodeWithTag("stop").getUnclippedBoundsInRoot()
                 assertTrue("Full Stop target must fit even with large recording status text: $stopBounds",stopBounds.left>=0.dp && stopBounds.right<=width.dp && stopBounds.top>=0.dp && stopBounds.bottom<=height.dp)
                 capture("recording-$width-font-$font")
@@ -111,7 +111,7 @@ class SoftCurrentAcceptanceTest {
             fun render()=window.render(900,feedback.expanded,feedback.text,feedback.message?:context.getString(R.string.floating_start),false,feedback.text.isNotBlank(),false,null)
             window=FloatingWindow(context,{feedback.expanded=!feedback.expanded; render()},{},{copies++},{feedback.dismiss();render()},{})
             try {
-                assertFalse(feedback.complete(InsertionResult.UNCONFIRMED,"Synthetic uninserted text","Copy required","Check field first"))
+                assertFalse(feedback.complete(InsertionResult.COPY,"Synthetic uninserted text","Copy required","Check field first"))
                 render()
                 val view=checkNotNull(root)
                 assertEquals(View.GONE,view.findViewById<View>(R.id.floating_preview).visibility)
@@ -124,7 +124,7 @@ class SoftCurrentAcceptanceTest {
                 assertEquals(View.GONE,view.findViewById<View>(R.id.floating_preview).visibility)
                 assertTrue(feedback.complete(InsertionResult.INSERTED,feedback.text,"Copy required","Check field first"))
                 render()
-                assertFalse(feedback.available)
+                assertEquals("Synthetic uninserted text",feedback.text)
                 assertEquals(View.GONE,view.findViewById<View>(R.id.floating_preview).visibility)
                 assertEquals(1,attached) // Confirmed success settles the existing mark instead of flashing a report/window.
                 assertEquals(0,copies)

@@ -41,6 +41,7 @@ class FloatingDictationService : AccessibilityService() {
     private var finishRequested = false
     private var insertionAttempted = false
     private var inserting = false
+    private var commitAttempted = false
     private var imeTop = 0
     private var editorEligible = false
     private var nextRefreshAt = Long.MAX_VALUE
@@ -64,7 +65,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun createWindow(): FloatingWindow {
         return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { closeSession(hideWindow = false); render() }, ::openSetup,
-            discard = { closeSession(hideWindow = false, discardFeedback = true); render() })
+            discard = { closeSession(hideWindow = false, discardFeedback = true); render() }, recover = ::openSetup)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
     private fun scheduleRefresh(delay: Long = 150) {
@@ -130,7 +131,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, feedback.expanded, state?.text ?: feedback.text, status, active, !(state?.text ?: feedback.text).isBlank(), feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank(), feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -141,15 +142,11 @@ class FloatingDictationService : AccessibilityService() {
         val state = model?.state?.value
         if (state?.phase == Phase.RECORDING) { stopFromUser(); return }
         if (state?.audioBusy == true || state?.keyBusy == true || inserting) return
-        if (feedback.available || state?.phase in setOf(Phase.ERROR, Phase.RESULT)) {
-            feedback.expanded = !feedback.expanded
-            render(); return
-        }
         startNew()
     }
     private fun startNew() {
-        if (feedback.available) { feedback.expanded = true; render(); return }
         closeSession(hideWindow = false)
+        feedback.resetSignal()
         original = editor()?.takeIf(EditorPolicy::allowed) ?: return
         feedback.expanded = false
         if (!microphoneGranted() || !notificationsAllowed()) {
@@ -187,7 +184,7 @@ class FloatingDictationService : AccessibilityService() {
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
             foreground = true
         } catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true); return }
-        finishRequested = false; insertionAttempted = false; feedback.message = null
+        finishRequested = false; insertionAttempted = false; commitAttempted = false; feedback.resetSignal()
         val session = DebugFloatingConfiguration.session(this, scope) ?: DictationSessions.create(this, scope)
         val origin = original ?: run { session.close(); endForeground(); return }
         capture = FloatingCapture(scope, session, origin, ::environment,
@@ -195,7 +192,7 @@ class FloatingDictationService : AccessibilityService() {
             onMissingKey = { offerRecovery("",getString(R.string.floating_need_key),true) },
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
-                if (state.phase == Phase.ERROR) offerRecovery(state.text,getString(R.string.floating_stream_error))
+                if (state.phase == Phase.ERROR) offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
                 if (state.phase == Phase.RESULT) {
                     endForeground()
                     if (finishRequested && !insertionAttempted) insert(state.text, state.livePartial)
@@ -220,7 +217,7 @@ class FloatingDictationService : AccessibilityService() {
     private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled))
     private fun cancelKeepingText(reason: String) {
         val text = model?.state?.value?.text ?: feedback.text
-        closeSession(hideWindow = false) // Cancels pending key load and its observer, so Cancel can never start a microphone later.
+        closeSession(hideWindow = false, retainCurrent = false) // Cancels pending key load and its observer before publishing recovery once.
         feedback.offer(text,reason); render()
     }
     private fun insert(text: String, partial: Boolean) {
@@ -235,16 +232,16 @@ class FloatingDictationService : AccessibilityService() {
         val currentEpoch = epoch
         insertion = scope.launch {
             try {
-                val result = FinalTextInsertion.insert(token, text, input, ::environment) {
+                val result = FinalTextInsertion.insert(token, text, input, ::environment, { commitAttempted = true }) {
                     currentEpoch == epoch && !disposed
                 }
                 if (currentEpoch == epoch) {
                     if (result == InsertionResult.CANCELLED) closeSession()
                     else {
-                        val inserted=feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))
+                        feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))
                         // Both confirmed and recoverable completion release key/editor/session ownership.
                         // The same mark settles to idle or attention while only recovery text remains.
-                        closeSession(hideWindow = false, discardFeedback = inserted)
+                        closeSession(hideWindow = false, retainCurrent = false)
                         render()
                     }
                 }
@@ -252,9 +249,9 @@ class FloatingDictationService : AccessibilityService() {
             finally { if (currentEpoch == epoch) { inserting = false; original = null; connection = null; render() } }
         }
     }
-    private fun offerRecovery(text: String, reason: String, needsSetup: Boolean = false) {
-        feedback.offer(text,reason,needsSetup)
-        closeSession(hideWindow = false)
+    private fun offerRecovery(text: String, reason: String, needsSetup: Boolean = false, error: Boolean = false) {
+        feedback.offer(text,reason,needsSetup,error)
+        closeSession(hideWindow = false, retainCurrent = false)
         stopSelf() // Also clear a started-service request if startForeground itself was rejected.
         render()
     }
@@ -270,11 +267,11 @@ class FloatingDictationService : AccessibilityService() {
     private fun endForeground() {
         if (foreground) { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); foreground = false; stopSelf() }
     }
-    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false) {
+    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false, retainCurrent: Boolean = true) {
         // Stop all resources/clear editor ownership independently of pending user text.
         // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
         val state = model?.state?.value
-        if (!discardFeedback && !feedback.available && state != null && (state.text.isNotBlank() || state.busy)) {
+        if (retainCurrent && !commitAttempted && !discardFeedback && state != null && (state.text.isNotBlank() || (state.busy && !feedback.available))) {
             feedback.offer(state.text, getString(when {
                 inserting || (insertionAttempted && state.phase == Phase.RESULT) -> R.string.floating_unconfirmed
                 state.busy || state.livePartial -> R.string.floating_cancelled

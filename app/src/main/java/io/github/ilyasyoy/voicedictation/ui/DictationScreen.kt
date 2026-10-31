@@ -67,13 +67,10 @@ fun DictationScreen(
                 val settingsLabel = stringResource(R.string.current_settings)
                 val backLabel = stringResource(R.string.current_back)
                 val controlsLabel = stringResource(R.string.current_controls)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (settingsOpen) TextButton({ settingsOpen = false }, Modifier.testTag("close_settings").semantics { contentDescription = backLabel }) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
                     if (settingsOpen) Text(stringResource(R.string.current_settings),
                         Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    else {
-                        ModeSelector(state.mode, !state.busy && !state.canRetry, onMode, Modifier.weight(1f))
-                    }
                     if (!settingsOpen && state.mode == Mode.LIVE && state.audioBusy) Box {
                         IconButton({ controlsOpen = true }, Modifier.testTag("session_controls").semantics { contentDescription = controlsLabel }) { Text("⋮") }
                         DropdownMenu(controlsOpen, { controlsOpen = false }) {
@@ -81,7 +78,7 @@ fun DictationScreen(
                                 onClick = { controlsOpen = false; onCancel() }, modifier = Modifier.testTag("cancel"))
                         }
                     }
-                    else
+                    if (!settingsOpen) Spacer(Modifier.weight(1f))
                     if (!settingsOpen) IconButton({ settingsOpen = true }, Modifier.testTag("open_settings").semantics { contentDescription = settingsLabel }, enabled = !state.audioBusy) {
                         val color = MaterialTheme.colorScheme.onSurface
                         Canvas(Modifier.size(24.dp)) {
@@ -135,6 +132,9 @@ fun DictationScreen(
                     when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
                     if (recording) true else !processing && state.validKey && !state.keyBusy,
                     if (recording) onStop else onRecord, controlSize)
+                ModeSelector(state.mode, !state.busy && !state.canRetry, onMode)
+                Column(Modifier.fillMaxWidth().heightIn(min = 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.phase !in setOf(Phase.IDLE, Phase.RESULT)) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.connecting
                     Phase.FINALIZING -> R.string.finalizing
@@ -150,6 +150,7 @@ fun DictationScreen(
                 if (state.mode == Mode.LIVE && state.audioBusy) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.live_connect_status; Phase.RECORDING -> R.string.live_stream_status; else -> R.string.live_finish_status
                 }), Modifier.testTag("live_status"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (state.safetyStopped) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 state.problem?.let { problem ->
                     Text(stringResource(when (problem) {

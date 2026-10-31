@@ -40,7 +40,7 @@ class MotionSmokeTest {
         val bytes=AtomicInteger()
         val scheduler=Executors.newSingleThreadScheduledExecutor()
         val server=MockWebServer()
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        fun response()=MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             private var sent=false
             override fun onMessage(webSocket: WebSocket,text: String) {
                 val event=JSONObject(text)
@@ -57,7 +57,10 @@ class MotionSmokeTest {
                 }
             }
             override fun onClosing(webSocket: WebSocket,code: Int,reason: String) { webSocket.close(code,null) }
-        }))
+        })
+        server.enqueue(response())
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.enqueue(response())
         server.start()
         val endpoint=server.url("/v1/realtime?intent=transcription").toString()
         lateinit var model: DictationViewModel
@@ -84,6 +87,21 @@ class MotionSmokeTest {
             waitFor { model.state.value.phase==Phase.RESULT }
             assertEquals("Soft flowing words. Synthetic server result.",model.state.value.text)
             screenshot("06-result-no-report-labels")
+            checkNotNull(device.findObject(By.desc("Record"))).click()
+            waitFor { model.state.value.phase==Phase.ERROR }
+            screenshot("08-definite-network-failure-red")
+            assertEquals(2,server.requestCount)
+            SystemClock.sleep(2000)
+            assertEquals("No automatic retry",2,server.requestCount)
+            val beforeRetry=bytes.get()
+            checkNotNull(device.findObject(By.desc("Record"))).click()
+            waitFor { model.state.value.phase==Phase.RECORDING && bytes.get()>beforeRetry }
+            screenshot("09-explicit-retry-purple")
+            SystemClock.sleep(3000)
+            checkNotNull(device.findObject(By.desc("Stop"))).click()
+            waitFor { model.state.value.phase==Phase.RESULT }
+            assertEquals(3,server.requestCount)
+
             assertNull(device.findObject(By.text("Your words are ready")))
             assertNull(device.findObject(By.textContains("Confirmed segments")))
             SystemClock.sleep(3000)

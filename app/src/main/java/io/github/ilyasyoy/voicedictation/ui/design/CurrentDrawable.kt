@@ -16,7 +16,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             field = value
             if (!ValueAnimator.areAnimatorsEnabled()) {
                 tint=if(value==CurrentVisual.RECORDING)1f else if(value==CurrentVisual.PROCESSING).65f else 0f
-                attention=if(value in setOf(CurrentVisual.ATTENTION,CurrentVisual.ERROR))1f else 0f
+                attention=if(value==CurrentVisual.ERROR)1f else 0f
             }
             invalidateSelf()
         } }
@@ -49,13 +49,13 @@ internal class CurrentDrawable : Drawable(), Animatable {
                 energy += (target - energy) * (1 - exp(-dt * 4))
                 val pigment = when (visual) { CurrentVisual.RECORDING -> 1f; CurrentVisual.PROCESSING -> .65f; else -> 0f }
                 tint += (pigment - tint) * (1 - exp(-dt * 4))
-                val warm = if (visual in setOf(CurrentVisual.ATTENTION,CurrentVisual.ERROR)) 1f else 0f
+                val warm = if (visual == CurrentVisual.ERROR) 1f else 0f
                 attention += (warm - attention) * (1 - exp(-dt * 4))
-                phase += dt * (.38 + energy * 1.3)
+                phase += dt * (.28 + energy * 3.4)
             } else {
                 // Reduced motion still communicates the actual state through a static, distinct palette.
                 tint = if (visual == CurrentVisual.RECORDING) 1f else if (visual == CurrentVisual.PROCESSING) .65f else 0f
-                attention = if (visual in setOf(CurrentVisual.ATTENTION,CurrentVisual.ERROR)) 1f else 0f
+                attention = if (visual == CurrentVisual.ERROR) 1f else 0f
             }
             invalidateSelf()
             if (enabled) scheduleSelf(this, now + 16) else stop()
@@ -79,7 +79,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             val radius = w * (.415f - layer * .019f)
             for (i in 0 until 72) {
                 val angle = i * 2.0 * PI / 72
-                val r = radius * (1 + (.065 + energy*.025) * sin(3*angle + phase*.75 + layer*.18) + .045*cos(2*angle - phase*.48))
+                val r = radius * (1 + (.07 + energy*.08) * sin(3*angle + phase*.75 + layer*.18) + .06*cos(2*angle - phase*.48))
                 xs[i]=(x+r*cos(angle)+sin(phase+layer*.7)*w*.007).toFloat()
                 ys[i]=(y+r*.97*sin(angle)+cos(phase*.65+layer*.5)*w*.007).toFloat()
             }
@@ -90,8 +90,8 @@ internal class CurrentDrawable : Drawable(), Animatable {
                 path.quadTo(xs[i],ys[i],(xs[i]+xs[next])/2,(ys[i]+ys[next])/2)
             }
             path.close()
-            val neutral = blend(color,0xFFDAD7E2.toInt(),.60f)
-            val base = blend(blend(neutral,color,tint),0xFFD6B89F.toInt(),attention*.45f)
+            val neutral = SoftCurrentPalette.NeutralLayers[layer]
+            val base = blend(blend(neutral,color,tint),SoftCurrentPalette.ErrorLayers[layer],attention)
             val glow = blend(base,SoftCurrentPalette.Surface,.16f)
             val travel = (sin(phase*.6)*w*.15f).toFloat()
             paint.shader = LinearGradient(x-w*.45f+travel,y-w*.35f,x+w*.45f+travel,y+w*.4f, intArrayOf(base,glow,base),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
@@ -99,7 +99,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             canvas.drawPath(path,paint)
         }
         paint.shader = null
-        paint.color = if (visual == CurrentVisual.ERROR || visual == CurrentVisual.ATTENTION) SoftCurrentPalette.Plum else blend(0xFF9690A4.toInt(),SoftCurrentPalette.Accent,tint)
+        paint.color = blend(blend(0xFF5B5666.toInt(),0xFF542194.toInt(),tint),0xFFFFE8ED.toInt(),attention)
         paint.alpha = opacity; paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
         paint.strokeWidth = max(1f,w*.006f)
         repeat(4) { line ->

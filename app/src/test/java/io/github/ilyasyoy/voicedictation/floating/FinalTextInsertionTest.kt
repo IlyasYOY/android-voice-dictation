@@ -69,4 +69,30 @@ class FinalTextInsertionTest {
         }
         assertEquals(InsertionResult.COPY, FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true })
     }
+    @Test fun `unverifiable insertion permits another independent dictation with exactly one write each`() = runTest {
+        var writes=0; var attempts=0
+        repeat(2) {
+            var written=false
+            val target=object : EditorConnection {
+                override suspend fun surrounding(before: Int): EditorSurrounding? = if(written)null else EditorSurrounding("",7,0,0)
+                override fun commit(text: String) { written=true; writes++ }
+            }
+            val feedback=FloatingFeedback()
+            val task=async { FinalTextInsertion.insert(editor(),"Words $it",target,{environment()},{attempts++}) { true } }
+            runCurrent(); advanceTimeBy(250); runCurrent()
+            assertTrue(feedback.complete(task.await(),"Words $it","Copy","Unconfirmed"))
+            assertFalse(feedback.available); assertFalse(feedback.error)
+        }
+        assertEquals(2,writes); assertEquals(2,attempts)
+    }
+    @Test fun `environment disappears after commit without creating a second attempt`() = runTest {
+        var writes=0; var visible=true
+        val target=object : EditorConnection {
+            override suspend fun surrounding(before: Int)=EditorSurrounding("",7,0,0)
+            override fun commit(text: String) { writes++; visible=false }
+        }
+        val task=async { FinalTextInsertion.insert(editor(),"Words",target,{environment().copy(keyboard=visible)}) { true } }
+        runCurrent(); advanceTimeBy(250); runCurrent()
+        assertEquals(InsertionResult.UNCONFIRMED,task.await()); assertEquals(1,writes)
+    }
 }

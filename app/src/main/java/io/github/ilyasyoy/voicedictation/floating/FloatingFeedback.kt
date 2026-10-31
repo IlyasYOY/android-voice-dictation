@@ -1,6 +1,6 @@
 package io.github.ilyasyoy.voicedictation.floating
 
-/** UI feedback is retained until explicit discard; a ready transcript alone is never insertion success. */
+/** Unsent text is optional recovery, never a gate on the next recording. */
 internal class FloatingFeedback {
     companion object {
         // One pending recovery in this process, containing no Context, editor token or audio resource.
@@ -11,18 +11,21 @@ internal class FloatingFeedback {
     var message: String? = null
     var needsSetup = false
     var expanded = false
+    var error = false
     val available get() = text.isNotBlank() || message != null || needsSetup
-    fun offer(text: String, message: String, needsSetup: Boolean = false) {
-        this.text=text; this.message=message; this.needsSetup=needsSetup; expanded=false
+    fun offer(text: String, message: String, needsSetup: Boolean = false, error: Boolean = false) {
+        if (text.isNotBlank() && text != this.text) this.text = listOf(this.text,text).filter(String::isNotBlank).joinToString("\n\n")
+        this.message=message; this.needsSetup=needsSetup; this.error=error; expanded=false
     }
     fun dismiss() { expanded=false }
-    fun discard() { text=""; message=null; needsSetup=false; expanded=false }
-    /** Returns true only when insertion was actually confirmed. */
+    fun resetSignal() { message=null; needsSetup=false; error=false; expanded=false }
+    fun discard() { text=""; resetSignal() }
+    /** Confirmed and unverifiable writes both settle silently; neither is ever retried. */
+    @Suppress("UNUSED_PARAMETER")
     fun complete(result: InsertionResult, text: String, fallback: String, unconfirmed: String): Boolean {
         return when (result) {
-            InsertionResult.INSERTED -> { discard(); true }
+            InsertionResult.INSERTED, InsertionResult.UNCONFIRMED -> { resetSignal(); true }
             InsertionResult.COPY -> { offer(text,fallback); false }
-            InsertionResult.UNCONFIRMED -> { offer(text,unconfirmed); false }
             InsertionResult.CANCELLED -> false
         }
     }

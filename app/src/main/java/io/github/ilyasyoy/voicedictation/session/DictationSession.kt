@@ -31,11 +31,12 @@ class DictationSession(
     private val pcm: PcmSource? = null,
     private val realtime: RealtimeTranscriber? = null,
     private val keyStore: ApiKeyStore = NoKeyStore,
+    initialMode: Mode = Mode.RECORD,
 ) : AutoCloseable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private var closed = false
     private var savedKey: String? = null
-    private val mutableState = MutableStateFlow(DictationState(keyBusy = keyStore !== NoKeyStore))
+    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore))
     val state = mutableState.asStateFlow()
     private var pendingAudio: File? = null
     private var request: Job? = null

@@ -16,7 +16,7 @@ import kotlin.math.abs
 
 internal class FloatingWindow(
     private val context: Context, private val iconClick: () -> Unit,
-    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, setup: () -> Unit, private val discard: () -> Unit = {},
+    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, private val setup: () -> Unit, private val discard: () -> Unit = {}, private val recover: () -> Unit = {},
 ) {
     private val wm = context.getSystemService(WindowManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
@@ -41,7 +41,7 @@ internal class FloatingWindow(
     }.apply {
         id = R.id.floating_start; setImageDrawable(mark); setPadding(dp(3),dp(3),dp(3),dp(3))
         setBackgroundColor(android.graphics.Color.TRANSPARENT); setOnClickListener { controlsOpen = false; iconClick() }
-        setOnLongClickListener { if (active) { showControls(); true } else false }
+        setOnLongClickListener { when { active -> { showControls(); true }; hasRecovery -> { recover(); true }; requiresSetup -> { setup(); true }; else -> false } }
     }
     private val heading = TextView(context).apply { textSize = 12f; setTextColor(ink) }
     private val status = TextView(context).apply { id = R.id.floating_status; textSize = 14f; setTextColor(ink) }
@@ -65,8 +65,11 @@ internal class FloatingWindow(
     private var moved = false
     private var imeTop = 0
     private var active = false
+    private var hasRecovery = false
+    private var requiresSetup = false
     private var held = false
     private var cancelAction = -1
+    private var recoverAction = -1
     private var controlsOpen = false
     private var panel = false
     private var lastNotice: String? = null
@@ -99,7 +102,7 @@ internal class FloatingWindow(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false; held = false
-                    if (active) handler.postDelayed(hold, ViewConfiguration.getLongPressTimeout().toLong())
+                    if (active || hasRecovery || requiresSetup) handler.postDelayed(hold, ViewConfiguration.getLongPressTimeout().toLong())
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -116,7 +119,7 @@ internal class FloatingWindow(
     }
     init { initialize() }
     fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false) {
-        this.imeTop = imeTop; active = recording
+        this.imeTop = imeTop; active = recording; hasRecovery = canCopy; requiresSetup = needsSetup
         // The service survives configuration changes; every reused view must follow the current palette.
         for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
         val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
@@ -129,12 +132,16 @@ internal class FloatingWindow(
         layoutControls()
         val recoverable = !active && (canCopy || needsSetup || error || message != context.getString(R.string.floating_start))
         mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
-        icon.isLongClickable = active
+        icon.isLongClickable = active || canCopy || needsSetup
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
-        icon.contentDescription = context.getString(if (recoverable) R.string.current_recover else if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
+        icon.contentDescription = context.getString(if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
         ViewCompat.setStateDescription(icon, message)
         if (active && cancelAction == -1) cancelAction = ViewCompat.addAccessibilityAction(icon, context.getString(R.string.floating_cancel)) { _, _ -> cancel(); true }
         if (!active && cancelAction != -1) { ViewCompat.removeAccessibilityAction(icon,cancelAction); cancelAction = -1 }
+        if (!active && (canCopy || needsSetup) && recoverAction == -1) recoverAction = ViewCompat.addAccessibilityAction(icon,context.getString(R.string.current_recover)) { _, _ ->
+            if (hasRecovery) recover() else setup(); true
+        }
+        if ((active || (!canCopy && !needsSetup)) && recoverAction != -1) { ViewCompat.removeAccessibilityAction(icon,recoverAction); recoverAction = -1 }
         status.text = message; status.visibility = if(panel)View.VISIBLE else View.GONE
         preview.text = text; preview.visibility = if(panel && text.isNotEmpty())View.VISIBLE else View.GONE
         controls.visibility = if(panel)View.VISIBLE else View.GONE

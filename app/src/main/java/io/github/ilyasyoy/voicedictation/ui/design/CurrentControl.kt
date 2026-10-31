@@ -4,10 +4,11 @@ import android.content.Context
 import android.view.View
 import android.widget.ImageView
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -30,9 +31,10 @@ internal class CurrentMarkView(context: Context) : ImageView(context) {
 
 @Composable
 internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit, size: Dp = 228.dp) {
-    Box(Modifier.size(size).alpha(if (enabled || visual in setOf(CurrentVisual.CONNECTING,CurrentVisual.PROCESSING)) 1f else .5f)
+    Box(Modifier.size(size)
         .testTag(tag).semantics { contentDescription = label }
-        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)) {
+        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+            enabled = enabled, role = Role.Button, onClick = onClick)) {
         AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
     }
 }
