@@ -73,14 +73,15 @@ fun DictationScreen(
                         Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     else {
                         ModeSelector(state.mode, !state.busy && !state.canRetry, onMode, Modifier.weight(1f))
-                        if (state.mode == Mode.LIVE && state.audioBusy) Box {
-                            TextButton({ controlsOpen = true }, Modifier.testTag("session_controls").semantics { contentDescription = controlsLabel }) { Text("⋮") }
-                            DropdownMenu(controlsOpen, { controlsOpen = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.current_cancel_session)) },
-                                    onClick = { controlsOpen = false; onCancel() }, modifier = Modifier.testTag("cancel"))
-                            }
+                    }
+                    if (!settingsOpen && state.mode == Mode.LIVE && state.audioBusy) Box {
+                        IconButton({ controlsOpen = true }, Modifier.testTag("session_controls").semantics { contentDescription = controlsLabel }) { Text("⋮") }
+                        DropdownMenu(controlsOpen, { controlsOpen = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.current_cancel_session)) },
+                                onClick = { controlsOpen = false; onCancel() }, modifier = Modifier.testTag("cancel"))
                         }
                     }
+                    else
                     if (!settingsOpen) IconButton({ settingsOpen = true }, Modifier.testTag("open_settings").semantics { contentDescription = settingsLabel }, enabled = !state.audioBusy) {
                         val color = MaterialTheme.colorScheme.onSurface
                         Canvas(Modifier.size(24.dp)) {

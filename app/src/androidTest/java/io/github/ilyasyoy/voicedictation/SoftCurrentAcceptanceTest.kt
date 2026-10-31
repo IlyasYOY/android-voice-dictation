@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.Density
@@ -56,6 +58,14 @@ class SoftCurrentAcceptanceTest {
                 compose.onNodeWithTag("record").assertIsDisplayed().assertContentDescriptionEquals("Record")
                 val bounds=compose.onNodeWithTag("record").getUnclippedBoundsInRoot()
                 assertTrue("Wave must fit the compact viewport: $bounds",bounds.left>=0.dp && bounds.right<=width.dp && bounds.top>=0.dp && bounds.bottom<=height.dp)
+                fun assertModeLabelsFit() {
+                    for (label in listOf("Live","Record")) compose.onNodeWithText(label,useUnmergedTree=true)
+                        .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+                            val layouts=mutableListOf<TextLayoutResult>(); action(layouts)
+                            assertEquals("Mode labels must not break into fragments",1,layouts.single().lineCount)
+                        }
+                }
+                assertModeLabelsFit()
                 compose.onNodeWithTag("mode_live").performClick().assertIsSelected()
                 assertEquals(Mode.LIVE,state.mode)
                 compose.onNodeWithTag("mode_record").performClick().assertIsSelected()
@@ -69,6 +79,8 @@ class SoftCurrentAcceptanceTest {
                 compose.runOnIdle { state=state.copy(mode=Mode.LIVE,phase=Phase.RECORDING,livePartial=true) }
                 compose.onNodeWithTag("mode_live").assertIsNotEnabled()
                 compose.onNodeWithTag("mode_record").assertIsNotEnabled()
+                assertModeLabelsFit()
+                capture("recording-$width-font-$font")
                 compose.onNodeWithText("Cancel · keep received text").assertDoesNotExist()
                 compose.onNodeWithTag("session_controls").performScrollTo().performClick()
                 compose.onNodeWithTag("cancel").performClick()

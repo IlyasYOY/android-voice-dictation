@@ -146,5 +146,5 @@ internal class FloatingWindow(
         params.y=params.y.coerceIn(dp(24),maxOf(dp(24),imeTop-dp(if(panel)260 else if(controlsOpen)176 else 64)))
     }
     private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
-    fun hide() { handler.removeCallbacks(hold); controlsOpen=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
+    fun hide() { mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
 }
