@@ -343,6 +343,9 @@ class CrossAppTest {
     @Test fun qDefaultRecordUploadsOnlyAfterStopAndNextTapStartsNormally() {
         launch("$APP.floating.DebugFloatingSetupActivity",server.port)
         find(label("Use default Record fixture mode")).click(); focusField("body")
+        // The returning Activity may receive onNewIntent before its window regains input focus.
+        // A real tap establishes the IME connection; then restore the fixture's insertion caret.
+        find(fixtureId("body")).click(); focusField("body")
         val streams=connections.get(); val uploaded=fileRequests.get()
         failFileNext.set(true)
         repeat(2) { turn ->
