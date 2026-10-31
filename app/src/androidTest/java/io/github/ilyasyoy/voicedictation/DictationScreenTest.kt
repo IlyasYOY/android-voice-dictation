@@ -54,7 +54,12 @@ class DictationScreenTest {
     }
     private fun key() { scenario.onActivity { model.setKey("synthetic-test-key") } }
     private fun waitPhase(phase: Phase) { compose.waitUntil(30_000) { model.state.value.phase == phase } }
-    private fun click(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performClick() }
+    private fun click(tag: String) {
+        val configuration = tag in setOf("mode_record", "mode_live", "forget")
+        if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
+        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
+    }
     private fun screenshot(name: String) {
         compose.waitForIdle(); SystemClock.sleep(350)
         val out = File(context.getExternalFilesDir(null), "evidence").apply { mkdirs() }
@@ -102,9 +107,19 @@ class DictationScreenTest {
         assertEquals("synthetic-test-key", model.state.value.key); assertNoAudio(); assertEquals(0, server.requestCount)
     }
     @Test fun backCancelsUploadAndIgnoresLateResponse() {
-        key(); server.enqueue(MockResponse().setBody("{\"text\":\"late\"}").setBodyDelay(3, TimeUnit.SECONDS))
-        click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500); click("stop"); waitPhase(Phase.TRANSCRIBING)
-        device.pressBack(); waitPhase(Phase.IDLE); assertNoAudio(); SystemClock.sleep(3300)
-        assertEquals("", model.state.value.text)
+        val release=java.util.concurrent.CountDownLatch(1)
+        server.dispatcher=object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest):MockResponse {
+                release.await(30,TimeUnit.SECONDS)
+                return MockResponse().setBody("{\"text\":\"late\"}")
+            }
+        }
+        try {
+            key(); click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500)
+            click("stop"); waitPhase(Phase.TRANSCRIBING)
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; waitPhase(Phase.IDLE); assertNoAudio()
+            release.countDown(); SystemClock.sleep(500)
+            assertEquals("",model.state.value.text)
+        } finally { release.countDown() }
     }
 }

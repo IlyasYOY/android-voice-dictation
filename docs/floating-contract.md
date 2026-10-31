@@ -8,7 +8,7 @@ The service receives only window changes, window-state changes and focused-view 
 
 ## Keyboard independence
 
-TYPE_INPUT_METHOD windows identify an on-screen IME independently of its package. A non-focusable TYPE_ACCESSIBILITY_OVERLAY is attached to the system-bound accessibility service. It does not take input focus. The icon can be dragged; touching it explicitly starts live dictation with the existing streaming transport. Partial text is displayed only in the overlay. There is no automatic start on focus/keyboard events.
+TYPE_INPUT_METHOD windows identify an on-screen IME independently of its package. A non-focusable TYPE_ACCESSIBILITY_OVERLAY is attached to the system-bound accessibility service. It does not take input focus. The icon can be dragged; touching it explicitly starts live dictation with the existing streaming transport. During capture only the animated control is shown; received text remains in the owned session and is available through intentional recovery after interruption. There is no automatic start on focus/keyboard events.
 
 No claim of universal keyboard/editor support is made: a hardware keyboard with no visible IME, unexposed/custom editors, floating or OEM windows and privacy-restricted fields may offer no bubble or require Copy. The separate fixture APK contains a second test-only IME; the product does not ship or require it.
 
@@ -20,7 +20,7 @@ Android 16 AOSP binds accessibility services with BIND_ALLOW_BACKGROUND_ACTIVITY
 
 Overlay text rendering reuses the most recently validated eligibility; it does not synchronously reread an editor on every transcript delta. Focus/window events can advance an already scheduled check and never postpone it, preventing continuous overlay events from starving focus-loss cleanup. Start and insertion still perform fresh metadata/keyboard checks.
 
-Cancel, keyboard dismissal, screen off/keyguard, loss of access, focused editor/caret change, orientation, interrupt/unbind and stream failure stop microphone/network work. Cancel also closes the owned DictationSession and observer, so a pending key load cannot start audio later. No restart/reconnect or audio replay occurs automatically. Received dictation may remain for explicit Copy while the panel remains valid; keyboard dismissal clears it.
+Cancel, keyboard dismissal, screen off/keyguard, loss of access, focused editor/caret change, orientation, interrupt/unbind and stream failure stop microphone/network work. Cancel also closes the owned DictationSession and observer, so a pending key load cannot start audio later. No restart/reconnect or audio replay occurs automatically. Received dictation may remain for explicit Copy while the panel remains valid; keyboard dismissal hides it while pending recovery remains in process memory.
 
 ## Insertion safety
 
@@ -46,4 +46,10 @@ Live OpenAI authentication, recognition, billing and quality remain unverified; 
 
 ## User screenshots
 
-The app does not set `FLAG_SECURE` on its Activity or accessibility overlay. Users can capture the ordinary app screen, bubble, live partials and results; transcripts may therefore appear in screenshots, screen recordings and recent-app previews. The API-key field remains permanently password-masked, with no reveal control. This policy affects only our windows and does not change other apps' protected windows, editor exclusions, OS capture restrictions or Accessibility permissions.
+The app does not set `FLAG_SECURE` on its Activity or accessibility overlay. Users can capture the ordinary app screen, compact recording bubble and result panel; transcripts may therefore appear in screenshots, screen recordings and recent-app previews. The API-key field remains permanently password-masked, with no reveal control. This policy affects only our windows and does not change other apps' protected windows, editor exclusions, OS capture restrictions or Accessibility permissions.
+
+## Soft Current controls
+
+During an active session the overlay is a compact wave circle without transcript or a persistent button cluster. Tap stops recording. Holding opens an explicit Cancel control inside the same non-focusable overlay; opening controls must not stop audio or retarget the editor. Cancel also remains available as an accessibility action and in the recording notification. Its existing data policy is unchanged. The shape itself flows continuously, with muted connecting, faster purple capture and gently settling processing; there is no nested spinner, rim or separate recording dot. Routine progress toasts and automatic final reports are absent. Only confirmed insertion returns to idle. Copy fallback, unconfirmed insertion, errors and cancellation retain text/reason behind a compact attention state; a tap opens recovery. Dismiss collapses recovery without clearing it; Discard text explicitly clears the pending result; the next tap may start a new session. No automatic clipboard write or reconnect is performed. Position remains transient, and floating mode remains Live.
+
+Pending floating recovery is process-owned memory containing text/reason only, with no editor connection, audio, credential or durable history. Keyboard hide, lock, Setup, configuration changes and service rebind close session resources and dismiss the panel while preserving that pending recovery. Only confirmed insertion or explicit Discard clears it; process death still loses it. A later eligible field can expose manual Copy, never replay or automatic insertion. Recovery is measured to the real available height above the keyboard and scrolls long text/actions; buttons wrap at large font sizes.

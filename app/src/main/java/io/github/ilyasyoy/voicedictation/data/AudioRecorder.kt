@@ -11,7 +11,7 @@ interface AudioRecorder {
     fun cancel()
 }
 
-/** Foreground Activity only. Never records from a service or on app launch. */
+/** Caller owns an explicit user-started Activity or microphone foreground-service lifecycle. */
 class AndroidAudioRecorder(context: Context) : AudioRecorder {
     private val files = RecordingFiles.shared(File(context.cacheDir, "dictation"))
     private var recorder: MediaRecorder? = null

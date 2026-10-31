@@ -31,11 +31,12 @@ class DictationSession(
     private val pcm: PcmSource? = null,
     private val realtime: RealtimeTranscriber? = null,
     private val keyStore: ApiKeyStore = NoKeyStore,
+    initialMode: Mode = Mode.RECORD,
 ) : AutoCloseable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private var closed = false
     private var savedKey: String? = null
-    private val mutableState = MutableStateFlow(DictationState(keyBusy = keyStore !== NoKeyStore))
+    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore))
     val state = mutableState.asStateFlow()
     private var pendingAudio: File? = null
     private var request: Job? = null
@@ -207,6 +208,14 @@ class DictationSession(
         catch (_: Exception) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.RECORDING) }
     }
     fun retry() { if (!state.value.busy && state.value.canRetry && state.value.validKey) upload() }
+    /** Transfer failed-file ownership before closing an overlay session; no credential/editor travels. */
+    fun takeRetryRecording(): File? {
+        if(closed || state.value.busy || !state.value.canRetry) return null
+        val audio=pendingAudio ?: return null
+        pendingAudio=null
+        update { it.copy(canRetry=false) }
+        return audio
+    }
     private fun upload() {
         val audio = pendingAudio ?: return
         val key = state.value.key

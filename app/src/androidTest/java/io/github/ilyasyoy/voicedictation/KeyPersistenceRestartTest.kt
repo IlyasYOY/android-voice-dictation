@@ -33,6 +33,7 @@ class KeyPersistenceRestartTest {
                     keyStore = AndroidApiKeyStore(it, ".test.restart")).also { m -> model = m } }
                 ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                     compose.waitUntil(30_000) { !model.state.value.keyBusy }
+                    compose.onNodeWithTag("open_settings").performClick()
                     when (step) {
                         "save" -> {
                             compose.onNodeWithTag("api_key").performScrollTo().performTextReplacement(FIXTURE)

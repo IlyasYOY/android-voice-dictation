@@ -26,15 +26,22 @@ internal object DictationSessions {
     }
 
     fun create(context: Context, scope: CoroutineScope, keyStore: ApiKeyStore? = null,
-               liveTranscriber: RealtimeTranscriber? = null): DictationSession {
+               liveTranscriber: RealtimeTranscriber? = null, initialMode: Mode = Mode.RECORD,
+               fileTranscriber: Transcriber? = null): DictationSession {
         val app = context.applicationContext
         prepare(app)
-        return DictationSession(scope, DeferredAudioRecorder { AndroidAudioRecorder(app) }, fileMode,
-            AndroidPcmSource(), liveTranscriber ?: liveMode, keyStore ?: keys(app))
+        return DictationSession(scope, DeferredAudioRecorder { AndroidAudioRecorder(app) }, fileTranscriber ?: fileMode,
+            AndroidPcmSource(), liveTranscriber ?: liveMode, keyStore ?: keys(app), initialMode)
     }
 
     fun fixtureTransport(endpoint: String) = RealtimeTranscriber { key, emit ->
         val transport = withContext(Dispatchers.IO) { OpenAiRealtimeTranscriber(realtimeClient, endpoint) }
         transport.connect(key, emit)
     }
+    suspend fun transcribeRetained(context: Context, audio: File): String {
+        val key=keys(context).load() ?: throw MissingSavedKey()
+        return fileMode.transcribe(audio,key)
+    }
 }
+
+internal class MissingSavedKey : java.io.IOException("Saved key unavailable")

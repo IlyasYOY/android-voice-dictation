@@ -23,6 +23,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.session.DictationSessions
+import io.github.ilyasyoy.voicedictation.session.ModePreferences
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
 
 class MainActivity : ComponentActivity() {
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 (testFactory?.invoke(this@MainActivity) ?: DictationViewModel { scope ->
-                    DictationSessions.create(applicationContext, scope)
+                    DictationSessions.create(applicationContext, scope, initialMode = ModePreferences.load(applicationContext))
                 }) as T
         })[DictationViewModel::class.java]
         setContent {
@@ -52,7 +53,7 @@ class MainActivity : ComponentActivity() {
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
                     { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())) },
-                    onMode = model::setMode, onSave = model::saveKey,
+                    onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, io.github.ilyasyoy.voicedictation.floating.FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice)
             }
         }

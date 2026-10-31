@@ -35,15 +35,13 @@ class FloatingDictationService : AccessibilityService() {
     private val model get() = capture?.session
     private var insertion: Job? = null
     private var epoch = 0L
-    private var retainedText = ""
+    private val feedback = FloatingFeedback.processOwned
     private var window: FloatingWindow? = null
     private var foreground = false
     private var finishRequested = false
     private var insertionAttempted = false
     private var inserting = false
-    private var expanded = false
-    private var message: String? = null
-    private var needsSetup = false
+    private var commitAttempted = false
     private var imeTop = 0
     private var editorEligible = false
     private var nextRefreshAt = Long.MAX_VALUE
@@ -61,8 +59,13 @@ class FloatingDictationService : AccessibilityService() {
             receiverRegistered = true
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.floating_channel), NotificationManager.IMPORTANCE_LOW))
-        window = FloatingWindow(this, ::bubbleClick, ::stopFromUser, ::cancelFromUser, ::copy, ::closeSession, ::openSetup)
+        feedback.dismiss()
+        window = createWindow()
         scheduleRefresh()
+    }
+    private fun createWindow(): FloatingWindow {
+        return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { closeSession(hideWindow = false); render() }, ::openSetup,
+            discard = { closeSession(hideWindow = false, discardFeedback = true); render() }, recover = ::openSetup)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
     private fun scheduleRefresh(delay: Long = 150) {
@@ -104,7 +107,7 @@ class FloatingDictationService : AccessibilityService() {
             closeSession(); window?.hide(); return
         }
         if (model?.state?.value?.busy == true && (!microphoneGranted() || !notificationsAllowed())) {
-            cancelKeepingText(getString(R.string.floating_need_permission)); needsSetup = true
+            cancelKeepingText(getString(R.string.floating_need_permission)); feedback.needsSetup = true
         }
         editorEligible = true
         imeTop = keyboard.top
@@ -121,14 +124,15 @@ class FloatingDictationService : AccessibilityService() {
         if (!editorEligible || !FloatingPreferences.enabled(this) || !awake()) { window?.hide(); return }
         val state = model?.state?.value
         val active = state?.audioBusy == true || state?.keyBusy == true
-        val status = message ?: when (state?.phase) {
+        val status = feedback.message ?: when (state?.phase) {
             Phase.CONNECTING -> getString(R.string.live_connect_status)
-            Phase.RECORDING -> getString(R.string.live_stream_status) + " · " + state.elapsed
+            Phase.RECORDING -> getString(if(state.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording) + " · " + state.elapsed
+            Phase.TRANSCRIBING -> getString(R.string.transcribing)
             Phase.FINALIZING -> getString(R.string.live_finish_status)
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, expanded, state?.text ?: retainedText, status, active, !(state?.text ?: retainedText).isBlank(), needsSetup, DebugFloatingConfiguration.notice(this)) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || FloatingRecordingRecovery.processOwned.count>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -138,17 +142,21 @@ class FloatingDictationService : AccessibilityService() {
     private fun bubbleClick() {
         val state = model?.state?.value
         if (state?.phase == Phase.RECORDING) { stopFromUser(); return }
-        if (state?.audioBusy == true || state?.keyBusy == true) return
-        closeSession()
+        if (state?.audioBusy == true || state?.keyBusy == true || inserting) return
+        startNew()
+    }
+    private fun startNew() {
+        closeSession(hideWindow = false)
+        feedback.resetSignal()
         original = editor()?.takeIf(EditorPolicy::allowed) ?: return
-        expanded = true
+        feedback.expanded = false
         if (!microphoneGranted() || !notificationsAllowed()) {
-            message = getString(R.string.floating_need_permission); needsSetup = true; render(); return
+            offerRecovery("",getString(R.string.floating_need_permission),true); return
         }
         connection = if (Build.VERSION.SDK_INT >= 33) editorInput?.currentInputConnection?.let(::AndroidEditorConnection) else null
         pending = original
         try { ContextCompat.startForegroundService(this, Intent(this, FloatingDictationService::class.java).setAction(START)) }
-        catch (_: Exception) { pending = null; message = getString(R.string.floating_start_blocked); needsSetup = true; render() }
+        catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true) }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -166,8 +174,8 @@ class FloatingDictationService : AccessibilityService() {
     private fun notification(): Notification {
         fun action(value: String, request: Int) = PendingIntent.getService(this, request,
             Intent(this, FloatingDictationService::class.java).setAction(value), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_launcher).setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> R.string.live_stream_status; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
+        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_current_notification).setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> if(model?.state?.value?.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording; Phase.TRANSCRIBING -> R.string.transcribing; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
             .setOngoing(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .addAction(0, getString(R.string.stop_live), action(STOP, 1)).addAction(0, getString(R.string.floating_cancel), action(CANCEL, 2)).build()
     }
@@ -176,30 +184,34 @@ class FloatingDictationService : AccessibilityService() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
             foreground = true
-        } catch (_: Exception) { message = getString(R.string.floating_start_blocked); needsSetup = true; render(); return }
-        finishRequested = false; insertionAttempted = false; message = null
+        } catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true); return }
+        finishRequested = false; insertionAttempted = false; commitAttempted = false; feedback.resetSignal()
         val session = DebugFloatingConfiguration.session(this, scope) ?: DictationSessions.create(this, scope)
         val origin = original ?: run { session.close(); endForeground(); return }
         capture = FloatingCapture(scope, session, origin, ::environment,
             onInvalid = ::invalidStart,
-            onMissingKey = { message = getString(R.string.floating_need_key); needsSetup = true; endForeground() },
+            onMissingKey = { offerRecovery("",getString(R.string.floating_need_key),true) },
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
-                if (state.phase == Phase.ERROR) { finishRequested = false; endForeground(); message = getString(R.string.floating_stream_error) }
+                if (state.phase == Phase.ERROR) {
+                    if(state.canRetry) session.takeRetryRecording()?.let(FloatingRecordingRecovery.processOwned::retain)
+                    offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
+                }
+                if (state.phase == Phase.TRANSCRIBING) endForeground()
                 if (state.phase == Phase.RESULT) {
                     endForeground()
                     if (finishRequested && !insertionAttempted) insert(state.text, state.livePartial)
                 }
                 if (foreground && microphoneGranted()) getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
                 render()
-            })
+            }, mode = ModePreferences.load(this))
         capture?.start()
     }
     private fun invalidStart() {
         if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
         val permissionLost = !microphoneGranted() || !notificationsAllowed()
         cancelKeepingText(getString(if (permissionLost) R.string.floating_need_permission else R.string.floating_focus_changed))
-        if (permissionLost) { needsSetup = true; render() }
+        if (permissionLost) { feedback.needsSetup = true; render() }
     }
     private fun environment() = FloatingEnvironment(editor(), FloatingPreferences.enabled(this), awake(),
         keyboardBounds() != null, microphoneGranted(), notificationsAllowed())
@@ -209,9 +221,9 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled))
     private fun cancelKeepingText(reason: String) {
-        val text = model?.state?.value?.text ?: retainedText
-        closeSession() // Cancels pending key load and its observer, so Cancel can never start a microphone later.
-        retainedText = text; expanded = true; message = reason; render()
+        val text = model?.state?.value?.text ?: feedback.text
+        closeSession(hideWindow = false, retainCurrent = false) // Cancels pending key load and its observer before publishing recovery once.
+        feedback.offer(text,reason); render()
     }
     private fun insert(text: String, partial: Boolean) {
         insertionAttempted = true; finishRequested = false
@@ -219,49 +231,74 @@ class FloatingDictationService : AccessibilityService() {
         val token = original; val current = editor(); val input = connection
         if (partial || token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {
-            message = getString(R.string.floating_copy_fallback); render(); return
+            offerRecovery(text,getString(R.string.floating_copy_fallback)); return
         }
         inserting = true
         val currentEpoch = epoch
         insertion = scope.launch {
             try {
-                val result = FinalTextInsertion.insert(token, text, input, ::environment) {
+                val result = FinalTextInsertion.insert(token, text, input, ::environment, { commitAttempted = true }) {
                     currentEpoch == epoch && !disposed
                 }
-                if (currentEpoch == epoch) when (result) {
-                    InsertionResult.INSERTED -> message = getString(R.string.floating_inserted)
-                    InsertionResult.COPY -> message = getString(R.string.floating_copy_fallback)
-                    InsertionResult.UNCONFIRMED -> message = getString(R.string.floating_unconfirmed)
-                    InsertionResult.CANCELLED -> closeSession()
+                if (currentEpoch == epoch) {
+                    if (result == InsertionResult.CANCELLED) closeSession()
+                    else {
+                        feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))
+                        // Both confirmed and recoverable completion release key/editor/session ownership.
+                        // The same mark settles to idle or attention while only recovery text remains.
+                        closeSession(hideWindow = false, retainCurrent = false)
+                        render()
+                    }
                 }
             } catch (e: CancellationException) { throw e }
             finally { if (currentEpoch == epoch) { inserting = false; original = null; connection = null; render() } }
         }
     }
+    private fun offerRecovery(text: String, reason: String, needsSetup: Boolean = false, error: Boolean = false) {
+        feedback.offer(text,reason,needsSetup,error)
+        closeSession(hideWindow = false, retainCurrent = false)
+        stopSelf() // Also clear a started-service request if startForeground itself was rejected.
+        render()
+    }
     private fun copy() {
-        val text = model?.state?.value?.text ?: retainedText
+        val text = model?.state?.value?.text ?: feedback.text
         if (text.isBlank()) return
         val clip = ClipData.newPlainText(getString(R.string.transcript), text)
         if (Build.VERSION.SDK_INT >= 33) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
-        try { getSystemService(ClipboardManager::class.java).setPrimaryClip(clip); message = getString(R.string.copied) }
-        catch (_: Exception) { message = getString(R.string.floating_copy_failed) }
+        try { getSystemService(ClipboardManager::class.java).setPrimaryClip(clip); feedback.message = getString(R.string.copied) }
+        catch (_: Exception) { feedback.message = getString(R.string.floating_copy_failed) }
         render()
     }
     private fun endForeground() {
         if (foreground) { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); foreground = false; stopSelf() }
     }
-    private fun closeSession() {
+    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false, retainCurrent: Boolean = true) {
+        // Stop all resources/clear editor ownership independently of pending user text.
+        // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
+        val state = model?.state?.value
+        if (retainCurrent && commitAttempted && !discardFeedback && state != null) {
+            // The write may already have happened: retain only passive text, never a failure/retry gate.
+            feedback.retain(state.text); feedback.resetSignal()
+        }
+        if (retainCurrent && !commitAttempted && !discardFeedback && state != null && (state.text.isNotBlank() || (state.busy && !feedback.available))) {
+            feedback.offer(state.text, getString(when {
+                inserting || (insertionAttempted && state.phase == Phase.RESULT) -> R.string.floating_unconfirmed
+                state.busy || state.livePartial -> R.string.floating_cancelled
+                else -> R.string.floating_copy_fallback
+            }))
+        }
         epoch++; insertion?.cancel(); insertion = null
         pending = null; finishRequested = false; insertionAttempted = true; original = null; connection = null
         capture?.close(); capture = null; endForeground()
-        retainedText = ""; expanded = false; message = null; needsSetup = false; inserting = false
-        window?.hide()
+        if (discardFeedback) feedback.discard() else feedback.dismiss()
+        inserting = false
+        if (hideWindow) window?.hide()
     }
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     fun disableFromUser() { closeSession(); disableSelf() }
     override fun onInterrupt() { closeSession() }
     override fun onUnbind(intent: Intent?): Boolean { closeSession(); return super.onUnbind(intent) }
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); closeSession(); scheduleRefresh() }
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); closeSession(); window = createWindow(); scheduleRefresh() }
     override fun onDestroy() {
         disposed = true; handler.removeCallbacksAndMessages(null); closeSession(); scope.cancel()
         if (receiverRegistered) { unregisterReceiver(screenOff); receiverRegistered = false }

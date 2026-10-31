@@ -8,12 +8,22 @@ import android.widget.TextView
 import io.github.ilyasyoy.voicedictation.data.*
 import io.github.ilyasyoy.voicedictation.session.DictationSession
 import io.github.ilyasyoy.voicedictation.session.DictationSessions
+import io.github.ilyasyoy.voicedictation.session.ModePreferences
+import io.github.ilyasyoy.voicedictation.session.Mode
 import android.content.Context
 import kotlinx.coroutines.*
 import androidx.core.content.edit
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** Debug fixture opt-in only; arbitrary endpoints/real keys can never be redirected here. */
 internal object DebugFloatingConfiguration {
+    suspend fun transcribeRetained(context: Context,audio: java.io.File): String? {
+        if(notice(context)==null)return null
+        val port=context.getSharedPreferences("floating_fixture",Context.MODE_PRIVATE).getInt("port",0)
+        require(port in 1024..65535)
+        val key=AndroidApiKeyStore(context,".test.crossapp").load() ?: throw io.github.ilyasyoy.voicedictation.session.MissingSavedKey()
+        return OpenAiTranscriber(endpoint="http://localhost:$port/v1/audio/transcriptions".toHttpUrl()).transcribe(audio,key)
+    }
     fun notice(context: Context): String? = if (context.getSharedPreferences("floating_fixture", Context.MODE_PRIVATE)
         .getBoolean("enabled", false)) "TEST TRANSCRIPTION · localhost · synthetic key" else null
     fun trace(context: Context, event: String) { if (notice(context) != null) android.util.Log.d("FloatingFixture", event) }
@@ -26,7 +36,8 @@ internal object DebugFloatingConfiguration {
             if (event is LiveEvent.Failure) trace(context, "transport=${event.error.javaClass.simpleName}, cause=${event.error.cause?.javaClass?.simpleName}, pingTimeout=${event.error.cause?.message?.contains("ping") == true}")
             emit(event)
         } }
-        return DictationSessions.create(context, scope, AndroidApiKeyStore(context, ".test.crossapp"), observed)
+        val file = OpenAiTranscriber(endpoint = "http://localhost:$port/v1/audio/transcriptions".toHttpUrl())
+        return DictationSessions.create(context, scope, AndroidApiKeyStore(context, ".test.crossapp"), observed, fileTranscriber = file)
     }
 }
 class DebugFloatingSetupActivity : Activity() {
@@ -44,6 +55,8 @@ class DebugFloatingSetupActivity : Activity() {
             getSharedPreferences("floating_fixture", MODE_PRIVATE).edit { putInt("port", port); putBoolean("enabled", true) }
         }
         button("Forget fixture key") { AndroidApiKeyStore(this, ".test.crossapp").forget() }
+        button("Use Live fixture mode") { ModePreferences.save(this,Mode.LIVE) }
+        button("Use default Record fixture mode") { getSharedPreferences("dictation_mode",MODE_PRIVATE).edit { remove("explicit_mode") } }
         button("Disable fixture mode") {
             AndroidApiKeyStore(this, ".test.crossapp").forget()
             getSharedPreferences("floating_fixture", MODE_PRIVATE).edit { clear() }

@@ -13,7 +13,7 @@ internal enum class InsertionResult { INSERTED, COPY, UNCONFIRMED, CANCELLED }
 /** Single attempt on the captured original connection. Never retries, rolls back, replaces or submits. */
 internal object FinalTextInsertion {
     suspend fun insert(origin: EditorToken, text: String, target: EditorConnection,
-                       environment: () -> FloatingEnvironment, currentOwner: () -> Boolean): InsertionResult {
+                       environment: () -> FloatingEnvironment, onCommitAttempt: () -> Unit = {}, currentOwner: () -> Boolean): InsertionResult {
         var attempted = false
         try {
             if (!environment().visible || !currentOwner()) return InsertionResult.CANCELLED
@@ -25,12 +25,13 @@ internal object FinalTextInsertion {
             if (editor == null || !EditorPolicy.canInsert(origin, editor, 33, text) || before.offset < 0 ||
                 before.start != before.end || before.offset + before.start != origin.selectionStart) return InsertionResult.COPY
             attempted = true
+            onCommitAttempt()
             target.commit(text)
             delay(250)
             val after = target.surrounding(minOf(text.length, 256))
             val confirmedEnvironment = environment()
             val now = confirmedEnvironment.editor
-            if (!confirmedEnvironment.visible || !currentOwner()) return InsertionResult.CANCELLED
+            if (!confirmedEnvironment.visible || !currentOwner()) return InsertionResult.UNCONFIRMED
             val confirmed = now != null && origin.sameEditor(now) && EditorPolicy.allowed(now) && after != null && after.offset >= 0 &&
                 EditorPolicy.confirmed(origin.selectionStart, text, after.offset + after.start, after.offset + after.end, after.text)
             return if (confirmed) InsertionResult.INSERTED else InsertionResult.UNCONFIRMED
