@@ -115,7 +115,10 @@ class CrossAppTest {
         repeat(3) { scroll(Direction.UP) }
         checkpoint("Opening accessibility disclosure/settings")
         scrollFind(appId("floating_enable")).click()
-        device.wait(Until.findObject(label("Agree and open settings")), 10_000)?.click()
+        val agree=By.res("android","button1").pkg(APP)
+        val consentDeadline=SystemClock.elapsedRealtime()+40_000
+        while (!device.hasObject(agree) && !device.hasObject(By.pkg("com.android.settings")) && SystemClock.elapsedRealtime()<consentDeadline) SystemClock.sleep(100)
+        device.findObject(agree)?.click()
         find(By.pkg("com.android.settings"), 40_000)
         val serviceLabel = "Voice Dictation floating button"
         if (!device.hasObject(label(serviceLabel))) {
@@ -130,9 +133,24 @@ class CrossAppTest {
         val switch = device.wait(Until.findObject(By.res("com.android.settings", "switch_widget")), 15_000)
             ?: device.wait(Until.findObject(By.clazz("android.widget.Switch")), 3000)
             ?: find(By.checkable(true))
-        if (!switch.isChecked) switch.click()
-        device.wait(Until.findObject(label("Allow")), 10_000)?.click()
-        device.wait(Until.findObject(By.res("android", "button1")), 1000)?.click()
+        if (switch.isChecked && !specialAccessEnabled()) {
+            // Force-stop/install may leave the dedicated emulator's setting On but its service unbound.
+            // Recover through the same visible Off/On controls and OS confirmation, never a shell grant.
+            switch.click()
+            val offDeadline=SystemClock.elapsedRealtime()+10_000
+            while (!device.hasObject(By.checkable(true).checked(false)) && SystemClock.elapsedRealtime()<offDeadline) {
+                device.findObject(By.res("android","button1").pkg("com.android.settings"))?.click()
+                SystemClock.sleep(100)
+            }
+            find(By.checkable(true).checked(false),10_000).click()
+        } else if (!switch.isChecked) switch.click()
+        val enableDeadline=SystemClock.elapsedRealtime()+30_000
+        while (!specialAccessEnabled() && SystemClock.elapsedRealtime()<enableDeadline) {
+            device.findObject(By.res("android","button1").pkg("com.android.settings"))?.click()
+            device.findObject(label("Allow"))?.click()
+            SystemClock.sleep(200)
+        }
+        assertTrue("OS accessibility consent must actually enable the chosen service",specialAccessEnabled())
     }
     @Before fun prepare() {
         device.wakeUp()
@@ -392,9 +410,9 @@ class CrossAppTest {
             focusField("body")
             find(By.desc("Review text or recording problem"),30_000)
             openRecovery()
-            val keyboard=instrumentation.uiAutomation.windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            val keyboard=instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
             val ime=android.graphics.Rect().also { keyboard.getBoundsInScreen(it) }
-            val overlay=instrumentation.uiAutomation.windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+            val overlay=instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
             val bounds=android.graphics.Rect().also { overlay.getBoundsInScreen(it) }
             assertTrue("Recovery must stay above keyboard: $bounds / $ime",bounds.bottom<=ime.top && bounds.top>=0)
             screenshot("21-large-font-recovery-top-bounded")
@@ -403,7 +421,13 @@ class CrossAppTest {
             screenshot("22-large-font-recovery-copy-accessible")
             assertEquals(count+1,connections.get())
             assertFieldUnchanged()
-            assertEquals("Unsupported stays unchanged",find(fixtureId("unsupported_body")).text)
+            var originalField=""
+            instrumentation.runOnMainSync {
+                val activity=androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<FixtureActivity>().single()
+                originalField=activity.findViewById<android.widget.EditText>(R.id.unsupported_body).text.toString()
+            }
+            assertEquals("Unsupported stays unchanged",originalField)
             assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
             scrollFind(appId("floating_close")).click()
             openRecovery()
@@ -440,6 +464,7 @@ class CrossAppTest {
         private val scheduler = Executors.newSingleThreadScheduledExecutor()
         @JvmStatic @BeforeClass fun start() {
             Configurator.getInstance().uiAutomationFlags = UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES
+            InstrumentationRegistry.getInstrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
             Configurator.getInstance().waitForIdleTimeout = 0
             server = MockWebServer().apply {
                 dispatcher = object : Dispatcher() {

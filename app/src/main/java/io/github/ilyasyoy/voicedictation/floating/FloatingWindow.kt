@@ -121,7 +121,9 @@ internal class FloatingWindow(
         for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
         val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
         for (button in listOf(copyButton, closeButton, setupButton, cancelButton, discardButton)) button.backgroundTintList = buttonColor
+        val opening = expanded && !active && !panel
         panel = expanded && !active
+        if (opening || !panel) root.scrollTo(0,0)
         lastNotice = notice
         if (!active) controlsOpen = false
         layoutControls()
