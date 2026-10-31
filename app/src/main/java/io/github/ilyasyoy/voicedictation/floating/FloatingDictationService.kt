@@ -63,7 +63,7 @@ class FloatingDictationService : AccessibilityService() {
         scheduleRefresh()
     }
     private fun createWindow(): FloatingWindow {
-        return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { feedback.dismiss(); render() }, ::openSetup,
+        return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { closeSession(hideWindow = false); render() }, ::openSetup,
             discard = { closeSession(hideWindow = false, discardFeedback = true); render() })
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
@@ -153,12 +153,12 @@ class FloatingDictationService : AccessibilityService() {
         original = editor()?.takeIf(EditorPolicy::allowed) ?: return
         feedback.expanded = false
         if (!microphoneGranted() || !notificationsAllowed()) {
-            feedback.message = getString(R.string.floating_need_permission); feedback.needsSetup = true; render(); return
+            offerRecovery("",getString(R.string.floating_need_permission),true); return
         }
         connection = if (Build.VERSION.SDK_INT >= 33) editorInput?.currentInputConnection?.let(::AndroidEditorConnection) else null
         pending = original
         try { ContextCompat.startForegroundService(this, Intent(this, FloatingDictationService::class.java).setAction(START)) }
-        catch (_: Exception) { pending = null; feedback.message = getString(R.string.floating_start_blocked); feedback.needsSetup = true; render() }
+        catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true) }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -186,16 +186,16 @@ class FloatingDictationService : AccessibilityService() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
             foreground = true
-        } catch (_: Exception) { feedback.message = getString(R.string.floating_start_blocked); feedback.needsSetup = true; render(); return }
+        } catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true); return }
         finishRequested = false; insertionAttempted = false; feedback.message = null
         val session = DebugFloatingConfiguration.session(this, scope) ?: DictationSessions.create(this, scope)
         val origin = original ?: run { session.close(); endForeground(); return }
         capture = FloatingCapture(scope, session, origin, ::environment,
             onInvalid = ::invalidStart,
-            onMissingKey = { feedback.message = getString(R.string.floating_need_key); feedback.needsSetup = true; endForeground() },
+            onMissingKey = { offerRecovery("",getString(R.string.floating_need_key),true) },
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
-                if (state.phase == Phase.ERROR) { finishRequested = false; endForeground(); feedback.offer(state.text,getString(R.string.floating_stream_error)) }
+                if (state.phase == Phase.ERROR) offerRecovery(state.text,getString(R.string.floating_stream_error))
                 if (state.phase == Phase.RESULT) {
                     endForeground()
                     if (finishRequested && !insertionAttempted) insert(state.text, state.livePartial)
@@ -220,7 +220,7 @@ class FloatingDictationService : AccessibilityService() {
     private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled))
     private fun cancelKeepingText(reason: String) {
         val text = model?.state?.value?.text ?: feedback.text
-        closeSession() // Cancels pending key load and its observer, so Cancel can never start a microphone later.
+        closeSession(hideWindow = false) // Cancels pending key load and its observer, so Cancel can never start a microphone later.
         feedback.offer(text,reason); render()
     }
     private fun insert(text: String, partial: Boolean) {
@@ -229,7 +229,7 @@ class FloatingDictationService : AccessibilityService() {
         val token = original; val current = editor(); val input = connection
         if (partial || token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {
-            feedback.offer(text,getString(R.string.floating_copy_fallback)); render(); return
+            offerRecovery(text,getString(R.string.floating_copy_fallback)); return
         }
         inserting = true
         val currentEpoch = epoch
@@ -240,15 +240,23 @@ class FloatingDictationService : AccessibilityService() {
                 }
                 if (currentEpoch == epoch) {
                     if (result == InsertionResult.CANCELLED) closeSession()
-                    else if (feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))) {
-                        // Keep the same animated window alive so its pigment/speed settles smoothly to idle.
-                        closeSession(hideWindow = false, discardFeedback = true)
+                    else {
+                        val inserted=feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))
+                        // Both confirmed and recoverable completion release key/editor/session ownership.
+                        // The same mark settles to idle or attention while only recovery text remains.
+                        closeSession(hideWindow = false, discardFeedback = inserted)
                         render()
                     }
                 }
             } catch (e: CancellationException) { throw e }
             finally { if (currentEpoch == epoch) { inserting = false; original = null; connection = null; render() } }
         }
+    }
+    private fun offerRecovery(text: String, reason: String, needsSetup: Boolean = false) {
+        feedback.offer(text,reason,needsSetup)
+        closeSession(hideWindow = false)
+        stopSelf() // Also clear a started-service request if startForeground itself was rejected.
+        render()
     }
     private fun copy() {
         val text = model?.state?.value?.text ?: feedback.text
