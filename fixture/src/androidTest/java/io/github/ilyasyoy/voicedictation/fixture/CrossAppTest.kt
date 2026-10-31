@@ -177,9 +177,9 @@ class CrossAppTest {
             assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
             assertFieldUnchanged(); screenshot("legacy-API28-copy-fallback")
         } else {
-            assertTrue(has(appId("floating_start"), 60_000))
+            assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
+            assertTrue(has(By.desc("Start live dictation"),10_000))
             assertFalse(device.hasObject(appId("floating_status")))
-            assertEquals("Before voice test after", find(fixtureId("body")).text)
         }
         assertEquals(initialConnections + 1, connections.get())
         checkpoint(if (Build.VERSION.SDK_INT >= 33) "Final insertion confirmed; surrounding text preserved" else "Legacy Copy fallback confirmed; original field unchanged")
@@ -211,6 +211,11 @@ class CrossAppTest {
         find(appId("floating_start"), 60_000).click()
         assertTrue("Actual PCM must reach the fixture; no live transcript panel is shown", waitForAudio(previous))
     }
+    private fun restartPartial() {
+        val previous=bytes.get()
+        find(appId("floating_restart")).click()
+        assertTrue("Explicit restart must stream fresh PCM",waitForAudio(previous))
+    }
     private fun cancelFloating() {
         find(appId("floating_stop")).longClick()
         assertTrue("Opening the non-focusable controls must not stop recording", has(appId("floating_stop"), 5000))
@@ -224,13 +229,12 @@ class CrossAppTest {
         assertTrue(has(By.res(APP, "floating_status").textContains("Cancelled"), 10_000))
         assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
         screenshot("05-cancel-no-insertion")
-        find(appId("floating_restart")).click()
-        assertTrue(waitForAudio(bytes.get()))
+        restartPartial()
         find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT >= 33) {
-            assertTrue(has(appId("floating_start"), 60_000))
+            assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
+            assertTrue(has(By.desc("Start live dictation"),10_000))
             assertFalse(device.hasObject(appId("floating_status")))
-            assertEquals("Before voice test after", find(fixtureId("body")).text)
         } else {
             openRecovery()
             assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 30_000))
@@ -283,10 +287,11 @@ class CrossAppTest {
     @Test fun gStreamErrorStopsAndRequiresExplicitRestart() {
         failNext.set(true)
         find(appId("floating_start")).click()
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("Live session failed"), 40_000))
         assertFieldUnchanged(); val count = connections.get(); SystemClock.sleep(1200); assertEquals(count, connections.get())
         screenshot("11-stream-error-no-reconnect")
-        startPartial(); cancelFloating()
+        restartPartial(); cancelFloating()
     }
     @Test fun hMissingSavedKeyStartsNoAudioOrRequest() {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
@@ -294,6 +299,7 @@ class CrossAppTest {
         assertTrue(device.wait(Until.gone(label("Forget fixture key")), 60_000))
         launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)
         val count = connections.get(); find(appId("floating_start")).click()
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("Save an API key"), 15_000))
         assertEquals(count, connections.get()); assertFieldUnchanged()
         screenshot("12-no-saved-key-no-audio")
@@ -314,8 +320,15 @@ class CrossAppTest {
         val initialConnections = connections.get(); val initialBytes = bytes.get()
         startPartial(); screenshot("14-independent-test-keyboard-live")
         find(appId("floating_stop")).click()
-        assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
-        assertEquals("Before voice test after", find(fixtureId("body")).text)
+        if (Build.VERSION.SDK_INT >= 33) {
+            assertTrue(has(fixtureId("body").text("Before voice test after"),60_000))
+            assertTrue(has(By.desc("Start live dictation"),10_000))
+            assertFalse(device.hasObject(appId("floating_status")))
+        } else {
+            openRecovery()
+            assertTrue(has(By.res(APP,"floating_status").textContains("Nothing inserted. Copy"),30_000))
+            assertFieldUnchanged()
+        }
         assertEquals(initialConnections + 1, connections.get()); assertTrue(bytes.get() > initialBytes)
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
         checkpoint("Independent keyboard insertion preserved surrounding text; ${bytes.get() - initialBytes} PCM bytes; microphone foreground ended")
@@ -340,6 +353,7 @@ class CrossAppTest {
         device.executeShellCommand("pm revoke $APP android.permission.RECORD_AUDIO")
         SystemClock.sleep(1200)
         find(appId("floating_start"), 30_000).click()
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("permissions are required"), 15_000))
         assertEquals(count, connections.get()); assertFieldUnchanged()
         screenshot("16-revoked-microphone-gated")

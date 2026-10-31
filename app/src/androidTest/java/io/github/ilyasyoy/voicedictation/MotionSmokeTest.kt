@@ -34,6 +34,8 @@ class MotionSmokeTest {
         assertTrue(predicate())
     }
     @Test fun flowingShapeShowsRealConnectingCaptureAndResultWithoutSpinnerOrReports() {
+        val idleTimeout=Configurator.getInstance().waitForIdleTimeout
+        Configurator.getInstance().waitForIdleTimeout=0
         val oldScale=shell("settings get global animator_duration_scale")
         val bytes=AtomicInteger()
         val scheduler=Executors.newSingleThreadScheduledExecutor()
@@ -57,10 +59,11 @@ class MotionSmokeTest {
             override fun onClosing(webSocket: WebSocket,code: Int,reason: String) { webSocket.close(code,null) }
         }))
         server.start()
+        val endpoint=server.url("/v1/realtime?intent=transcription").toString()
         lateinit var model: DictationViewModel
         MainActivity.testNotice="MOTION TEST · synthetic words · localhost only"
         MainActivity.testFactory={ context -> DictationViewModel(AndroidAudioRecorder(context),OpenAiTranscriber(),AndroidPcmSource(),
-            OpenAiRealtimeTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).build(),server.url("/v1/realtime?intent=transcription").toString()))
+            OpenAiRealtimeTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).build(),endpoint))
             .also { model=it; it.setKey("synthetic-motion-key") } }
         try {
             shell("settings put global animator_duration_scale 1")
@@ -93,6 +96,7 @@ class MotionSmokeTest {
             MainActivity.testFactory=null; MainActivity.testNotice=null
             if (oldScale=="null") shell("settings delete global animator_duration_scale") else shell("settings put global animator_duration_scale $oldScale")
             scheduler.shutdownNow(); server.shutdown()
+            Configurator.getInstance().waitForIdleTimeout=idleTimeout
         }
     }
 }
