@@ -128,13 +128,6 @@ fun DictationScreen(
                     OutlinedButton(onFloatingSetup, Modifier.fillMaxWidth().testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
                     return@Column
                 }
-                if (state.phase !in setOf(Phase.IDLE, Phase.RESULT)) Text(stringResource(when (state.phase) {
-                    Phase.CONNECTING -> R.string.connecting
-                    Phase.FINALIZING -> R.string.finalizing
-                    Phase.RECORDING -> if (state.mode == Mode.LIVE) R.string.live_recording else R.string.recording
-                    Phase.TRANSCRIBING -> R.string.transcribing
-                    else -> R.string.error
-                }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val recording = state.phase == Phase.RECORDING
                 val processing = state.phase in setOf(Phase.CONNECTING, Phase.TRANSCRIBING, Phase.FINALIZING)
                 CurrentControl(stringResource(if (recording) (if (state.mode == Mode.LIVE) R.string.stop_live else R.string.stop) else if (processing) R.string.current_processing else R.string.record),
@@ -142,6 +135,13 @@ fun DictationScreen(
                     when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
                     if (recording) true else !processing && state.validKey && !state.keyBusy,
                     if (recording) onStop else onRecord, controlSize)
+                if (state.phase !in setOf(Phase.IDLE, Phase.RESULT)) Text(stringResource(when (state.phase) {
+                    Phase.CONNECTING -> R.string.connecting
+                    Phase.FINALIZING -> R.string.finalizing
+                    Phase.RECORDING -> if (state.mode == Mode.LIVE) R.string.live_recording else R.string.recording
+                    Phase.TRANSCRIBING -> R.string.transcribing
+                    else -> R.string.error
+                }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (recording) Text(state.elapsed, Modifier.testTag("timer"), style = MaterialTheme.typography.titleLarge)
                 if (state.mode == Mode.RECORD && (state.audioBusy || state.canRetry)) TextButton(onCancel, Modifier.testTag("cancel")) {
                     Text(stringResource(if (state.mode == Mode.LIVE) R.string.cancel_live else R.string.cancel))
