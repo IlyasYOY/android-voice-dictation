@@ -44,13 +44,17 @@ internal class CurrentDrawable : Drawable() {
         }
         when (visual) {
             CurrentVisual.RECORDING -> {
-                paint.strokeWidth = w * .018f
+                paint.color = SoftCurrentPalette.Paper; paint.strokeWidth = w * .04f
+                canvas.drawCircle(x, y, w * .468f, paint)
+                paint.color = SoftCurrentPalette.Accent; paint.strokeWidth = w * .018f
                 canvas.drawCircle(x, y, w * .468f, paint)
                 paint.style = Paint.Style.FILL
                 canvas.drawCircle(x + w * .33f, y - w * .34f, w * .04f, paint)
             }
             CurrentVisual.PROCESSING -> {
-                paint.strokeWidth = w * .026f
+                paint.color = SoftCurrentPalette.Paper; paint.strokeWidth = w * .05f
+                canvas.drawArc(x-w*.46f, y-w*.46f, x+w*.46f, y+w*.46f, -90f, 265f, false, paint)
+                paint.color = SoftCurrentPalette.Accent; paint.strokeWidth = w * .026f
                 canvas.drawArc(x-w*.46f, y-w*.46f, x+w*.46f, y+w*.46f, -90f, 265f, false, paint)
             }
             CurrentVisual.ERROR -> {

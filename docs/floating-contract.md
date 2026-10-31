@@ -46,4 +46,8 @@ Live OpenAI authentication, recognition, billing and quality remain unverified; 
 
 ## User screenshots
 
-The app does not set `FLAG_SECURE` on its Activity or accessibility overlay. Users can capture the ordinary app screen, bubble, live partials and results; transcripts may therefore appear in screenshots, screen recordings and recent-app previews. The API-key field remains permanently password-masked, with no reveal control. This policy affects only our windows and does not change other apps' protected windows, editor exclusions, OS capture restrictions or Accessibility permissions.
+The app does not set `FLAG_SECURE` on its Activity or accessibility overlay. Users can capture the ordinary app screen, compact recording bubble and result panel; transcripts may therefore appear in screenshots, screen recordings and recent-app previews. The API-key field remains permanently password-masked, with no reveal control. This policy affects only our windows and does not change other apps' protected windows, editor exclusions, OS capture restrictions or Accessibility permissions.
+
+## Soft Current controls
+
+During an active session the overlay is a compact wave circle without transcript or a persistent button cluster. Tap stops recording. Holding opens an explicit Cancel control inside the same non-focusable overlay; opening controls must not stop audio or retarget the editor. Cancel also remains available as an accessibility action and in the recording notification. Its existing data policy is unchanged. Processing has an open ring; recording has a ring and separate dot; errors have a distinct mark and readable result/setup information. Final/Copy/error states retain the existing panel actions. Position remains transient, and floating mode remains Live.

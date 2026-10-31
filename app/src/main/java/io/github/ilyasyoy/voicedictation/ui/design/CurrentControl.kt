@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -34,8 +35,8 @@ internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, e
                 drawable.draw(canvas.nativeCanvas)
             }
         }
-        if (visual == CurrentVisual.PROCESSING) CircularProgressIndicator(Modifier.size(40.dp), strokeWidth = 2.dp)
+        if (visual == CurrentVisual.PROCESSING) CircularProgressIndicator(Modifier.size(40.dp), color = Color(SoftCurrentPalette.Accent), strokeWidth = 2.dp)
         else Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            color = Color(SoftCurrentPalette.Plum), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     }
 }

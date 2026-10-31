@@ -106,7 +106,7 @@ class LiveScreenTest {
     @Test fun realPcmStreamsPartialThenFinalWithoutDuplicates() {
         click("record"); waitFor { model.state.value.livePartial }
         assertTrue(bytes.get() >= 4800); assertEquals("Live words", model.state.value.text)
-        compose.onNodeWithTag("mode_record").assertIsNotEnabled()
+        compose.onNodeWithTag("open_settings").assertIsNotEnabled()
         compose.onNodeWithTag("live_text_status").performScrollTo(); screenshot("07-live-partial")
         click("stop"); waitFor { model.state.value.phase == Phase.FINALIZING }
         screenshot("08-live-finishing")
