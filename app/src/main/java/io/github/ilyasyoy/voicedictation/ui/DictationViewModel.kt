@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.ilyasyoy.voicedictation.data.*
 import io.github.ilyasyoy.voicedictation.session.*
 import kotlinx.coroutines.CoroutineScope
+import java.io.File
 
 /** Activity lifecycle adapter; recording/network/storage orchestration lives in DictationSession. */
 class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : ViewModel() {
@@ -27,6 +28,12 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     fun stop() = session.stop()
     fun retry() = session.retry()
     fun cancel() = session.cancel()
+    fun takeRetryRecording(): File? = session.takeRetryRecording()
+    fun background(): File? {
+        val audio=session.takeRecordingForRecovery()
+        session.cancel()
+        return audio
+    }
     fun saveKey() = session.saveKey()
     fun forgetKey() = session.forgetKey()
     override fun onCleared() { session.close() }

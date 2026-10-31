@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.currentCoroutineContext
@@ -36,6 +37,7 @@ class DictationSession(
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private var closed = false
     private var savedKey: String? = null
+    private var keyProblem: Problem? = null
     private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore))
     val state = mutableState.asStateFlow()
     private var pendingAudio: File? = null
@@ -56,10 +58,11 @@ class DictationSession(
             try {
                 val loaded = keyStore.load()
                 if (closed) return@launch
+                keyProblem=null
                 savedKey = loaded
                 update { it.copy(key = savedKey.orEmpty(), keySaved = savedKey != null, hasSavedKey = savedKey != null) }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error(Problem.STORAGE) }
+            catch (_: Exception) { keyStorageError() }
             finally { update { it.copy(keyBusy = false) } }
         }
     }
@@ -68,9 +71,9 @@ class DictationSession(
         val key = state.value.key
         update { it.copy(keyBusy = true) }
         scope.launch {
-            try { keyStore.save(key); if (closed) return@launch; savedKey = key; update { it.copy(keySaved = true, hasSavedKey = true, problem = null) } }
+            try { keyStore.save(key); if (closed) return@launch; keyProblem=null; savedKey = key; update { it.copy(keySaved = true, hasSavedKey = true, problem = null) } }
             catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error(Problem.STORAGE) }
+            catch (_: Exception) { keyStorageError() }
             finally { update { it.copy(keyBusy = false) } }
         }
     }
@@ -78,22 +81,22 @@ class DictationSession(
         if (closed || state.value.keyBusy) return
         cancel(); update { it.copy(key = "", keySaved = false, keyBusy = true) }
         scope.launch {
-            try { keyStore.forget(); savedKey = null; update { it.copy(hasSavedKey = false) } }
+            try { keyStore.forget(); keyProblem=null; savedKey = null; update { it.copy(hasSavedKey = false) } }
             catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error(Problem.STORAGE) }
+            catch (_: Exception) { keyStorageError() }
             finally { update { it.copy(keyBusy = false) } }
         }
     }
     fun setMode(mode: Mode) {
-        if (closed || state.value.busy || state.value.canRetry) return
+        if (closed || state.value.audioBusy || state.value.canRetry) return
         update { it.copy(mode = mode, problem = null, phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT) }
     }
     fun edit(text: String) { if (!closed && !state.value.busy) update { it.copy(text = text, livePartial = false) } }
     fun clear() { if (!closed && !state.value.busy) { cancel(); update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
-    fun permissionDenied() { if (!closed && !state.value.busy) error(Problem.PERMISSION) }
+    fun permissionDenied() { if (!closed && !state.value.audioBusy) error(Problem.PERMISSION) }
     fun start(hasPermission: Boolean) {
-        if (closed || state.value.busy) return
-        if (!state.value.validKey) { error(Problem.KEY); return }
+        if (closed || state.value.audioBusy || state.value.canRetry || (state.value.mode==Mode.LIVE && state.value.keyBusy)) return
+        if (state.value.mode==Mode.LIVE && !state.value.validKey) { error(Problem.KEY); return }
         if (!hasPermission) { permissionDenied(); return }
         discardAudio()
         update { it.copy(problem = null, seconds = 0, canRetry = false, safetyStopped = false, livePartial = if (it.mode == Mode.LIVE) it.livePartial else false, completedSegments = 0) }
@@ -210,19 +213,34 @@ class DictationSession(
     fun retry() { if (!state.value.busy && state.value.canRetry && state.value.validKey) upload() }
     /** Transfer failed-file ownership before closing an overlay session; no credential/editor travels. */
     fun takeRetryRecording(): File? {
-        if(closed || state.value.busy || !state.value.canRetry) return null
-        val audio=pendingAudio ?: return null
+        if(closed || state.value.audioBusy || !state.value.canRetry) return null
+        return takeRecordingForRecovery()
+    }
+    /** Stop/cancel all work, transferring a local clip without uploading or deleting it. */
+    fun takeRecordingForRecovery(): File? {
+        if(closed || state.value.mode!=Mode.RECORD) return null
+        val recording=state.value.phase==Phase.RECORDING
+        if(!recording && pendingAudio==null)return null
+        releaseLive() // Invalidate a suspended/late upload before transferring its file.
+        val audio=if(recording) try {recorder.stop()} catch(_:Exception) {runCatching {recorder.cancel()};null} else pendingAudio
         pendingAudio=null
-        update { it.copy(canRetry=false) }
-        return audio
+        update { it.copy(phase=if(it.text.isBlank())Phase.IDLE else Phase.RESULT,problem=null,canRetry=false) }
+        return audio?.takeIf {it.exists()}
     }
     private fun upload() {
         val audio = pendingAudio ?: return
-        val key = state.value.key
         val current = ++generation
         update { it.copy(phase = Phase.TRANSCRIBING, problem = null, canRetry = false) }
         request = scope.launch {
             try {
+                // Stop ends local capture first. A local credential read may finish later; it never
+                // delays Record start. This is the one Stop-requested attempt, not reconnect retry.
+                if(state.value.keyBusy)state.first { !it.keyBusy }
+                if(current!=generation || closed)return@launch
+                if(!state.value.validKey) {
+                    error(keyProblem ?: Problem.KEY,retry=audio.exists()); return@launch
+                }
+                val key=state.value.key
                 val text = transcriber.transcribe(audio, key)
                 if (current == generation) {
                     if (text.isBlank()) throw InvalidTranscript()
@@ -240,6 +258,11 @@ class DictationSession(
         else -> Problem.RESPONSE
     }
     private fun error(problem: Problem, retry: Boolean = false) = update { it.copy(phase = Phase.ERROR, problem = problem, canRetry = retry) }
+    private fun keyStorageError() {
+        keyProblem=Problem.STORAGE
+        if(state.value.mode==Mode.RECORD && state.value.audioBusy) update {it.copy(problem=Problem.STORAGE)}
+        else error(Problem.STORAGE)
+    }
     fun cancel() {
         if (closed) return
         releaseLive()

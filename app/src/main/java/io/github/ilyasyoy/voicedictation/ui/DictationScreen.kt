@@ -36,6 +36,7 @@ fun DictationScreen(
     onCancel: () -> Unit, onRetry: () -> Unit, onEdit: (String) -> Unit, onCopy: () -> Unit,
     onClear: () -> Unit, onForget: () -> Unit, onSettings: () -> Unit, onMode: (Mode) -> Unit,
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
+    savedRecordings: Int = 0, onSavedRecordings: () -> Unit = onFloatingSetup,
 ) {
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -130,7 +131,7 @@ fun DictationScreen(
                 CurrentControl(stringResource(if (recording) (if (state.mode == Mode.LIVE) R.string.stop_live else R.string.stop) else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
                     when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
-                    if (recording) true else !processing && state.validKey && !state.keyBusy,
+                    if (recording) true else !processing && (state.mode==Mode.RECORD || (state.validKey && !state.keyBusy)),
                     if (recording) onStop else onRecord, controlSize)
                 ModeSelector(state.mode, !state.busy && !state.canRetry, onMode)
                 Column(Modifier.fillMaxWidth().heightIn(min = 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -172,6 +173,9 @@ fun DictationScreen(
                         Button(onCopy, Modifier.weight(1f).testTag("copy"), enabled = !state.busy && state.text.isNotBlank()) { Text(stringResource(R.string.copy)) }
                         OutlinedButton(onClear, Modifier.weight(1f).testTag("clear"), enabled = !state.busy && state.text.isNotEmpty()) { Text(stringResource(R.string.clear)) }
                     }
+                }
+                if(savedRecordings>0) OutlinedButton(onSavedRecordings,Modifier.testTag("saved_recordings"),enabled=!state.audioBusy) {
+                    Text(stringResource(R.string.saved_recordings,savedRecordings))
                 }
                 Text(stringResource(R.string.current_tap_hint), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 TextButton(onFloatingSetup, Modifier.testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }

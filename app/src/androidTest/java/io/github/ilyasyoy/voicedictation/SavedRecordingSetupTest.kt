@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation
 
+import io.github.ilyasyoy.voicedictation.session.*
+
 import android.widget.Button
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -14,7 +16,7 @@ import java.io.File
 class SavedRecordingSetupTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     @Test fun recreatedSetupObservesOldRetryCancellationAndReenablesActions() {
-        val recovery=FloatingRecordingRecovery.processOwned
+        val recovery=RecordingRecovery.processOwned
         val file=File.createTempFile("setup-retry-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
         val cleanup=CompletableDeferred<Unit>()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -40,7 +42,7 @@ class SavedRecordingSetupTest {
         } finally {cleanup.complete(Unit);scope.cancel();instrumentation.runOnMainSync {recovery.discard()};file.delete()}
     }
     @Test fun explicitRetryFailureGuidanceShowsInsideSetupWhileAudioIsRetained() {
-        val recovery=FloatingRecordingRecovery.processOwned
+        val recovery=RecordingRecovery.processOwned
         val file=File.createTempFile("setup-guidance-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
         instrumentation.runOnMainSync {recovery.discard();recovery.retain(file,RecordingRetryFailure.KEY)}
         try {

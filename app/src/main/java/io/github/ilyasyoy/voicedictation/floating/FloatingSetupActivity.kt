@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.floating
 
+import io.github.ilyasyoy.voicedictation.session.*
+
 import io.github.ilyasyoy.voicedictation.ui.design.SoftCurrentPalette as P
 import android.graphics.drawable.GradientDrawable
 import android.content.res.Configuration
@@ -25,12 +27,13 @@ import io.github.ilyasyoy.voicedictation.session.DictationSessions
 import kotlinx.coroutines.*
 
 class FloatingSetupActivity : ComponentActivity() {
+    companion object { internal const val SHOW_RECORDINGS="show_recordings" }
     private var closing=false
     private val retryScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { render() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        retryScope.launch { FloatingRecordingRecovery.processOwned.state.collect { if(!closing)render() } }
+        retryScope.launch { RecordingRecovery.processOwned.state.collect { if(!closing)render() } }
         render()
     }
     override fun onResume() { super.onResume(); render() }
@@ -70,9 +73,10 @@ class FloatingSetupActivity : ComponentActivity() {
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) layout.addView(TextView(this).apply { text = getString(R.string.floating_need_notification) })
         layout.addView(TextView(this).apply { text=getString(R.string.current_bubble_help); textSize=14f; setTextColor(ink); setPadding(0,dp(16),0,dp(16)) })
         val recovery = FloatingFeedback.processOwned
-        val recordings=FloatingRecordingRecovery.processOwned
+        val recordings=RecordingRecovery.processOwned
+        var recoveryAnchor: android.view.View?=null
         if(recordings.count>0) {
-            layout.addView(TextView(this).apply { text=getString(R.string.current_saved_recordings,recordings.count); textSize=17f; setTextColor(ink) })
+            layout.addView(TextView(this).apply { text=getString(R.string.current_saved_recordings,recordings.count); textSize=17f; setTextColor(ink); recoveryAnchor=this })
             recordings.state.value.failure?.let { failure ->
                 layout.addView(TextView(this).apply {
                     id=R.id.floating_audio_problem
@@ -111,7 +115,9 @@ class FloatingSetupActivity : ComponentActivity() {
         button(R.string.floating_back) { finish() }
         layout.addView(TextView(this).apply { text = getString(R.string.floating_disclosure); textSize = 16f; setTextColor(ink); setPadding(0,dp(12),0,dp(12)) })
         for (i in 0 until layout.childCount) (layout.getChildAt(i) as? TextView)?.setTextColor(ink)
-        setContentView(ScrollView(this).apply { setBackgroundColor(paper); addView(layout) })
+        val scroll=ScrollView(this).apply { setBackgroundColor(paper); addView(layout) }
+        setContentView(scroll)
+        if(intent.getBooleanExtra(SHOW_RECORDINGS,false)) recoveryAnchor?.let { anchor -> scroll.post {scroll.scrollTo(0,anchor.top)} }
     }
     override fun onDestroy() { closing=true; retryScope.cancel(); super.onDestroy() }
 }

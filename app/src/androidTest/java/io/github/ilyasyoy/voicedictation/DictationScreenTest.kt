@@ -16,6 +16,7 @@ import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
 import io.github.ilyasyoy.voicedictation.data.OpenAiTranscriber
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 import io.github.ilyasyoy.voicedictation.session.Phase
+import io.github.ilyasyoy.voicedictation.session.RecordingRecovery
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -49,6 +50,7 @@ class DictationScreenTest {
     }
     @After fun cleanup() {
         if (::scenario.isInitialized) scenario.close()
+        instrumentation.runOnMainSync {RecordingRecovery.processOwned.discard()}
         MainActivity.testFactory = null; MainActivity.testNotice = null
         server.shutdown()
     }
@@ -73,7 +75,7 @@ class DictationScreenTest {
     }
     @Test fun recordUploadEditCopyAndClear() {
         screenshot("01-idle")
-        compose.onNodeWithTag("record").assertIsNotEnabled()
+        compose.onNodeWithTag("record").assertIsEnabled()
         key()
         server.enqueue(MockResponse().setBody("{\"text\":\"A thought captured. Test server response.\"}").setBodyDelay(5, TimeUnit.SECONDS))
         click("record"); waitPhase(Phase.RECORDING); screenshot("02-recording")
@@ -97,14 +99,14 @@ class DictationScreenTest {
     @Test fun cancelAndBackgroundStopRealMicrophone() {
         key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoAudio()
         click("record"); waitPhase(Phase.RECORDING)
-        scenario.moveToState(Lifecycle.State.CREATED); assertNoAudio(); assertEquals(Phase.IDLE, model.state.value.phase)
+        scenario.moveToState(Lifecycle.State.CREATED); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(Phase.IDLE,model.state.value.phase)
         scenario.moveToState(Lifecycle.State.RESUMED); assertEquals(0, server.requestCount)
     }
     @Test fun recreationRetainsSessionDraftButCancelsRecording() {
         key(); scenario.onActivity { model.edit("Session draft") }
         click("record"); waitPhase(Phase.RECORDING); scenario.recreate()
         waitPhase(Phase.RESULT); assertEquals("Session draft", model.state.value.text)
-        assertEquals("synthetic-test-key", model.state.value.key); assertNoAudio(); assertEquals(0, server.requestCount)
+        assertEquals("synthetic-test-key",model.state.value.key); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(0,server.requestCount)
     }
     @Test fun backCancelsUploadAndIgnoresLateResponse() {
         val release=java.util.concurrent.CountDownLatch(1)
