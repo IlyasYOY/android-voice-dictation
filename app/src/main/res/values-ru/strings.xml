@@ -3,7 +3,6 @@
   <string name="app_name">Голосовые заметки</string>
   <string name="recording">● Идёт запись</string>
   <string name="transcribing">Распознаём…</string>
-  <string name="result">Текст готов</string>
   <string name="error">Нужна проверка</string>
   <string name="record">Записать</string>
   <string name="stop">Остановить и распознать</string>
@@ -27,7 +26,6 @@
   <string name="forget">Забыть ключ</string>
   <string name="cost_notice">«Запись» отправляет звук после остановки через gpt-transcribe. «Вживую» передаёт звук при включённом микрофоне через gpt-live-transcribe. Оба режима могут тарифицироваться API; проверьте цены, доступ к модели и оплату. Автоматических повторов и переподключений нет.</string>
   <string name="privacy">«Сохранить» шифрует ключ с помощью Android Keystore, «Забыть» удаляет его. Без сохранения ключ остаётся в памяти. Черновик временный. Уход или поворот останавливает микрофон и сеть. Отмена live сохраняет полученный текст и удаляет неотправленный звук. Копирование передаёт в системный буфер только текст.</string>
-  <string name="mode_record">Запись</string>
   <string name="mode_live">Вживую</string>
   <string name="connecting">Подключаемся…</string>
   <string name="finalizing">Завершаем текст…</string>
@@ -39,7 +37,6 @@
   <string name="live_finish_status">Микрофон выключен · ждём финальные фразы</string>
   <string name="live_network_error">Live-соединение прервано. Полученный текст сохранён. Нажмите «Записать» для нового соединения; звук автоматически не отправляется повторно.</string>
   <string name="partial_text">Предварительный текст · может измениться</string>
-  <string name="final_segments">Готовых фраз: %1$d</string>
   <string name="safety_stopped">Запись безопасно остановлена. Обрабатываем весь записанный звук.</string>
   <string name="save_key">Сохранить ключ</string>
   <string name="key_saved">Сохранён на устройстве в зашифрованном виде</string>
@@ -60,7 +57,6 @@
   <string name="floating_back">К API-ключу и диктовке в приложении</string>
   <string name="floating_start">Начать live-диктовку</string>
   <string name="floating_cancel">Отменить</string>
-  <string name="floating_close">Закрыть</string>
   <string name="floating_open_setup">Открыть настройку</string>
   <string name="floating_channel">Запись через плавающую кнопку</string>
   <string name="floating_focus_changed">Поле или курсор изменились. Запись отменена; полученный текст можно скопировать.</string>
@@ -71,15 +67,11 @@
   <string name="floating_cancelled">Отменено. Ничего не вставлено; полученный текст можно скопировать.</string>
   <string name="floating_copy_fallback">В этот редактор, выделение или версию Android нельзя безопасно вставить текст. Ничего не вставлено. Скопируйте и вставьте сами.</string>
   <string name="floating_unconfirmed">Не удалось подтвердить вставку. Перед копированием проверьте поле: текст уже мог появиться. Повтор и отправка не выполнялись.</string>
-  <string name="floating_inserted">Вставлено в исходное поле. Сообщение или форма не отправлены.</string>
   <string name="floating_copy_failed">Системный буфер не принял текст. Ничего не отправлено.</string>
   <string name="floating_setup_summary">Необязательный доступ через специальные возможности добавляет перемещаемую кнопку live-диктовки рядом с клавиатурой. Перед включением прочитайте и подтвердите объяснение доступа. Запись начинается только по нажатию кружка.</string>
   <string name="current_settings">Настройки</string>
-  <string name="current_settings_intro">Немного места для деталей.</string>
   <string name="current_mode">Распознавание в приложении</string>
   <string name="current_mode_detail">В режиме записи звук отправляется после Stop. В режиме Live — во время записи. Оба режима требуют API key. Плавающая кнопка использует Live.</string>
-  <string name="current_change">Изменить</string>
-  <string name="current_idle">Место для вашей мысли</string>
   <string name="current_processing">Обработка</string>
   <string name="current_add_key">Добавить API key в настройках</string>
   <string name="current_tap_hint">Нажмите, чтобы начать. Ещё раз — чтобы остановить.</string>
@@ -88,4 +80,9 @@
   <string name="current_bubble_help">Нажмите на волну для начала или остановки. Удерживайте для явной отмены. Отмена сохраняет полученный текст и удаляет неотправленный звук; действия доступны и в уведомлении.</string>
   <string name="current_back">Назад к диктовке</string>
   <string name="current_hold_hint">Удерживайте для управления записью</string>
+    <string name="current_record_mode">Запись</string>
+    <string name="current_cancel_session">Отменить запись</string>
+    <string name="current_new_session">Удалить и начать заново</string>
+    <string name="current_recover">Открыть текст или проблему записи</string>
+    <string name="current_dismiss">Свернуть</string>
 </resources>

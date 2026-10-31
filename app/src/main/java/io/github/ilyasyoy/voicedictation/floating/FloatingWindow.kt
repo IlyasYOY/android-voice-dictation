@@ -16,7 +16,7 @@ import kotlin.math.abs
 
 internal class FloatingWindow(
     private val context: Context, private val iconClick: () -> Unit,
-    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, setup: () -> Unit,
+    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, setup: () -> Unit, private val restart: () -> Unit = {},
 ) {
     private val wm = context.getSystemService(WindowManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
@@ -26,7 +26,15 @@ internal class FloatingWindow(
     private val paper get() = if (dark) SoftCurrentPalette.NightSurface else SoftCurrentPalette.Paper
     private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
     private val mark = CurrentDrawable()
-    private val icon = object : ImageButton(context) { override fun performClick(): Boolean = super.performClick() }.apply {
+    private val icon = object : ImageButton(context) {
+        override fun performClick(): Boolean = super.performClick()
+        override fun onAttachedToWindow() { super.onAttachedToWindow(); mark.start() }
+        override fun onDetachedFromWindow() { mark.stop(); super.onDetachedFromWindow() }
+        override fun onWindowVisibilityChanged(visibility: Int) {
+            super.onWindowVisibilityChanged(visibility)
+            if (isAttachedToWindow && visibility == VISIBLE) mark.start() else mark.stop()
+        }
+    }.apply {
         id = R.id.floating_start; setImageDrawable(mark); setPadding(dp(3),dp(3),dp(3),dp(3))
         setBackgroundColor(android.graphics.Color.TRANSPARENT); setOnClickListener { controlsOpen = false; iconClick() }
         setOnLongClickListener { if (active) { showControls(); true } else false }
@@ -41,8 +49,9 @@ internal class FloatingWindow(
         setOnClickListener { action() }
     }
     private val copyButton = button(R.string.copy, R.id.floating_copy, copy)
-    private val closeButton = button(R.string.floating_close, R.id.floating_close, close)
+    private val closeButton = button(R.string.current_dismiss, R.id.floating_close, close)
     private val cancelButton = button(R.string.floating_cancel, R.id.floating_cancel) { controlsOpen = false; cancel() }
+    private val restartButton = button(R.string.current_new_session, R.id.floating_restart, restart)
     private val setupButton = button(R.string.floating_open_setup, R.id.floating_open_setup, setup)
     private val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -52,13 +61,11 @@ internal class FloatingWindow(
     private var moved = false
     private var imeTop = 0
     private var active = false
-    private var wasActive = false
     private var held = false
     private var cancelAction = -1
     private var controlsOpen = false
     private var panel = false
     private var lastNotice: String? = null
-    private var wasProcessing = false
     private val hold = Runnable { held = true; icon.performLongClick() }
     private fun showControls() {
         controlsOpen = !controlsOpen
@@ -79,7 +86,7 @@ internal class FloatingWindow(
         root.addView(heading); root.addView(status); root.addView(preview)
         controls.addView(copyButton, LinearLayout.LayoutParams(0, dp(48), 1f))
         controls.addView(closeButton, LinearLayout.LayoutParams(0, dp(48), 1f))
-        root.addView(controls); root.addView(cancelButton); root.addView(setupButton)
+        root.addView(controls); root.addView(cancelButton); root.addView(setupButton); root.addView(restartButton)
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         icon.setOnTouchListener { view, event ->
@@ -102,37 +109,37 @@ internal class FloatingWindow(
         }
     }
     init { initialize() }
-    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false) {
+    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false) {
         this.imeTop = imeTop; active = recording
         // The service survives configuration changes; every reused view must follow the current palette.
-        for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton)) view.setTextColor(ink)
+        for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, restartButton)) view.setTextColor(ink)
         val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
-        for (button in listOf(copyButton, closeButton, setupButton, cancelButton)) button.backgroundTintList = buttonColor
+        for (button in listOf(copyButton, closeButton, setupButton, cancelButton, restartButton)) button.backgroundTintList = buttonColor
         panel = expanded && !active
         lastNotice = notice
         if (!active) controlsOpen = false
         layoutControls()
-        root.background = GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) }
-        root.elevation = dp(3).toFloat()
-        mark.visual = when { processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE }
+        root.background = if (panel || controlsOpen) GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) } else null
+        root.elevation = if (panel || controlsOpen) dp(3).toFloat() else 0f
+        val recoverable = !active && (canCopy || needsSetup || error || message != context.getString(R.string.floating_start))
+        mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
         icon.isLongClickable = active
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
-        icon.contentDescription = context.getString(if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
+        icon.contentDescription = context.getString(if (recoverable) R.string.current_recover else if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
         ViewCompat.setStateDescription(icon, message)
-        icon.tooltipText = icon.contentDescription
         if (active && cancelAction == -1) cancelAction = ViewCompat.addAccessibilityAction(icon, context.getString(R.string.floating_cancel)) { _, _ -> cancel(); true }
         if (!active && cancelAction != -1) { ViewCompat.removeAccessibilityAction(icon,cancelAction); cancelAction = -1 }
-        if (active && (!wasActive || (wasProcessing && !processing))) Toast.makeText(context,if(processing)R.string.current_hold_hint else R.string.current_bubble_hint,Toast.LENGTH_LONG).show()
-        wasActive = active; wasProcessing = processing
         status.text = message; status.visibility = if(panel)View.VISIBLE else View.GONE
         preview.text = text; preview.visibility = if(panel && text.isNotEmpty())View.VISIBLE else View.GONE
         controls.visibility = if(panel)View.VISIBLE else View.GONE
         copyButton.visibility = if(panel && canCopy)View.VISIBLE else View.GONE
         closeButton.visibility = if(panel)View.VISIBLE else View.GONE
         setupButton.visibility = if(panel && needsSetup)View.VISIBLE else View.GONE
+        restartButton.visibility = if(panel)View.VISIBLE else View.GONE
         if(!moved || !attached) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=imeTop-if(panel)dp(260) else if(controlsOpen)dp(176) else dp(80) }
         clamp()
         if(!attached) { wm.addView(root,params); attached=true } else update()
+        mark.start()
     }
     private fun clamp() {
         params.x=params.x.coerceIn(0,maxOf(0,context.resources.displayMetrics.widthPixels-maxOf(params.width,dp(64))))

@@ -40,34 +40,47 @@ fun DictationScreen(
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var controlsOpen by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
     LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
+    LaunchedEffect(state.audioBusy) { if (!state.audioBusy) controlsOpen = false }
     BackHandler(settingsOpen) { settingsOpen = false }
-    Scaffold(topBar = {
+    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), topBar = {
         Column {
             if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
-                Text(evidenceNotice, Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp),
+                Text(evidenceNotice, Modifier.fillMaxWidth().padding(8.dp),
                     color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelSmall)
             }
             // Save/Forget happen in Settings: failures must stay visible even while its form is scrolled.
             if (settingsOpen && state.problem == Problem.STORAGE) Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(stringResource(R.string.storage_error), Modifier.fillMaxWidth()
-                    .then(if (evidenceNotice == null) Modifier.statusBarsPadding() else Modifier)
                     .padding(16.dp).testTag("problem").semantics { liveRegion = LiveRegionMode.Polite },
                     color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
     }) { insets ->
-        Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
+            val controlSize = minOf(228.dp, maxWidth - 48.dp, maxHeight * .40f).coerceAtLeast(112.dp)
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll)
                 .padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 val settingsLabel = stringResource(R.string.current_settings)
                 val backLabel = stringResource(R.string.current_back)
+                val controlsLabel = stringResource(R.string.current_controls)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (settingsOpen) TextButton({ settingsOpen = false }, Modifier.testTag("close_settings").semantics { contentDescription = backLabel }) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
-                    Text(stringResource(if (settingsOpen) R.string.current_settings else R.string.app_name),
+                    if (settingsOpen) Text(stringResource(R.string.current_settings),
                         Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    else {
+                        ModeSelector(state.mode, !state.busy && !state.canRetry, onMode, Modifier.weight(1f))
+                        if (state.mode == Mode.LIVE && state.audioBusy) Box {
+                            TextButton({ controlsOpen = true }, Modifier.testTag("session_controls").semantics { contentDescription = controlsLabel }) { Text("⋮") }
+                            DropdownMenu(controlsOpen, { controlsOpen = false }) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.current_cancel_session)) },
+                                    onClick = { controlsOpen = false; onCancel() }, modifier = Modifier.testTag("cancel"))
+                            }
+                        }
+                    }
                     if (!settingsOpen) IconButton({ settingsOpen = true }, Modifier.testTag("open_settings").semantics { contentDescription = settingsLabel }, enabled = !state.audioBusy) {
                         val color = MaterialTheme.colorScheme.onSurface
                         Canvas(Modifier.size(24.dp)) {
@@ -82,16 +95,10 @@ fun DictationScreen(
                     }
                 }
                 if (settingsOpen) {
-                    Text(stringResource(R.string.current_settings_intro), Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(stringResource(R.string.current_mode), style = MaterialTheme.typography.titleMedium)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                FilterChip(state.mode == Mode.RECORD, { onMode(Mode.RECORD) }, label = { Text(stringResource(R.string.mode_record)) },
-                                    enabled = !state.busy && !state.canRetry, modifier = Modifier.testTag("mode_record"))
-                                FilterChip(state.mode == Mode.LIVE, { onMode(Mode.LIVE) }, label = { Text(stringResource(R.string.mode_live)) },
-                                    enabled = !state.busy && !state.canRetry, modifier = Modifier.testTag("mode_live"))
-                            }
+                            ModeSelector(state.mode, !state.busy && !state.canRetry, onMode)
                             Text(stringResource(R.string.current_mode_detail), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -120,27 +127,22 @@ fun DictationScreen(
                     OutlinedButton(onFloatingSetup, Modifier.fillMaxWidth().testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
                     return@Column
                 }
-                TextButton({ settingsOpen = true }, Modifier.testTag("mode_summary"), enabled = !state.audioBusy) {
-                    Text(stringResource(if (state.mode == Mode.RECORD) R.string.mode_record else R.string.mode_live) + "  ·  " + stringResource(R.string.current_change))
-                }
-                Text(stringResource(when (state.phase) {
-                    Phase.IDLE -> R.string.current_idle
+                if (state.phase !in setOf(Phase.IDLE, Phase.RESULT)) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.connecting
                     Phase.FINALIZING -> R.string.finalizing
                     Phase.RECORDING -> if (state.mode == Mode.LIVE) R.string.live_recording else R.string.recording
                     Phase.TRANSCRIBING -> R.string.transcribing
-                    Phase.RESULT -> R.string.result
-                    Phase.ERROR -> R.string.error
+                    else -> R.string.error
                 }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val recording = state.phase == Phase.RECORDING
                 val processing = state.phase in setOf(Phase.CONNECTING, Phase.TRANSCRIBING, Phase.FINALIZING)
                 CurrentControl(stringResource(if (recording) (if (state.mode == Mode.LIVE) R.string.stop_live else R.string.stop) else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
-                    when { recording -> CurrentVisual.RECORDING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
+                    when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
                     if (recording) true else !processing && state.validKey && !state.keyBusy,
-                    if (recording) onStop else onRecord)
+                    if (recording) onStop else onRecord, controlSize)
                 if (recording) Text(state.elapsed, Modifier.testTag("timer"), style = MaterialTheme.typography.titleLarge)
-                if (state.audioBusy || state.canRetry) TextButton(onCancel, Modifier.testTag("cancel")) {
+                if (state.mode == Mode.RECORD && (state.audioBusy || state.canRetry)) TextButton(onCancel, Modifier.testTag("cancel")) {
                     Text(stringResource(if (state.mode == Mode.LIVE) R.string.cancel_live else R.string.cancel))
                 }
                 if (!state.validKey && !state.audioBusy) TextButton({ settingsOpen = true }, Modifier.testTag("add_key")) { Text(stringResource(R.string.current_add_key)) }
@@ -161,8 +163,8 @@ fun DictationScreen(
                 if (state.text.isNotBlank() || state.phase == Phase.RESULT) {
                     OutlinedTextField(state.text, onEdit, Modifier.fillMaxWidth().testTag("transcript"), label = { Text(stringResource(R.string.transcript)) },
                         minLines = 2, readOnly = state.busy, shape = RoundedCornerShape(24.dp))
-                    if (state.mode == Mode.LIVE && (state.livePartial || state.completedSegments > 0)) Text(
-                        if (state.livePartial) stringResource(R.string.partial_text) else stringResource(R.string.final_segments, state.completedSegments),
+                    if (state.mode == Mode.LIVE && state.livePartial) Text(
+                        stringResource(R.string.partial_text),
                         Modifier.testTag("live_text_status"), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onCopy, Modifier.weight(1f).testTag("copy"), enabled = !state.busy && state.text.isNotBlank()) { Text(stringResource(R.string.copy)) }

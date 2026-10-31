@@ -5,4 +5,5 @@
     <item name="floating_close" type="id" /><item name="floating_open_setup" type="id" />
     <item name="floating_enable" type="id" /><item name="floating_disable" type="id" />
     <item name="floating_mic" type="id" /><item name="floating_notifications" type="id" />
+    <item name="floating_restart" type="id" />
 </resources>

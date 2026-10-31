@@ -113,7 +113,7 @@ class LiveScreenTest {
         waitFor { model.state.value.phase == Phase.RESULT }
         assertEquals("Live words. Synthetic server result.", model.state.value.text)
         assertFalse(model.state.value.livePartial)
-        compose.onNodeWithTag("live_text_status").performScrollTo(); screenshot("09-live-final")
+        compose.onNodeWithTag("transcript").performScrollTo(); screenshot("09-live-final")
         click("copy"); assertEquals(1, server.requestCount)
     }
     @Test fun disconnectKeepsPartialAndOnlyExplicitRecordReconnects() {
@@ -126,7 +126,7 @@ class LiveScreenTest {
         assertTrue(model.state.value.livePartial) // Prior disconnected partial must not become falsely final.
     }
     @Test fun cancellationAndBackgroundReleaseLiveMicrophoneAndAllowModeSwitch() {
-        click("record"); waitFor { model.state.value.livePartial }; click("cancel")
+        click("record"); waitFor { model.state.value.livePartial }; click("session_controls"); click("cancel")
         assertFalse(model.state.value.audioBusy); val kept = model.state.value.text
         SystemClock.sleep(300); assertEquals(kept, model.state.value.text)
         click("mode_record"); assertEquals(Mode.RECORD, model.state.value.mode)

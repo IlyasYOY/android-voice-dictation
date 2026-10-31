@@ -173,10 +173,12 @@ class CrossAppTest {
         screenshot("02-live-partial-original-field-unchanged")
         find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT < 33) {
+            openRecovery()
             assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 15_000))
             assertFieldUnchanged(); screenshot("legacy-API28-copy-fallback")
         } else {
-            assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
+            assertTrue(has(appId("floating_start"), 60_000))
+            assertFalse(device.hasObject(appId("floating_status")))
             assertEquals("Before voice test after", find(fixtureId("body")).text)
         }
         assertEquals(initialConnections + 1, connections.get())
@@ -185,13 +187,19 @@ class CrossAppTest {
         val dump = device.executeShellCommand("dumpsys activity services $APP")
         java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "service-after-insertion.txt").writeText(dump)
         assertFalse("Microphone foreground service must end after Stop/final", dump.contains("isForeground=true"))
-        find(appId("floating_close")).click()
+        if (Build.VERSION.SDK_INT < 33) find(appId("floating_close")).click()
         assertTrue(device.wait(Until.gone(appId("floating_close")), 15_000))
         SystemClock.sleep(700)
         screenshot("03b-final-field-with-panel-closed")
         device.pressBack()
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
         screenshot("04-keyboard-hidden-bubble-cleaned")
+    }
+    private fun openRecovery() {
+        val control=By.desc("Review text or recording problem")
+        find(control,60_000)
+        assertFalse("No automatic final/progress panel",device.hasObject(appId("floating_status")))
+        find(control).click()
     }
     private fun waitForAudio(previous: Int): Boolean {
         val deadline = SystemClock.elapsedRealtime() + 90_000
@@ -212,14 +220,19 @@ class CrossAppTest {
     @Test fun bCancelAndRestartNeverInsertPartialOrCreateDuplicateConnection() {
         startPartial(); val count = connections.get()
         cancelFloating()
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("Cancelled"), 10_000))
         assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
         screenshot("05-cancel-no-insertion")
-        startPartial(); find(appId("floating_stop")).click()
+        find(appId("floating_restart")).click()
+        assertTrue(waitForAudio(bytes.get()))
+        find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT >= 33) {
-            assertTrue(has(By.res(APP, "floating_status").textContains("Inserted into the original field"), 60_000))
+            assertTrue(has(appId("floating_start"), 60_000))
+            assertFalse(device.hasObject(appId("floating_status")))
             assertEquals("Before voice test after", find(fixtureId("body")).text)
         } else {
+            openRecovery()
             assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 30_000))
             assertFieldUnchanged()
         }
@@ -228,6 +241,7 @@ class CrossAppTest {
     @Test fun cFocusChangeCancelsAndNeverRetargets() {
         startPartial()
         focusField("second")
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("Editor or caret changed"), 10_000))
         assertFieldUnchanged(); assertEquals("Other field", find(fixtureId("second_body")).text)
         screenshot("06-focus-change-cancelled")
@@ -239,6 +253,7 @@ class CrossAppTest {
         screenshot("07a-unsupported-focused-above-keyboard")
         val initialConnections = connections.get(); val initialBytes = bytes.get()
         startPartial(); find(appId("floating_stop")).click()
+        openRecovery()
         assertTrue(has(By.res(APP, "floating_status").textContains("Nothing inserted. Copy"), 60_000))
         assertEquals("Unsupported stays unchanged", find(fixtureId("unsupported_body")).text)
         assertTrue(find(appId("floating_copy")).isEnabled)
@@ -305,7 +320,7 @@ class CrossAppTest {
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
         checkpoint("Independent keyboard insertion preserved surrounding text; ${bytes.get() - initialBytes} PCM bytes; microphone foreground ended")
         screenshot("15-independent-test-keyboard-inserted")
-        find(appId("floating_close")).click()
+        if (Build.VERSION.SDK_INT < 33) find(appId("floating_close")).click()
         assertTrue(device.wait(Until.gone(appId("floating_close")), 15_000))
         SystemClock.sleep(700)
         screenshot("18-second-ime-final-field-unobscured")

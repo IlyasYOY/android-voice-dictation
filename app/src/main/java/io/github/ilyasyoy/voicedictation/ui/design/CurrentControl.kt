@@ -1,42 +1,38 @@
 package io.github.ilyasyoy.voicedictation.ui.design
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import android.content.Context
+import android.view.View
+import android.widget.ImageView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+
+/** Native drawing lets both entry points use exactly the same frame clock and renderer. */
+internal class CurrentMarkView(context: Context) : ImageView(context) {
+    val mark = CurrentDrawable()
+    init { setImageDrawable(mark); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); if (windowVisibility == VISIBLE) mark.start() }
+    override fun onDetachedFromWindow() { mark.stop(); super.onDetachedFromWindow() }
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (isAttachedToWindow && visibility == VISIBLE) mark.start() else mark.stop()
+    }
+}
 
 @Composable
-internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit) {
-    val scale by animateFloatAsState(if (visual == CurrentVisual.RECORDING) .96f else 1f, tween(500), label = "Current state")
-    val drawable = remember { CurrentDrawable() }
-    Box(Modifier.size(228.dp).alpha(if (enabled || visual == CurrentVisual.PROCESSING) 1f else .5f)
+internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit, size: Dp = 228.dp) {
+    Box(Modifier.size(size).alpha(if (enabled || visual in setOf(CurrentVisual.CONNECTING,CurrentVisual.PROCESSING)) 1f else .5f)
         .testTag(tag).semantics { contentDescription = label }
-        .clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawIntoCanvas { canvas ->
-                drawable.visual = visual
-                val inset = (size.minDimension * (1 - scale) / 2).toInt()
-                drawable.setBounds(inset, inset, size.width.toInt()-inset, size.height.toInt()-inset)
-                drawable.draw(canvas.nativeCanvas)
-            }
-        }
-        if (visual == CurrentVisual.PROCESSING) CircularProgressIndicator(Modifier.size(40.dp), color = Color(SoftCurrentPalette.Accent), strokeWidth = 2.dp)
-        else Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-            color = Color(SoftCurrentPalette.Plum), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)) {
+        AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
     }
 }
