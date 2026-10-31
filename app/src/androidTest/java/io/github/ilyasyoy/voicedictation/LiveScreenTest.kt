@@ -104,7 +104,7 @@ class LiveScreenTest {
         shell("screencap -p /sdcard/Download/dictation-evidence/$name.png")
     }
     @Test fun realPcmStreamsPartialThenFinalWithoutDuplicates() {
-        click("record"); waitFor { model.state.value.livePartial }
+        click("record"); waitFor { model.state.value.livePartial && bytes.get() >= 4800 }
         assertTrue(bytes.get() >= 4800); assertEquals("Live words", model.state.value.text)
         compose.onNodeWithTag("open_settings").assertIsNotEnabled()
         compose.onNodeWithTag("live_text_status").performScrollTo(); screenshot("07-live-partial")
