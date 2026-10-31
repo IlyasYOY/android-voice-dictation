@@ -34,6 +34,8 @@ fun DictationScreen(
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
 ) {
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
     BackHandler(settingsOpen) { settingsOpen = false }
     Scaffold(topBar = {
         if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
@@ -42,7 +44,7 @@ fun DictationScreen(
         }
     }) { insets ->
         Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState())
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll)
                 .padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 val settingsLabel = stringResource(R.string.current_settings)

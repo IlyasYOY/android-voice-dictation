@@ -204,6 +204,7 @@ class CrossAppTest {
     }
     private fun cancelFloating() {
         find(appId("floating_stop")).longClick()
+        assertTrue("Opening the non-focusable controls must not stop recording", has(appId("floating_stop"), 5000))
         find(label("Cancel")).click()
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)

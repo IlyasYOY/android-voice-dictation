@@ -28,7 +28,7 @@ internal class FloatingWindow(
     private val mark = CurrentDrawable()
     private val icon = object : ImageButton(context) { override fun performClick(): Boolean = super.performClick() }.apply {
         id = R.id.floating_start; setImageDrawable(mark); setPadding(dp(3),dp(3),dp(3),dp(3))
-        setBackgroundColor(android.graphics.Color.TRANSPARENT); setOnClickListener { iconClick() }
+        setBackgroundColor(android.graphics.Color.TRANSPARENT); setOnClickListener { controlsOpen = false; iconClick() }
         setOnLongClickListener { if (active) { showControls(); true } else false }
     }
     private val heading = TextView(context).apply { textSize = 12f; setTextColor(ink) }
@@ -42,6 +42,7 @@ internal class FloatingWindow(
     }
     private val copyButton = button(R.string.copy, R.id.floating_copy, copy)
     private val closeButton = button(R.string.floating_close, R.id.floating_close, close)
+    private val cancelButton = button(R.string.floating_cancel, R.id.floating_cancel) { controlsOpen = false; cancel() }
     private val setupButton = button(R.string.floating_open_setup, R.id.floating_open_setup, setup)
     private val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -54,16 +55,23 @@ internal class FloatingWindow(
     private var wasActive = false
     private var held = false
     private var cancelAction = -1
-    private var popup: PopupMenu? = null
+    private var controlsOpen = false
+    private var panel = false
+    private var lastNotice: String? = null
+    private var wasProcessing = false
     private val hold = Runnable { held = true; icon.performLongClick() }
     private fun showControls() {
-        popup?.dismiss()
-        popup = PopupMenu(context, icon).apply {
-            menu.add(context.getString(R.string.current_controls)).isEnabled = false
-            menu.add(Menu.NONE, R.id.floating_cancel, Menu.NONE, context.getString(R.string.floating_cancel)).setOnMenuItemClickListener { cancel(); true }
-            setOnDismissListener { popup = null }
-            show()
-        }
+        controlsOpen = !controlsOpen
+        layoutControls()
+        clamp(); update()
+    }
+    private fun layoutControls() {
+        val menu = active && controlsOpen
+        params.width = when { panel -> minOf(dp(280),context.resources.displayMetrics.widthPixels-dp(16)); menu -> dp(176); else -> dp(64) }
+        root.setPadding(if(panel || menu)dp(12) else 0, if(panel || menu)dp(8) else 0, if(panel || menu)dp(12) else 0, if(panel || menu)dp(12) else 0)
+        heading.text = if(menu) context.getString(R.string.current_controls) else lastNotice ?: context.getString(R.string.app_name)
+        heading.visibility = if(panel || menu)View.VISIBLE else View.GONE
+        cancelButton.visibility = if(menu)View.VISIBLE else View.GONE
     }
     @SuppressLint("ClickableViewAccessibility") // Explicit click/long-click semantics and accessible Cancel action.
     private fun initialize() {
@@ -71,7 +79,7 @@ internal class FloatingWindow(
         root.addView(heading); root.addView(status); root.addView(preview)
         controls.addView(copyButton, LinearLayout.LayoutParams(0, dp(48), 1f))
         controls.addView(closeButton, LinearLayout.LayoutParams(0, dp(48), 1f))
-        root.addView(controls); root.addView(setupButton)
+        root.addView(controls); root.addView(cancelButton); root.addView(setupButton)
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         icon.setOnTouchListener { view, event ->
@@ -96,37 +104,36 @@ internal class FloatingWindow(
     init { initialize() }
     fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false) {
         this.imeTop = imeTop; active = recording
-        val panel = expanded && !active
-        params.width = if (panel) minOf(dp(280),context.resources.displayMetrics.widthPixels-dp(16)) else dp(64)
-        root.setPadding(if(panel)dp(16) else 0, if(panel)dp(8) else 0, if(panel)dp(16) else 0, if(panel)dp(12) else 0)
+        panel = expanded && !active
+        lastNotice = notice
+        if (!active) controlsOpen = false
+        layoutControls()
         root.background = GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) }
         root.elevation = dp(3).toFloat()
         mark.visual = when { processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE }
         icon.isLongClickable = active
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
-        icon.contentDescription = if(active) context.getString(R.string.current_bubble_hint) else context.getString(R.string.floating_start)
+        icon.contentDescription = context.getString(if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
         ViewCompat.setStateDescription(icon, message)
-        icon.tooltipText = if(active) context.getString(R.string.current_bubble_hint) else context.getString(R.string.floating_start)
+        icon.tooltipText = icon.contentDescription
         if (active && cancelAction == -1) cancelAction = ViewCompat.addAccessibilityAction(icon, context.getString(R.string.floating_cancel)) { _, _ -> cancel(); true }
         if (!active && cancelAction != -1) { ViewCompat.removeAccessibilityAction(icon,cancelAction); cancelAction = -1 }
-        if (active && !wasActive) Toast.makeText(context,R.string.current_bubble_hint,Toast.LENGTH_LONG).show()
-        if (!active) popup?.dismiss()
-        wasActive = active
-        heading.text = notice ?: context.getString(R.string.app_name); heading.visibility = if(panel)View.VISIBLE else View.GONE
+        if (active && (!wasActive || (wasProcessing && !processing))) Toast.makeText(context,if(processing)R.string.current_hold_hint else R.string.current_bubble_hint,Toast.LENGTH_LONG).show()
+        wasActive = active; wasProcessing = processing
         status.text = message; status.visibility = if(panel)View.VISIBLE else View.GONE
         preview.text = text; preview.visibility = if(panel && text.isNotEmpty())View.VISIBLE else View.GONE
         controls.visibility = if(panel)View.VISIBLE else View.GONE
         copyButton.visibility = if(panel && canCopy)View.VISIBLE else View.GONE
         closeButton.visibility = if(panel)View.VISIBLE else View.GONE
         setupButton.visibility = if(panel && needsSetup)View.VISIBLE else View.GONE
-        if(!moved || !attached) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=imeTop-if(panel)dp(260) else dp(80) }
+        if(!moved || !attached) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=imeTop-if(panel)dp(260) else if(controlsOpen)dp(176) else dp(80) }
         clamp()
         if(!attached) { wm.addView(root,params); attached=true } else update()
     }
     private fun clamp() {
         params.x=params.x.coerceIn(0,maxOf(0,context.resources.displayMetrics.widthPixels-maxOf(params.width,dp(64))))
-        params.y=params.y.coerceIn(dp(24),maxOf(dp(24),imeTop-dp(64)))
+        params.y=params.y.coerceIn(dp(24),maxOf(dp(24),imeTop-dp(if(panel)260 else if(controlsOpen)176 else 64)))
     }
     private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
-    fun hide() { handler.removeCallbacks(hold); popup?.dismiss(); if(attached)runCatching { wm.removeView(root) }; attached=false }
+    fun hide() { handler.removeCallbacks(hold); controlsOpen=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
 }

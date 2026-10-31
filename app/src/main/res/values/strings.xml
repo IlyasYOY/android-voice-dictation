@@ -87,4 +87,5 @@
   <string name="current_controls">Recording controls</string>
   <string name="current_bubble_help">Tap the wave to start or stop. Hold it for an explicit Cancel control. Cancel keeps received text and discards unsent audio; notification controls remain available.</string>
   <string name="current_back">Back to dictation</string>
+  <string name="current_hold_hint">Hold for recording controls</string>
 </resources>

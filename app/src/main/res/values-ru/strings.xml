@@ -87,4 +87,5 @@
   <string name="current_controls">Управление записью</string>
   <string name="current_bubble_help">Нажмите на волну для начала или остановки. Удерживайте для явной отмены. Отмена сохраняет полученный текст и удаляет неотправленный звук; действия доступны и в уведомлении.</string>
   <string name="current_back">Назад к диктовке</string>
+  <string name="current_hold_hint">Удерживайте для управления записью</string>
 </resources>
