@@ -76,7 +76,8 @@ internal class CurrentDrawable : Drawable(), Animatable {
         val x = bounds.exactCenterX(); val y = bounds.exactCenterY()
         paint.style = Paint.Style.FILL
         SoftCurrentPalette.Layers.forEachIndexed { layer, color ->
-            val radius = w * (.415f - layer * .019f)
+            // Even the strongest morph plus drift stays inside the control's touch bounds.
+            val radius = w * (.40f - layer * .019f)
             for (i in 0 until 72) {
                 val angle = i * 2.0 * PI / 72
                 val r = radius * (1 + (.07 + energy*.08) * sin(3*angle + phase*.75 + layer*.18) + .06*cos(2*angle - phase*.48))
