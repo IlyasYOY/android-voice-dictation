@@ -16,15 +16,17 @@ import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.*
 import org.junit.Test
 import org.junit.Assert.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 
-/** Actual MediaRecorder, airplane-mode UI and HTTP adapter; synthetic localhost responses only. */
+/** Actual MediaRecorder/airplane UI; injected offline fault, manual retry through real localhost HTTP. */
 class OfflineRecordRuntimeTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
@@ -64,31 +66,40 @@ class OfflineRecordRuntimeTest {
         val originalPlane=shell("settings get global airplane_mode_on")=="1"
         val oldScale=shell("settings get global animator_duration_scale")
         val server=MockWebServer()
-        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
         server.enqueue(MockResponse().setBody("{\"text\":\"Recorded offline. Uploaded by explicit retry.\"}"))
         server.start()
         val keyRead=CompletableDeferred<Unit>()
-        val calls=AtomicInteger();var startedAt=0L;var tapAt=0L;var capturing=false
-        var captured=ByteArray(0)
+        val calls=AtomicInteger();val startedAt=AtomicLong();val startCost=AtomicLong();var tapAt=0L
+        val capturing=AtomicBoolean();val captured=AtomicReference(ByteArray(0))
         lateinit var model:DictationViewModel
         val saved=AndroidApiKeyStore(context,".test.crossapp")
         try {
-            shell("settings put global animator_duration_scale 1")
+            shell("settings put global animator_duration_scale 0")
             shell("pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}")
+            shell("cmd statusbar collapse")
+            device.pressHome()
+            checkpoint("Enabling isolated synthetic fixture")
             context.startActivity(Intent(context,DebugFloatingSetupActivity::class.java).putExtra("port",server.port).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            find(By.text("Enable isolated fixture mode")).click()
+            find(By.text(Pattern.compile("(?i)Enable isolated fixture mode"))).click()
             waitFor("Synthetic key is saved") {runBlocking {saved.load()!=null}}
+            checkpoint("Switching real system airplane mode on")
             airplane(true)
             MainActivity.testNotice="OFFLINE TEST · synthetic server · no OpenAI"
             MainActivity.testFactory={ owner ->
                 val recorder=AndroidAudioRecorder(owner)
                 DictationViewModel(object:AudioRecorder {
-                    override fun start(onLimit:()->Unit) {recorder.start(onLimit);startedAt=SystemClock.elapsedRealtime();capturing=true}
-                    override fun stop()=recorder.stop().also {capturing=false;captured=it.readBytes()}
-                    override fun cancel() {recorder.cancel();capturing=false}
-                },Transcriber {file,key->
+                    override fun start(onLimit:()->Unit) {
+                        val before=SystemClock.elapsedRealtime();recorder.start(onLimit)
+                        val ready=SystemClock.elapsedRealtime();startedAt.set(ready);startCost.set(ready-before);capturing.set(true)
+                    }
+                    override fun stop()=recorder.stop().also {
+                        captured.set(it.readBytes());capturing.set(false)
+                        checkpoint("Local recorder finalized ${it.length()} bytes without uploading")
+                    }
+                    override fun cancel() {recorder.cancel();capturing.set(false)}
+                },Transcriber {_,_->
                     calls.incrementAndGet()
-                    OpenAiTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).callTimeout(10,TimeUnit.SECONDS).build(),server.url("/v1/audio/transcriptions")).transcribe(file,key)
+                    throw java.io.IOException("Injected offline transport; real airplane mode does not disable loopback")
                 },keyStore=object:ApiKeyStore {
                     override suspend fun load():String? {keyRead.await();return saved.load()}
                     override suspend fun save(key:String)=saved.save(key)
@@ -96,38 +107,43 @@ class OfflineRecordRuntimeTest {
                 }).also {model=it}
             }
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-            find(By.desc("Record"));screenshot("01-airplane-idle-before-key-read")
-            tapAt=SystemClock.elapsedRealtime();find(By.desc("Record")).click()
-            waitFor("Local capture starts while key loading is suspended") {capturing && model.state.value.phase==Phase.RECORDING}
+            checkpoint("Opening main Record control while saved-key read is suspended")
+            find(By.desc(context.getString(R.string.record)));screenshot("01-airplane-idle-before-key-read")
+            val recordControl=find(By.desc(context.getString(R.string.record)))
+            tapAt=SystemClock.elapsedRealtime();recordControl.click()
+            waitFor("Local capture starts while key loading is suspended") {capturing.get() && model.state.value.phase==Phase.RECORDING}
             assertTrue(model.state.value.keyBusy);assertEquals(0,calls.get());assertEquals(0,server.requestCount)
-            checkpoint("MediaRecorder started ${startedAt-tapAt} ms after tap; saved-key read still blocked; zero pre-Stop requests")
-            screenshot("02-airplane-local-capture");SystemClock.sleep(4000)
-            find(By.desc("Stop")).click()
-            waitFor("Stop releases microphone before credential read/upload") {!capturing && model.state.value.phase==Phase.TRANSCRIBING}
-            assertEquals(0,calls.get());assertTrue(captured.isNotEmpty());screenshot("03-stopped-before-key-read")
+            checkpoint("MediaRecorder started ${startedAt.get()-tapAt} ms after click injection (${startCost.get()} ms inside recorder.start); saved-key read still blocked; zero pre-Stop requests")
+            screenshot("02-airplane-local-capture")
+            if(InstrumentationRegistry.getArguments().getString("motionCapture")=="true") {
+                shell("settings put global animator_duration_scale 1");SystemClock.sleep(4000)
+                shell("settings put global animator_duration_scale 0")
+            } else SystemClock.sleep(1500)
+            checkpoint("Stopping actual local capture before releasing the key read")
+            find(By.desc(context.getString(R.string.stop))).click()
+            waitFor("Stop releases microphone before credential read/upload") {!capturing.get() && captured.get().isNotEmpty() && model.state.value.phase==Phase.TRANSCRIBING}
+            assertEquals(0,calls.get());assertTrue(captured.get().isNotEmpty());screenshot("03-stopped-before-key-read")
             keyRead.complete(Unit)
-            waitFor("Transport loss retains retry audio") {model.state.value.canRetry}
+            waitFor("Injected transport loss retains retry audio") {model.state.value.canRetry}
             assertEquals(Problem.NETWORK,model.state.value.problem);assertEquals(1,calls.get())
             screenshot("04-network-loss-recording-retained")
             airplane(false) // Leaving the Activity must retain the stopped file and release old ownership.
             waitFor("Activity stop transfers audio to process recovery") {RecordingRecovery.processOwned.count==1}
-            SystemClock.sleep(2000);assertEquals(1,calls.get());assertEquals(1,server.requestCount)
+            SystemClock.sleep(2000);assertEquals(1,calls.get());assertEquals(0,server.requestCount)
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
             find(By.text(context.getString(R.string.saved_recordings,1))).click()
             find(By.res(context.packageName,"floating_retry_audio"))
             screenshot("05-manual-recovery-after-network-restored")
-            assertEquals(1,server.requestCount)
+            assertEquals(0,server.requestCount)
             find(By.res(context.packageName,"floating_retry_audio")).click()
             waitFor("Only explicit Retry completes the retained upload") {RecordingRecovery.processOwned.count==0 && FloatingFeedback.processOwned.text.isNotBlank()}
-            assertEquals(2,server.requestCount)
+            assertEquals(1,server.requestCount)
             assertEquals("Recorded offline. Uploaded by explicit retry.",FloatingFeedback.processOwned.text)
-            val first=checkNotNull(server.takeRequest(5,TimeUnit.SECONDS))
-            val second=checkNotNull(server.takeRequest(5,TimeUnit.SECONDS))
+            val retried=checkNotNull(server.takeRequest(5,TimeUnit.SECONDS))
             fun contains(bytes:ByteArray,sample:ByteArray):Boolean=(0..bytes.size-sample.size).any {start->sample.indices.all {bytes[start+it]==sample[it]}}
-            assertTrue("Original whole capture is submitted",contains(first.body.readByteArray(),captured))
-            assertTrue("Retry contains every same audio byte",contains(second.body.readByteArray(),captured))
+            assertTrue("Explicit manual HTTP upload contains every original audio byte",contains(retried.body.readByteArray(),captured.get()))
             screenshot("06-explicit-retry-passive-result-no-insertion")
-            checkpoint("Airplane capture + real stopped file + failed HTTP + Settings/background preservation + one manual retry passed; audio bytes=${captured.size}; real spoken first word is not tested")
+            checkpoint("Actual airplane capture + real stopped file + injected offline failure + Settings/background preservation + one manual retry passed; audio bytes=${captured.get().size}; real spoken first word is not tested")
             SystemClock.sleep(3000)
         } finally {
             keyRead.complete(Unit)
