@@ -92,4 +92,20 @@
   <string name="current_retry_network_error">Не удалось отправить запись. Проверьте соединение и повторите. Запись сохранена.</string>
   <string name="current_retry_service_error">Сервис не смог распознать запись. Проверьте учётную запись или повторите позже. Запись сохранена.</string>
   <string name="saved_recordings">Сохранённые записи (%1$d)</string>
+  <string name="recording_storage_error">Не удалось сохранить запись. Проверьте свободное место на устройстве. Уже сохранённые данные оставлены.</string>
+  <string name="saved_title">Сохранённые записи</string>
+  <string name="saved_retention">Звук и текст остаются на этом устройстве, пока вы их не удалите. Автоматической отправки нет.</string>
+  <string name="saved_empty">Сохранённых записей пока нет.</string>
+  <string name="saved_transcribed">Распознано</string>
+  <string name="saved_interrupted">Прервано · повтор только по вашему действию</string>
+  <string name="saved_unavailable">Запись требует внимания. Её данные сохранены.</string>
+  <string name="saved_pending">Ожидает распознавания</string>
+  <string name="saved_live_text">Текст Live · локального аудиофайла нет</string>
+  <string name="saved_audio_kept">Аудио сохранено для будущего прослушивания</string>
+  <string name="saved_delete">Удалить запись</string>
+  <string name="saved_delete_confirm">Удалить эту запись, её аудио и сохранённый текст?</string>
+  <string name="saved_more">Показать ещё</string>
+  <string name="saved_back">Назад</string>
+  <string name="saved_unsaved_text">Полученный текст не удалось записать. Скопируйте его или сохраните повторно без новой отправки.</string>
+  <string name="saved_save_received">Сохранить полученный текст</string>
 </resources>

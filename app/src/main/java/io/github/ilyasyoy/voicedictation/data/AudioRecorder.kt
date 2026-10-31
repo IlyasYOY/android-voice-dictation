@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaRecorder
 import java.io.File
 import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
+import io.github.ilyasyoy.voicedictation.session.RecordingStorageFailure
 
 interface AudioRecorder {
     fun start(onLimit: () -> Unit)
@@ -13,14 +14,15 @@ interface AudioRecorder {
 
 /** Caller owns an explicit user-started Activity or microphone foreground-service lifecycle. */
 class AndroidAudioRecorder(context: Context) : AudioRecorder {
-    private val files = RecordingFiles.shared(File(context.cacheDir, "dictation"))
+    private val context=context.applicationContext
+    private val files get() = AndroidRecordingStorage.repository(context)
     private var recorder: MediaRecorder? = null
     private var file: File? = null
 
     @Suppress("DEPRECATION")
     override fun start(onLimit: () -> Unit) {
         check(recorder == null)
-        val target = files.create()
+        val target = try { files.allocate() } catch(e:Exception) {throw RecordingStorageFailure(e)}
         file = target
         val capture = MediaRecorder()
         recorder = capture
@@ -50,15 +52,20 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
         try {
             active.stop()
             require(target.length() > 0)
+            try {files.finalized(target)} catch(e:Exception) {throw RecordingStorageFailure(e)}
             return target
-        } catch (e: Exception) { target.delete(); throw e }
+        } catch (e: Exception) {
+            // A failed finalization may still contain audio. Preserve it for explicit recovery.
+            runCatching { files.retain(target,SavedRecordingFailure.STORAGE) }
+            throw e
+        }
         finally { active.release(); recorder = null; file = null }
     }
 
     override fun cancel() {
         recorder?.let { runCatching { it.stop() }; it.release() }
         recorder = null
-        file?.delete()
+        file?.let { target -> files.record(target)?.let { files.discard(it.id) } }
         file = null
     }
 }

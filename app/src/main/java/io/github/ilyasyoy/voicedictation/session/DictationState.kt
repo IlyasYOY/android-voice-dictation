@@ -2,7 +2,7 @@ package io.github.ilyasyoy.voicedictation.session
 
 enum class Mode { RECORD, LIVE }
 enum class Phase { IDLE, CONNECTING, RECORDING, TRANSCRIBING, FINALIZING, RESULT, ERROR }
-enum class Problem { KEY, STORAGE, PERMISSION, RECORDING, NETWORK, AUTH, QUOTA, SERVER, RESPONSE }
+enum class Problem { KEY, STORAGE, LOCAL_STORAGE, PERMISSION, RECORDING, NETWORK, AUTH, QUOTA, SERVER, RESPONSE }
 data class DictationState(
     val mode: Mode = Mode.RECORD,
     val phase: Phase = Phase.IDLE,

@@ -155,7 +155,7 @@ fun DictationScreen(
                 if (state.safetyStopped) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 state.problem?.let { problem ->
                     Text(stringResource(when (problem) {
-                        Problem.KEY -> R.string.key_error; Problem.STORAGE -> R.string.storage_error; Problem.PERMISSION -> R.string.permission_error
+                        Problem.KEY -> R.string.key_error; Problem.STORAGE -> R.string.storage_error; Problem.LOCAL_STORAGE -> R.string.recording_storage_error; Problem.PERMISSION -> R.string.permission_error
                         Problem.RECORDING -> R.string.record_error; Problem.NETWORK -> if (state.mode == Mode.LIVE) R.string.live_network_error else R.string.network_error
                         Problem.AUTH -> R.string.auth_error; Problem.QUOTA -> R.string.quota_error; Problem.SERVER -> R.string.server_error; Problem.RESPONSE -> R.string.response_error
                     }), Modifier.testTag("problem"), color = MaterialTheme.colorScheme.error)

@@ -9,4 +9,5 @@
     <item name="floating_enable" type="id" /><item name="floating_disable" type="id" />
     <item name="floating_mic" type="id" /><item name="floating_notifications" type="id" />
     <item name="floating_discard" type="id" />
+  <item name="saved_delete" type="id" />
 </resources>

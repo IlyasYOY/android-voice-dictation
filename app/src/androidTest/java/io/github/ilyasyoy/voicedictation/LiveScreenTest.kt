@@ -80,7 +80,8 @@ class LiveScreenTest {
         MainActivity.testNotice = "TEST WEBSOCKET · synthetic text · no OpenAI call"
         MainActivity.testFactory = {
             DictationViewModel(AndroidAudioRecorder(it), OpenAiTranscriber(), AndroidPcmSource(),
-                OpenAiRealtimeTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).build(), endpoint))
+                OpenAiRealtimeTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).build(), endpoint),
+                recordings=StoredRecordingRetention(AndroidRecordingStorage.repository(it)))
                 .also { m -> model = m; m.setKey("synthetic-live-key") }
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
