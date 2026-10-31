@@ -91,7 +91,12 @@ class LiveScreenTest {
         MainActivity.testFactory = null; MainActivity.testNotice = null
         scheduler.shutdownNow(); server.shutdown()
     }
-    private fun click(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performClick() }
+    private fun click(tag: String) {
+        val configuration = tag in setOf("mode_record", "mode_live", "forget")
+        if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
+        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
+    }
     private fun waitFor(test: () -> Boolean) { compose.waitUntil(30_000, test) }
     private fun screenshot(name: String) {
         compose.waitForIdle(); SystemClock.sleep(250)

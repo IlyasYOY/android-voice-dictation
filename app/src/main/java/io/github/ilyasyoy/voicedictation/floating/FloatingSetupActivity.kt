@@ -1,5 +1,8 @@
 package io.github.ilyasyoy.voicedictation.floating
 
+import io.github.ilyasyoy.voicedictation.ui.design.SoftCurrentPalette as P
+import android.graphics.drawable.GradientDrawable
+import android.content.res.Configuration
 import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.AlertDialog
@@ -24,15 +27,22 @@ class FloatingSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
     override fun onResume() { super.onResume(); render() }
     private fun render() {
+        val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val ink = if (dark) P.NightText else P.Plum
+        val paper = if (dark) P.Night else P.Paper
+        fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
         val enabled = FloatingPreferences.enabled(this)
         val connected = getSystemService(AccessibilityManager::class.java).getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { it.resolveInfo.serviceInfo.packageName == packageName && it.resolveInfo.serviceInfo.name == FloatingDictationService::class.java.name }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 48, 24, 32) }
-        layout.addView(TextView(this).apply { text = getString(R.string.floating_service_name); textSize = 24f })
-        layout.addView(TextView(this).apply { text = getString(R.string.floating_setup_summary); textSize = 16f })
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(24), dp(24), dp(32)); setBackgroundColor(paper) }
+        layout.addView(TextView(this).apply { text = getString(R.string.floating_service_name); textSize = 26f; setTextColor(ink); setPadding(0,0,0,dp(20)) })
+        layout.addView(TextView(this).apply { text = getString(R.string.floating_setup_summary); textSize = 16f; setTextColor(ink); setPadding(0,dp(12),0,dp(12)) })
         layout.addView(TextView(this).apply { text = getString(if (enabled && connected) R.string.floating_enabled else R.string.floating_disabled) })
         fun button(label: Int, id: Int = 0, onClick: () -> Unit) { layout.addView(Button(this).apply {
-            text = getString(label); if (id != 0) this.id = id; setOnClickListener { onClick() }
+            text = getString(label); if (id != 0) this.id = id; isAllCaps = false; setTextColor(ink); minHeight = dp(52)
+            background = GradientDrawable().apply { setColor(if(dark)P.NightSurface else 0xFFE7DDF2.toInt()); cornerRadius=dp(24).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) }
+            setOnClickListener { onClick() }
         }) }
         button(if (enabled) R.string.floating_settings else R.string.floating_enable, R.id.floating_enable) {
             if (enabled) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -49,8 +59,10 @@ class FloatingSetupActivity : ComponentActivity() {
             else startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
         }
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) layout.addView(TextView(this).apply { text = getString(R.string.floating_need_notification) })
+        layout.addView(TextView(this).apply { text=getString(R.string.current_bubble_help); textSize=14f; setTextColor(ink); setPadding(0,dp(16),0,dp(16)) })
         button(R.string.floating_back) { finish() }
-        layout.addView(TextView(this).apply { text = getString(R.string.floating_disclosure); textSize = 16f })
-        setContentView(ScrollView(this).apply { addView(layout) })
+        layout.addView(TextView(this).apply { text = getString(R.string.floating_disclosure); textSize = 16f; setTextColor(ink); setPadding(0,dp(12),0,dp(12)) })
+        for (i in 0 until layout.childCount) (layout.getChildAt(i) as? TextView)?.setTextColor(ink)
+        setContentView(ScrollView(this).apply { setBackgroundColor(paper); addView(layout) })
     }
 }

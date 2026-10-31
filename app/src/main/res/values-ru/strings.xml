@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="app_name">Голосовые заметки</string>
-  <string name="eyebrow">ДИКТОВКА / ПРОТОТИП</string>
-  <string name="title">Мысли — в текст.</string>
-  <string name="idle">Можно начинать</string>
   <string name="recording">● Идёт запись</string>
   <string name="transcribing">Распознаём…</string>
   <string name="result">Текст готов</string>
@@ -77,4 +74,17 @@
   <string name="floating_inserted">Вставлено в исходное поле. Сообщение или форма не отправлены.</string>
   <string name="floating_copy_failed">Системный буфер не принял текст. Ничего не отправлено.</string>
   <string name="floating_setup_summary">Необязательный доступ через специальные возможности добавляет перемещаемую кнопку live-диктовки рядом с клавиатурой. Перед включением прочитайте и подтвердите объяснение доступа. Запись начинается только по нажатию кружка.</string>
+  <string name="current_settings">Настройки</string>
+  <string name="current_settings_intro">Немного места для деталей.</string>
+  <string name="current_mode">Распознавание</string>
+  <string name="current_mode_detail">В режиме записи звук отправляется после Stop. В режиме Live — во время записи. Оба режима требуют API key.</string>
+  <string name="current_change">Изменить</string>
+  <string name="current_idle">Место для вашей мысли</string>
+  <string name="current_processing">Обработка</string>
+  <string name="current_add_key">Добавить API key в настройках</string>
+  <string name="current_tap_hint">Нажмите «Записать», чтобы начать.</string>
+  <string name="current_bubble_hint">Нажмите, чтобы остановить · Удерживайте для действий</string>
+  <string name="current_controls">Управление записью</string>
+  <string name="current_bubble_help">Нажмите на волну для начала или остановки. Удерживайте для явной отмены. Отмена сохраняет полученный текст и удаляет неотправленный звук; действия доступны и в уведомлении.</string>
+  <string name="current_back">Назад к диктовке</string>
 </resources>

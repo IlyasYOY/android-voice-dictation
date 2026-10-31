@@ -54,7 +54,12 @@ class DictationScreenTest {
     }
     private fun key() { scenario.onActivity { model.setKey("synthetic-test-key") } }
     private fun waitPhase(phase: Phase) { compose.waitUntil(30_000) { model.state.value.phase == phase } }
-    private fun click(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performClick() }
+    private fun click(tag: String) {
+        val configuration = tag in setOf("mode_record", "mode_live", "forget")
+        if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
+        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
+    }
     private fun screenshot(name: String) {
         compose.waitForIdle(); SystemClock.sleep(350)
         val out = File(context.getExternalFilesDir(null), "evidence").apply { mkdirs() }

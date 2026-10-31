@@ -61,7 +61,7 @@ class FloatingDictationService : AccessibilityService() {
             receiverRegistered = true
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.floating_channel), NotificationManager.IMPORTANCE_LOW))
-        window = FloatingWindow(this, ::bubbleClick, ::stopFromUser, ::cancelFromUser, ::copy, ::closeSession, ::openSetup)
+        window = FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, ::closeSession, ::openSetup)
         scheduleRefresh()
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
@@ -128,7 +128,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, expanded, state?.text ?: retainedText, status, active, !(state?.text ?: retainedText).isBlank(), needsSetup, DebugFloatingConfiguration.notice(this)) }
+        try { window?.render(imeTop, expanded, state?.text ?: retainedText, status, active, !(state?.text ?: retainedText).isBlank(), needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -166,7 +166,7 @@ class FloatingDictationService : AccessibilityService() {
     private fun notification(): Notification {
         fun action(value: String, request: Int) = PendingIntent.getService(this, request,
             Intent(this, FloatingDictationService::class.java).setAction(value), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_launcher).setContentTitle(getString(R.string.app_name))
+        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_current_notification).setContentTitle(getString(R.string.app_name))
             .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> R.string.live_stream_status; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
             .setOngoing(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .addAction(0, getString(R.string.stop_live), action(STOP, 1)).addAction(0, getString(R.string.floating_cancel), action(CANCEL, 2)).build()

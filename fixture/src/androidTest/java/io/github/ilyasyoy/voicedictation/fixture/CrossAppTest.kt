@@ -157,8 +157,9 @@ class CrossAppTest {
         // Expire the visible-activity grace period; product has no instrumentation or foreground Activity.
         SystemClock.sleep(11_000)
         val initialConnections = connections.get()
+        val initialBytes = bytes.get()
         find(appId("floating_start")).click()
-        val streamed = awaitObject(By.res(APP, "floating_preview").textContains("Bubble words"), 90_000) != null
+        val streamed = waitForAudio(initialBytes)
         checkpoint("Streaming observation: connections=${connections.get()}, PCM bytes=${bytes.get()}")
         if (!streamed) {
             device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "stream-failure.xml"))
@@ -167,7 +168,7 @@ class CrossAppTest {
         assertTrue("Streaming words must arrive after microphone starts", streamed)
         assertEquals("Before  after", find(fixtureId("body")).text)
         assertTrue(bytes.get() > 0)
-        checkpoint("Live microphone/PCM/WebSocket partial received; original field unchanged")
+        checkpoint("Live microphone/PCM/WebSocket active; compact control and original field unchanged")
         screenshot("02-live-partial-original-field-unchanged")
         find(appId("floating_stop")).click()
         if (Build.VERSION.SDK_INT < 33) {
@@ -191,15 +192,24 @@ class CrossAppTest {
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
         screenshot("04-keyboard-hidden-bubble-cleaned")
     }
+    private fun waitForAudio(previous: Int): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + 90_000
+        while (bytes.get() <= previous && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
+        return bytes.get() > previous && has(appId("floating_stop"), 20_000)
+    }
     private fun startPartial() {
+        val previous = bytes.get()
         find(appId("floating_start"), 60_000).click()
-        assertTrue(has(By.res(APP, "floating_preview").text(Pattern.compile("(?s).+")), 90_000))
-        find(appId("floating_cancel")) // The session must still be active, not a retained error transcript.
+        assertTrue("Actual PCM must reach the fixture; no live transcript panel is shown", waitForAudio(previous))
+    }
+    private fun cancelFloating() {
+        find(appId("floating_stop")).longClick()
+        find(label("Cancel")).click()
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
     @Test fun bCancelAndRestartNeverInsertPartialOrCreateDuplicateConnection() {
         startPartial(); val count = connections.get()
-        find(appId("floating_cancel")).click()
+        cancelFloating()
         assertTrue(has(By.res(APP, "floating_status").textContains("Cancelled"), 10_000))
         assertFieldUnchanged(); SystemClock.sleep(1000); assertEquals(count, connections.get())
         screenshot("05-cancel-no-insertion")
@@ -251,7 +261,7 @@ class CrossAppTest {
         val moved = find(appId("floating_start")).visibleBounds
         assertTrue(moved.centerX() != bounds.centerX() || moved.centerY() != bounds.centerY())
         screenshot("10-moved-bubble-no-recording")
-        startPartial(); find(appId("floating_cancel")).click(); assertFieldUnchanged()
+        startPartial(); cancelFloating(); assertFieldUnchanged()
     }
     @Test fun gStreamErrorStopsAndRequiresExplicitRestart() {
         failNext.set(true)
@@ -259,7 +269,7 @@ class CrossAppTest {
         assertTrue(has(By.res(APP, "floating_status").textContains("Live session failed"), 40_000))
         assertFieldUnchanged(); val count = connections.get(); SystemClock.sleep(1200); assertEquals(count, connections.get())
         screenshot("11-stream-error-no-reconnect")
-        startPartial(); find(appId("floating_cancel")).click()
+        startPartial(); cancelFloating()
     }
     @Test fun hMissingSavedKeyStartsNoAudioOrRequest() {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
