@@ -16,7 +16,7 @@ import kotlin.math.abs
 
 internal class FloatingWindow(
     private val context: Context, private val iconClick: () -> Unit,
-    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, setup: () -> Unit, private val restart: () -> Unit = {},
+    private val cancel: () -> Unit, copy: () -> Unit, close: () -> Unit, setup: () -> Unit, private val discard: () -> Unit = {},
 ) {
     private val wm = context.getSystemService(WindowManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
@@ -24,7 +24,11 @@ internal class FloatingWindow(
     private val dark get() = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     private val ink get() = if (dark) SoftCurrentPalette.NightText else SoftCurrentPalette.Plum
     private val paper get() = if (dark) SoftCurrentPalette.NightSurface else SoftCurrentPalette.Paper
-    private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+    private val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+    private val root = ScrollView(context).apply {
+        isFillViewport = false; clipToOutline = true
+        addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
     private val mark = CurrentDrawable()
     private val icon = object : ImageButton(context) {
         override fun performClick(): Boolean = super.performClick()
@@ -41,17 +45,17 @@ internal class FloatingWindow(
     }
     private val heading = TextView(context).apply { textSize = 12f; setTextColor(ink) }
     private val status = TextView(context).apply { id = R.id.floating_status; textSize = 14f; setTextColor(ink) }
-    private val preview = TextView(context).apply { id = R.id.floating_preview; textSize = 17f; setTextColor(ink); maxLines = 3 }
+    private val preview = TextView(context).apply { id = R.id.floating_preview; textSize = 17f; setTextColor(ink) }
     private val controls = LinearLayout(context)
     private fun button(label: Int, id: Int, action: () -> Unit) = Button(context).apply {
-        this.id = id; text = context.getString(label); setTextColor(ink); isAllCaps = false
+        this.id = id; text = context.getString(label); setTextColor(ink); isAllCaps = false; minimumHeight = dp(48)
         backgroundTintList = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
         setOnClickListener { action() }
     }
     private val copyButton = button(R.string.copy, R.id.floating_copy, copy)
     private val closeButton = button(R.string.current_dismiss, R.id.floating_close, close)
     private val cancelButton = button(R.string.floating_cancel, R.id.floating_cancel) { controlsOpen = false; cancel() }
-    private val restartButton = button(R.string.current_new_session, R.id.floating_restart, restart)
+    private val discardButton = button(R.string.current_discard, R.id.floating_discard, discard)
     private val setupButton = button(R.string.floating_open_setup, R.id.floating_open_setup, setup)
     private val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -70,10 +74,12 @@ internal class FloatingWindow(
     private fun showControls() {
         controlsOpen = !controlsOpen
         layoutControls()
-        clamp(); update()
+        if (clamp()) update() else hide()
     }
     private fun layoutControls() {
         val menu = active && controlsOpen
+        root.background = if (panel || controlsOpen) GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) } else null
+        root.elevation = if (panel || controlsOpen) dp(3).toFloat() else 0f
         params.width = when { panel -> minOf(dp(280),context.resources.displayMetrics.widthPixels-dp(16)); menu -> dp(176); else -> dp(64) }
         root.setPadding(if(panel || menu)dp(12) else 0, if(panel || menu)dp(8) else 0, if(panel || menu)dp(12) else 0, if(panel || menu)dp(12) else 0)
         heading.text = if(menu) context.getString(R.string.current_controls) else lastNotice ?: context.getString(R.string.app_name)
@@ -82,11 +88,11 @@ internal class FloatingWindow(
     }
     @SuppressLint("ClickableViewAccessibility") // Explicit click/long-click semantics and accessible Cancel action.
     private fun initialize() {
-        root.addView(icon, LinearLayout.LayoutParams(dp(64), dp(64)))
-        root.addView(heading); root.addView(status); root.addView(preview)
-        controls.addView(copyButton, LinearLayout.LayoutParams(0, dp(48), 1f))
-        controls.addView(closeButton, LinearLayout.LayoutParams(0, dp(48), 1f))
-        root.addView(controls); root.addView(cancelButton); root.addView(setupButton); root.addView(restartButton)
+        content.addView(icon, LinearLayout.LayoutParams(dp(64), dp(64)))
+        content.addView(heading); content.addView(status); content.addView(preview)
+        controls.addView(copyButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        controls.addView(closeButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        content.addView(controls); content.addView(cancelButton); content.addView(setupButton); content.addView(discardButton)
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         icon.setOnTouchListener { view, event ->
@@ -112,15 +118,13 @@ internal class FloatingWindow(
     fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false) {
         this.imeTop = imeTop; active = recording
         // The service survives configuration changes; every reused view must follow the current palette.
-        for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, restartButton)) view.setTextColor(ink)
+        for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
         val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
-        for (button in listOf(copyButton, closeButton, setupButton, cancelButton, restartButton)) button.backgroundTintList = buttonColor
+        for (button in listOf(copyButton, closeButton, setupButton, cancelButton, discardButton)) button.backgroundTintList = buttonColor
         panel = expanded && !active
         lastNotice = notice
         if (!active) controlsOpen = false
         layoutControls()
-        root.background = if (panel || controlsOpen) GradientDrawable().apply { setColor(paper); cornerRadius = dp(32).toFloat(); setStroke(dp(1),SoftCurrentPalette.Outline) } else null
-        root.elevation = if (panel || controlsOpen) dp(3).toFloat() else 0f
         val recoverable = !active && (canCopy || needsSetup || error || message != context.getString(R.string.floating_start))
         mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
         icon.isLongClickable = active
@@ -135,15 +139,28 @@ internal class FloatingWindow(
         copyButton.visibility = if(panel && canCopy)View.VISIBLE else View.GONE
         closeButton.visibility = if(panel)View.VISIBLE else View.GONE
         setupButton.visibility = if(panel && needsSetup)View.VISIBLE else View.GONE
-        restartButton.visibility = if(panel)View.VISIBLE else View.GONE
-        if(!moved || !attached) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=imeTop-if(panel)dp(260) else if(controlsOpen)dp(176) else dp(80) }
-        clamp()
+        discardButton.visibility = if(panel)View.VISIBLE else View.GONE
+        val resetPosition = !moved || !attached
+        if (resetPosition) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=Int.MAX_VALUE }
+        if (!clamp()) { hide(); return }
         if(!attached) { wm.addView(root,params); attached=true } else update()
         mark.start()
     }
-    private fun clamp() {
-        params.x=params.x.coerceIn(0,maxOf(0,context.resources.displayMetrics.widthPixels-maxOf(params.width,dp(64))))
-        params.y=params.y.coerceIn(dp(24),maxOf(dp(24),imeTop-dp(if(panel)260 else if(controlsOpen)176 else 64)))
+    private fun clamp(): Boolean {
+        val screen = context.resources.displayMetrics
+        val bars = ViewCompat.getRootWindowInsets(root)?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+        val top = maxOf(dp(24), bars?.top ?: 0)
+        val bottom = minOf(imeTop, screen.heightPixels - (bars?.bottom ?: 0)) - dp(8)
+        val available = bottom-top
+        if (available < dp(64)) return false
+        // Measure real wrapped text/buttons, then give WM an exact bounded height. The ScrollView
+        // exposes overflow intentionally; no fixed panel estimate can push actions under the IME.
+        root.measure(View.MeasureSpec.makeMeasureSpec(params.width,View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.AT_MOST))
+        params.height = root.measuredHeight.coerceAtMost(available)
+        params.x=params.x.coerceIn(0,maxOf(0,screen.widthPixels-params.width))
+        params.y=params.y.coerceIn(top,maxOf(top,bottom-params.height))
+        return true
     }
     private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
     fun hide() { mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; if(attached)runCatching { wm.removeView(root) }; attached=false }

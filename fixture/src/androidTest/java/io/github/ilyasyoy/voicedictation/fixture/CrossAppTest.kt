@@ -145,6 +145,12 @@ class CrossAppTest {
         // Show on-screen keyboards in this isolated emulator even when a virtual hardware keyboard is attached.
         device.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1")
         find(fixtureId("body"), 40_000)
+        // Test isolation uses the same explicit discard action as a user, never teardown data loss.
+        find(appId("floating_start"),30_000)
+        device.findObject(By.desc("Review text or recording problem"))?.let {
+            it.click(); scrollFind(appId("floating_discard")).click()
+            find(By.desc("Start live dictation"),10_000)
+        }
     }
     @After fun cleanup() { device.pressBack(); SystemClock.sleep(300) }
     private fun screenshot(name: String) {
@@ -213,8 +219,9 @@ class CrossAppTest {
     }
     private fun restartPartial() {
         val previous=bytes.get()
-        find(appId("floating_restart")).click()
-        assertTrue("Explicit restart must stream fresh PCM",waitForAudio(previous))
+        scrollFind(appId("floating_discard")).click()
+        find(By.desc("Start live dictation"),10_000).click()
+        assertTrue("Explicit discard then start must stream fresh PCM",waitForAudio(previous))
     }
     private fun cancelFloating() {
         find(appId("floating_stop")).longClick()
@@ -358,6 +365,56 @@ class CrossAppTest {
         assertEquals(count, connections.get()); assertFieldUnchanged()
         screenshot("16-revoked-microphone-gated")
         setupUserOptIn() // Re-grants only through the visible OS permission dialog.
+    }
+    @Test fun rRecoverySurvivesKeyboardHideSetupAndLargeFontWithoutReplay() {
+        val originalScale=device.executeShellCommand("settings get system font_scale").trim()
+        try {
+            focusField("unsupported")
+            find(fixtureId("unsupported_body").focused(true),30_000)
+            val count=connections.get()
+            startPartial(); find(appId("floating_stop")).click()
+            find(By.desc("Review text or recording problem"),60_000)
+            assertFalse(device.hasObject(appId("floating_status")))
+            screenshot("20-result-stays-compact")
+            device.pressBack()
+            assertTrue(device.wait(Until.gone(appId("floating_start")),10_000))
+            focusField("body")
+            find(By.desc("Review text or recording problem"),30_000)
+            assertFieldUnchanged()
+            openRecovery()
+            assertEquals("voice test",find(appId("floating_preview")).text)
+            scrollFind(appId("floating_close")).click()
+            launch("$APP.MainActivity")
+            find(label("Set up floating dictation"),30_000).click()
+            find(By.clazz("android.widget.ScrollView"),30_000)
+            device.executeShellCommand("settings put system font_scale 2")
+            SystemClock.sleep(1200)
+            focusField("body")
+            find(By.desc("Review text or recording problem"),30_000)
+            openRecovery()
+            val keyboard=instrumentation.uiAutomation.windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            val ime=android.graphics.Rect().also { keyboard.getBoundsInScreen(it) }
+            val overlay=instrumentation.uiAutomation.windows.first { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+            val bounds=android.graphics.Rect().also { overlay.getBoundsInScreen(it) }
+            assertTrue("Recovery must stay above keyboard: $bounds / $ime",bounds.bottom<=ime.top && bounds.top>=0)
+            screenshot("21-large-font-recovery-top-bounded")
+            scrollFind(appId("floating_copy")).click()
+            assertEquals("voice test",instrumentation.targetContext.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
+            screenshot("22-large-font-recovery-copy-accessible")
+            assertEquals(count+1,connections.get())
+            assertFieldUnchanged()
+            assertEquals("Unsupported stays unchanged",find(fixtureId("unsupported_body")).text)
+            assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+            scrollFind(appId("floating_close")).click()
+            openRecovery()
+            assertEquals("voice test",scrollFind(appId("floating_preview")).text)
+            scrollFind(appId("floating_discard")).click()
+            find(By.desc("Start live dictation"),10_000)
+            assertEquals(count+1,connections.get())
+            checkpoint("Uninserted text survived keyboard hide, Setup and font-scale configuration; Copy/Discard accessible; no replay or duplicate insertion")
+        } finally {
+            device.executeShellCommand(if(originalScale=="null")"settings delete system font_scale" else "settings put system font_scale $originalScale")
+        }
     }
     @Test fun zDisableRevokesAccessAndCleansTestConfiguration() {
         launch("$APP.MainActivity")

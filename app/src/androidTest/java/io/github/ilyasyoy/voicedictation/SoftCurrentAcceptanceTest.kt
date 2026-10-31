@@ -131,4 +131,36 @@ class SoftCurrentAcceptanceTest {
             } finally { window.hide() }
         }
     }
+    @Test fun largeFontRecoveryScrollsWithinSmallSpaceAboveKeyboard() {
+        val config=android.content.res.Configuration(instrumentation.targetContext.resources.configuration).apply { fontScale=2f }
+        val base=instrumentation.targetContext.createConfigurationContext(config)
+        var root: View?=null
+        var params: WindowManager.LayoutParams?=null
+        val manager=object : WindowManager by base.getSystemService(WindowManager::class.java) {
+            override fun addView(view: View, layout: ViewGroup.LayoutParams) { root=view; params=layout as WindowManager.LayoutParams }
+            override fun updateViewLayout(view: View, layout: ViewGroup.LayoutParams) { root=view; params=layout as WindowManager.LayoutParams }
+            override fun removeView(view: View) = Unit
+        }
+        val context=object : ContextWrapper(base) {
+            override fun getResources()=base.resources
+            override fun getSystemService(name: String): Any?=if(name==Context.WINDOW_SERVICE)manager else super.getSystemService(name)
+        }
+        instrumentation.runOnMainSync {
+            val window=FloatingWindow(context,{}, {}, {}, {}, {})
+            try {
+                window.render(180,true,"Synthetic words ".repeat(60),"Check the field before Copy. Insertion could not be confirmed.",false,true,false,null)
+                val scroll=checkNotNull(root) as android.widget.ScrollView
+                val layout=checkNotNull(params)
+                scroll.layout(0,0,scroll.measuredWidth,scroll.measuredHeight)
+                assertTrue(layout.y>=24 && layout.y+layout.height<=180)
+                assertTrue("Long recovery must scroll rather than clip its actions",scroll.canScrollVertically(1))
+                assertTrue(scroll.findViewById<android.widget.TextView>(R.id.floating_status).textSize>=27f)
+                scroll.scrollTo(0,scroll.getChildAt(0).height)
+                assertTrue(scroll.scrollY>0)
+                val discard=scroll.findViewById<View>(R.id.floating_discard)
+                assertTrue("Last explicit action is reachable",discard.bottom-scroll.scrollY+scroll.paddingTop<=scroll.height-scroll.paddingBottom)
+            } finally { window.hide() }
+        }
+    }
+
 }

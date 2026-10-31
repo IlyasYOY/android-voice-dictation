@@ -35,7 +35,7 @@ class FloatingDictationService : AccessibilityService() {
     private val model get() = capture?.session
     private var insertion: Job? = null
     private var epoch = 0L
-    private val feedback = FloatingFeedback()
+    private val feedback = FloatingFeedback.processOwned
     private var window: FloatingWindow? = null
     private var foreground = false
     private var finishRequested = false
@@ -58,9 +58,13 @@ class FloatingDictationService : AccessibilityService() {
             receiverRegistered = true
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.floating_channel), NotificationManager.IMPORTANCE_LOW))
-        window = FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { feedback.dismiss(); render() }, ::openSetup,
-            restart = { closeSession(hideWindow = false); startNew() })
+        feedback.dismiss()
+        window = createWindow()
         scheduleRefresh()
+    }
+    private fun createWindow(): FloatingWindow {
+        return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { feedback.dismiss(); render() }, ::openSetup,
+            discard = { closeSession(hideWindow = false, discardFeedback = true); render() })
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
     private fun scheduleRefresh(delay: Long = 150) {
@@ -144,6 +148,7 @@ class FloatingDictationService : AccessibilityService() {
         startNew()
     }
     private fun startNew() {
+        if (feedback.available) { feedback.expanded = true; render(); return }
         closeSession(hideWindow = false)
         original = editor()?.takeIf(EditorPolicy::allowed) ?: return
         feedback.expanded = false
@@ -237,7 +242,7 @@ class FloatingDictationService : AccessibilityService() {
                     if (result == InsertionResult.CANCELLED) closeSession()
                     else if (feedback.complete(result,text,getString(R.string.floating_copy_fallback),getString(R.string.floating_unconfirmed))) {
                         // Keep the same animated window alive so its pigment/speed settles smoothly to idle.
-                        closeSession(hideWindow = false)
+                        closeSession(hideWindow = false, discardFeedback = true)
                         render()
                     }
                 }
@@ -257,18 +262,29 @@ class FloatingDictationService : AccessibilityService() {
     private fun endForeground() {
         if (foreground) { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); foreground = false; stopSelf() }
     }
-    private fun closeSession(hideWindow: Boolean = true) {
+    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false) {
+        // Stop all resources/clear editor ownership independently of pending user text.
+        // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
+        val state = model?.state?.value
+        if (!discardFeedback && !feedback.available && state != null && (state.text.isNotBlank() || state.busy)) {
+            feedback.offer(state.text, getString(when {
+                inserting || (insertionAttempted && state.phase == Phase.RESULT) -> R.string.floating_unconfirmed
+                state.busy || state.livePartial -> R.string.floating_cancelled
+                else -> R.string.floating_copy_fallback
+            }))
+        }
         epoch++; insertion?.cancel(); insertion = null
         pending = null; finishRequested = false; insertionAttempted = true; original = null; connection = null
         capture?.close(); capture = null; endForeground()
-        feedback.discard(); inserting = false
+        if (discardFeedback) feedback.discard() else feedback.dismiss()
+        inserting = false
         if (hideWindow) window?.hide()
     }
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     fun disableFromUser() { closeSession(); disableSelf() }
     override fun onInterrupt() { closeSession() }
     override fun onUnbind(intent: Intent?): Boolean { closeSession(); return super.onUnbind(intent) }
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); closeSession(); scheduleRefresh() }
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); closeSession(); window = createWindow(); scheduleRefresh() }
     override fun onDestroy() {
         disposed = true; handler.removeCallbacksAndMessages(null); closeSession(); scope.cancel()
         if (receiverRegistered) { unregisterReceiver(screenOff); receiverRegistered = false }

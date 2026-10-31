@@ -2,6 +2,11 @@ package io.github.ilyasyoy.voicedictation.floating
 
 /** UI feedback is retained until explicit discard; a ready transcript alone is never insertion success. */
 internal class FloatingFeedback {
+    companion object {
+        // One pending recovery in this process, containing no Context, editor token or audio resource.
+        // Rebinding the service must not erase an uninserted result; process death still clears it.
+        val processOwned = FloatingFeedback()
+    }
     var text = ""
     var message: String? = null
     var needsSetup = false
