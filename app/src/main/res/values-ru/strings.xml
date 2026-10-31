@@ -91,4 +91,5 @@
   <string name="current_retry_key_error">Не удалось отправить запись. Откройте настройки приложения, сохраните действующий API key и повторите. Запись сохранена.</string>
   <string name="current_retry_network_error">Не удалось отправить запись. Проверьте соединение и повторите. Запись сохранена.</string>
   <string name="current_retry_service_error">Сервис не смог распознать запись. Проверьте учётную запись или повторите позже. Запись сохранена.</string>
+  <string name="saved_recordings">Сохранённые записи (%1$d)</string>
 </resources>

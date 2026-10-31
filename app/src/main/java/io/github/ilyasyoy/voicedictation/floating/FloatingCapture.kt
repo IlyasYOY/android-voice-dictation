@@ -26,14 +26,15 @@ internal class FloatingCapture(
         var launched = false
         session.state.collect { state ->
             if (closed) return@collect
-            if (!launched && !state.keyBusy) {
+            if (!launched && (mode==Mode.RECORD || !state.keyBusy)) {
                 launched = true
                 // This fresh check is after the asynchronous key read, immediately before audio start.
                 if (!eligible(environment())) { onInvalid(); return@collect }
-                if (!state.validKey) onMissingKey()
+                if (mode==Mode.LIVE && !state.validKey) onMissingKey()
                 else { session.setMode(mode); session.start(true) }
             }
-            if (!closed) onState(state)
+            // Starting may synchronously replace the collected idle/storage-error state.
+            if (!closed) onState(session.state.value)
         }
     }
     fun start() { if (!closed) observer.start() }

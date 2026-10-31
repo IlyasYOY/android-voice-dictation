@@ -199,7 +199,8 @@ class CrossAppTest {
     private fun openRecovery() {
         assertFalse("No automatic error/result panel",device.hasObject(appId("floating_status")))
         find(appId("floating_start"),60_000).longClick()
-        find(appId("floating_disable"),30_000)
+        // Recovery intentionally opens scrolled to retained audio/text, below the permission controls.
+        find(By.clazz("android.widget.ScrollView").pkg(APP),30_000)
     }
     private fun waitForAudio(previous: Int): Boolean {
         val deadline = SystemClock.elapsedRealtime() + 90_000
@@ -343,6 +344,9 @@ class CrossAppTest {
     @Test fun qDefaultRecordUploadsOnlyAfterStopAndNextTapStartsNormally() {
         launch("$APP.floating.DebugFloatingSetupActivity",server.port)
         find(label("Use default Record fixture mode")).click(); focusField("body")
+        // The returning Activity may receive onNewIntent before its window regains input focus.
+        // A real tap establishes the IME connection; then restore the fixture's insertion caret.
+        find(fixtureId("body")).click(); focusField("body")
         val streams=connections.get(); val uploaded=fileRequests.get()
         failFileNext.set(true)
         repeat(2) { turn ->
@@ -362,8 +366,11 @@ class CrossAppTest {
         screenshot("24-record-repeat-no-popup")
         openRecovery()
         scrollFind(appId("floating_retry_audio")).click()
-        assertTrue(device.wait(Until.gone(appId("floating_retry_audio")),30_000))
+        // Setup rebuilds its view while retry starts; a transiently absent button is not completion.
+        val retryDeadline=SystemClock.elapsedRealtime()+30_000
+        while(fileRequests.get()<uploaded+3 && SystemClock.elapsedRealtime()<retryDeadline)SystemClock.sleep(100)
         assertEquals(uploaded+3,fileRequests.get())
+        assertTrue(device.wait(Until.gone(appId("floating_retry_audio")),30_000))
         assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
         screenshot("25-explicit-saved-audio-retry-no-editor-replay")
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))

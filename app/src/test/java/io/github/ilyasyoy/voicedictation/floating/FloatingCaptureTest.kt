@@ -122,6 +122,32 @@ class FloatingCaptureTest {
             assertEquals(1,uploads); assertEquals(Phase.RESULT,session.state.value.phase); assertEquals("Recorded words",session.state.value.text)
         } finally { capture.close(); file.delete() }
     }
+    @Test fun `Record starts before delayed credential read and never reports the stale pre-start error`()=runTest {
+        for(failedBeforeStart in listOf(false,true)) {
+        val key=CompletableDeferred<String?>();var starts=0;var missing=0;val phases=mutableListOf<Phase>()
+        val session=DictationSession(backgroundScope,object:AudioRecorder {
+            override fun start(onLimit:()->Unit) {starts++}
+            override fun stop():File=error("not stopping in this fixture")
+            override fun cancel()=Unit
+        },Transcriber {_,_->error("no upload before Stop")},keyStore=object:ApiKeyStore {
+            override suspend fun load()=key.await()
+            override suspend fun save(key:String)=Unit
+            override suspend fun forget()=Unit
+        })
+        val capture=FloatingCapture(backgroundScope,session,editor(),{FloatingEnvironment(editor(),true,true,true,true,true)},
+            {fail("eligible")},{missing++},{phases+=it.phase})
+        try {
+            runCurrent()
+            if(failedBeforeStart) {key.completeExceptionally(java.io.IOException("storage"));runCurrent()}
+            capture.start();runCurrent()
+            assertEquals(1,starts);assertEquals(!failedBeforeStart,session.state.value.keyBusy);assertEquals(Phase.RECORDING,session.state.value.phase)
+            if(!failedBeforeStart)key.completeExceptionally(java.io.IOException("storage"))
+            runCurrent()
+            assertEquals(0,missing);assertEquals(Phase.RECORDING,session.state.value.phase)
+            assertFalse(phases.contains(Phase.ERROR))
+        } finally {capture.close()}
+        }
+    }
     private fun recorder() = object : AudioRecorder {
         override fun start(onLimit: () -> Unit) = error("no file capture")
         override fun stop(): File = error("no file capture")

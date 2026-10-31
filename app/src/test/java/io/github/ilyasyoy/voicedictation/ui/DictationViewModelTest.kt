@@ -37,10 +37,12 @@ class DictationViewModelTest {
     })
     @Before fun setup() { Dispatchers.setMain(dispatcher); audio = File.createTempFile("audio", ".m4a").apply { writeText("audio") } }
     @After fun cleanup() { Dispatchers.resetMain(); audio.delete() }
-    @Test fun `key and permission gate recording`() {
-        val m = model(); m.start(true); assertEquals(0, starts)
-        m.setKey("test-key"); m.start(false); assertEquals(0, starts)
-        assertEquals(Problem.PERMISSION, m.state.value.problem)
+    @Test fun `Record requires permission while Live also requires a key`() {
+        val m=model();m.start(false);assertEquals(0,starts)
+        assertEquals(Problem.PERMISSION,m.state.value.problem)
+        m.start(true);assertEquals(1,starts);assertEquals(Phase.RECORDING,m.state.value.phase)
+        m.cancel();m.setMode(Mode.LIVE);m.start(true)
+        assertEquals(1,starts);assertEquals(Problem.KEY,m.state.value.problem)
     }
     @Test fun `record stop transcribe edits and clears with repeated taps guarded`() = runTest {
         val m = model(); m.setKey("test-key"); repeat(3) { m.start(true) }

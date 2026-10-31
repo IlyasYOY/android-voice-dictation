@@ -65,7 +65,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun createWindow(): FloatingWindow {
         return FloatingWindow(this, ::bubbleClick, ::cancelFromUser, ::copy, { closeSession(hideWindow = false); render() }, ::openSetup,
-            discard = { closeSession(hideWindow = false, discardFeedback = true); render() }, recover = ::openSetup)
+            discard = { closeSession(hideWindow = false, discardFeedback = true); render() }, recover = ::openRecovery)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { scheduleRefresh() } // Never reads event.text/source.
     private fun scheduleRefresh(delay: Long = 150) {
@@ -132,7 +132,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || FloatingRecordingRecovery.processOwned.count>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.count>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -194,7 +194,7 @@ class FloatingDictationService : AccessibilityService() {
             onState = { state ->
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
                 if (state.phase == Phase.ERROR) {
-                    if(state.canRetry) session.takeRetryRecording()?.let(FloatingRecordingRecovery.processOwned::retain)
+                    if(state.canRetry) session.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(state.problem)) }
                     offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
                 }
                 if (state.phase == Phase.TRANSCRIBING) endForeground()
@@ -219,10 +219,10 @@ class FloatingDictationService : AccessibilityService() {
         if (model?.state?.value?.phase != Phase.RECORDING) { cancelFromUser(); return }
         finishRequested = true; model?.stop()
     }
-    private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled))
-    private fun cancelKeepingText(reason: String) {
+    private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled),discardRecording=true)
+    private fun cancelKeepingText(reason: String,discardRecording: Boolean=false) {
         val text = model?.state?.value?.text ?: feedback.text
-        closeSession(hideWindow = false, retainCurrent = false) // Cancels pending key load and its observer before publishing recovery once.
+        closeSession(hideWindow = false, retainCurrent = false, retainRecording = !discardRecording)
         feedback.offer(text,reason); render()
     }
     private fun insert(text: String, partial: Boolean) {
@@ -272,10 +272,13 @@ class FloatingDictationService : AccessibilityService() {
     private fun endForeground() {
         if (foreground) { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); foreground = false; stopSelf() }
     }
-    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false, retainCurrent: Boolean = true) {
+    private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false, retainCurrent: Boolean = true, retainRecording: Boolean = true) {
         // Stop all resources/clear editor ownership independently of pending user text.
         // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
         val state = model?.state?.value
+        if(retainRecording) model?.takeRecordingForRecovery()?.let {
+            RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(state?.problem))
+        }
         if (retainCurrent && commitAttempted && !discardFeedback && state != null) {
             // The write may already have happened: retain only passive text, never a failure/retry gate.
             feedback.retain(state.text); feedback.resetSignal()
@@ -295,6 +298,7 @@ class FloatingDictationService : AccessibilityService() {
         if (hideWindow) window?.hide()
     }
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    private fun openRecovery() { startActivity(Intent(this,FloatingSetupActivity::class.java).putExtra(FloatingSetupActivity.SHOW_RECORDINGS,true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     fun disableFromUser() { closeSession(); disableSelf() }
     override fun onInterrupt() { closeSession() }
     override fun onUnbind(intent: Intent?): Boolean { closeSession(); return super.onUnbind(intent) }

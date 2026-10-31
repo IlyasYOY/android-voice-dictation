@@ -24,6 +24,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.session.DictationSessions
 import io.github.ilyasyoy.voicedictation.session.ModePreferences
+import io.github.ilyasyoy.voicedictation.session.Mode
+import io.github.ilyasyoy.voicedictation.session.RecordingRecovery
+import io.github.ilyasyoy.voicedictation.session.RecordingRetryFailure
+import io.github.ilyasyoy.voicedictation.floating.FloatingSetupActivity
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
 
 class MainActivity : ComponentActivity() {
@@ -33,7 +37,7 @@ class MainActivity : ComponentActivity() {
         val requested = requestingPermission
         requestingPermission = false
         if (requested && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            if (granted) model.start(true) else model.permissionDenied()
+            if (granted) startWithPermission() else model.permissionDenied()
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,20 +53,29 @@ class MainActivity : ComponentActivity() {
         setContent {
             VoiceDictationTheme {
                 val state by model.state.collectAsStateWithLifecycle()
+                val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
                     { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())) },
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
-                    onFloatingSetup = { startActivity(Intent(this, io.github.ilyasyoy.voicedictation.floating.FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice)
+                    onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
+                    savedRecordings = recovery.count,
+                    onSavedRecordings = { startActivity(Intent(this,FloatingSetupActivity::class.java).putExtra(FloatingSetupActivity.SHOW_RECORDINGS,true)) })
             }
         }
     }
     private fun record() {
-        if (requestingPermission || model.state.value.busy) return
+        val state=model.state.value
+        if (requestingPermission || state.audioBusy || (state.mode==Mode.LIVE && state.keyBusy)) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            model.start(true)
+            startWithPermission()
         } else { requestingPermission = true; permission.launch(Manifest.permission.RECORD_AUDIO) }
+    }
+    private fun startWithPermission() {
+        val problem=model.state.value.problem
+        model.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(problem)) }
+        model.start(true)
     }
     private fun copy() {
         val text = model.state.value.text
@@ -76,7 +89,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onStop() {
         requestingPermission = false
-        if (::model.isInitialized) model.cancel()
+        if (::model.isInitialized) {
+            val problem=model.state.value.problem
+            model.background()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(problem)) }
+        }
         super.onStop()
     }
     companion object {

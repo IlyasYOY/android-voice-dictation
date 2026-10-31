@@ -1,19 +1,28 @@
-package io.github.ilyasyoy.voicedictation.floating
+package io.github.ilyasyoy.voicedictation.session
 
 import java.io.File
 import java.io.IOException
 import io.github.ilyasyoy.voicedictation.data.ApiFailure
-import io.github.ilyasyoy.voicedictation.session.MissingSavedKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-internal enum class RecordingRetryFailure { KEY, AUTH, NETWORK, SERVICE }
+internal enum class RecordingRetryFailure { KEY, AUTH, NETWORK, SERVICE;
+    companion object {
+        fun from(problem: Problem?): RecordingRetryFailure?=when(problem) {
+            Problem.KEY,Problem.STORAGE -> KEY
+            Problem.AUTH -> AUTH
+            Problem.NETWORK -> NETWORK
+            Problem.SERVER,Problem.QUOTA,Problem.RESPONSE -> SERVICE
+            else -> null
+        }
+    }
+}
 internal data class RecordingRecoveryState(val count: Int=0,val retrying: Boolean=false,val failure: RecordingRetryFailure?=null)
 
 /** Process-only ownership of failed Stop uploads. No credential, capture, editor or automatic work. */
-internal class FloatingRecordingRecovery {
-    companion object { val processOwned=FloatingRecordingRecovery() }
+internal class RecordingRecovery {
+    companion object { val processOwned=RecordingRecovery() }
     private val files=mutableListOf<File>()
     private val mutable=MutableStateFlow(RecordingRecoveryState())
     val state=mutable.asStateFlow()

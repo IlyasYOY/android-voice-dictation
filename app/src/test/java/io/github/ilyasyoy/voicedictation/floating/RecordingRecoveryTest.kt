@@ -10,10 +10,10 @@ import org.junit.Test
 import org.junit.Assert.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class FloatingRecordingRecoveryTest {
+class RecordingRecoveryTest {
     private fun audio()=File.createTempFile("retry-owned-", ".m4a").apply {writeText("synthetic fixture")}
     @Test fun failedSessionTransfersOnlyAudioAndNewRecordingDoesNotEraseIt()=runTest {
-        val file=audio(); val other=audio(); val recovery=FloatingRecordingRecovery()
+        val file=audio(); val other=audio(); val recovery=RecordingRecovery()
         val session=DictationSession(backgroundScope,object: AudioRecorder {
             override fun start(onLimit:()->Unit)=Unit
             override fun stop()=file
@@ -32,7 +32,7 @@ class FloatingRecordingRecoveryTest {
         } finally {session.close();file.delete();other.delete()}
     }
     @Test fun authOrNetworkRetryFailureKeepsAudioAndNeverRetriesItself()=runTest {
-        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file);var calls=0
+        val file=audio();val recovery=RecordingRecovery();recovery.retain(file);var calls=0
         try {
             for(failure in listOf(IOException("offline"),ApiFailure(401))) {
                 try {recovery.retry {calls++;throw failure};fail("failure expected")}catch(_:IOException){}
@@ -44,7 +44,7 @@ class FloatingRecordingRecoveryTest {
         } finally {recovery.discard();file.delete()}
     }
     @Test fun cancelledRetryRestoresAudioWithoutHoldingNetworkOrKeyOwner()=runTest {
-        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file)
+        val file=audio();val recovery=RecordingRecovery();recovery.retain(file)
         val response=CompletableDeferred<String>()
         try {
             val retry=launch {recovery.retry {response.await()}}
@@ -55,7 +55,7 @@ class FloatingRecordingRecoveryTest {
         } finally {file.delete()}
     }
     @Test fun secondExplicitRetryCannotDuplicateAnInFlightUpload()=runTest {
-        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file)
+        val file=audio();val recovery=RecordingRecovery();recovery.retain(file)
         val response=CompletableDeferred<String>();var calls=0
         try {
             val retry=async {recovery.retry {calls++;response.await()}}
@@ -66,7 +66,7 @@ class FloatingRecordingRecoveryTest {
         } finally {file.delete()}
     }
     @Test fun replacementObserverSeesControlsReenabledAfterOldCancellationUnwinds()=runTest {
-        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file,RecordingRetryFailure.AUTH)
+        val file=audio();val recovery=RecordingRecovery();recovery.retain(file,RecordingRetryFailure.AUTH)
         val cleanup=CompletableDeferred<Unit>()
         try {
             val retry=launch {recovery.retry { try {awaitCancellation()} finally {withContext(NonCancellable){cleanup.await()}} }}
@@ -82,7 +82,7 @@ class FloatingRecordingRecoveryTest {
         } finally {cleanup.complete(Unit);recovery.discard();file.delete()}
     }
     @Test fun missingKeyAndAuthAndNetworkFailuresHaveDistinctRetainedGuidance()=runTest {
-        val file=audio();val recovery=FloatingRecordingRecovery();recovery.retain(file)
+        val file=audio();val recovery=RecordingRecovery();recovery.retain(file)
         try {
             for((error,expected) in listOf(
                 MissingSavedKey() to RecordingRetryFailure.KEY,
