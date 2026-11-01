@@ -4,8 +4,6 @@ import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.design.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +26,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -61,7 +60,9 @@ fun DictationScreen(
         }
     }
     BackHandler(settingsOpen) { settingsOpen = false }
-    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), topBar = {
+    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), bottomBar = {
+        if (!settingsOpen) HistoryEntrance(savedRecordings, !state.audioBusy, onSavedRecordings)
+    }, topBar = {
         Column {
             if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(evidenceNotice, Modifier.fillMaxWidth().padding(8.dp),
@@ -166,39 +167,19 @@ fun DictationScreen(
                 if (state.mode == Mode.RECORD && state.audioBusy) TextButton(onCancel, Modifier.testTag("cancel")) {
                     Text(stringResource(if (state.mode == Mode.LIVE) R.string.cancel_live else R.string.cancel))
                 }
-                if (!state.validKey && !state.audioBusy && state.problem == null) TextButton({ settingsOpen = true }, Modifier.testTag("add_key")) { Text(stringResource(R.string.current_add_key)) }
                 if (state.mode == Mode.LIVE && state.audioBusy) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.live_connect_status; Phase.RECORDING -> R.string.live_stream_status; else -> R.string.live_finish_status
                 }), Modifier.testTag("live_status"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (state.safetyStopped && state.problem == null) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 if (state.canRetry) Button(onRetry, Modifier.testTag("retry"), enabled = state.validKey && !state.keyBusy) { Text(stringResource(R.string.retry)) }
-                if (state.text.isNotBlank() || state.phase == Phase.RESULT) {
-                    OutlinedTextField(state.text, onEdit, Modifier.fillMaxWidth().testTag("transcript"), label = { Text(stringResource(R.string.transcript)) },
-                        minLines = 2, readOnly = state.busy, shape = RoundedCornerShape(24.dp))
+                if (state.mode == Mode.LIVE && state.audioBusy && state.text.isNotBlank()) {
+                    Text(state.text.takeLast(180), Modifier.fillMaxWidth().testTag("live_preview"),
+                        maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                     if (state.mode == Mode.LIVE && state.livePartial) Text(
                         stringResource(R.string.partial_text),
                         Modifier.testTag("live_text_status"), style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onCopy, Modifier.weight(1f).testTag("copy"), enabled = !state.busy && state.text.isNotBlank()) { Text(stringResource(R.string.copy)) }
-                        OutlinedButton(onClear, Modifier.weight(1f).testTag("clear"), enabled = !state.busy && state.text.isNotEmpty()) { Text(stringResource(R.string.clear)) }
-                    }
                 }
-                val historyLabel = stringResource(R.string.history_open)
-                Column(Modifier.fillMaxWidth().testTag("history_swipe").pointerInput(state.audioBusy) {
-                    var distance = 0f
-                    detectVerticalDragGestures(onDragStart = { distance = 0f }, onVerticalDrag = { change, amount ->
-                        distance += amount
-                        if (!state.audioBusy) change.consume()
-                    }, onDragEnd = { if (!state.audioBusy && distance < -48.dp.toPx()) onSavedRecordings() })
-                }, horizontalAlignment = Alignment.CenterHorizontally) {
-                    TextButton(onSavedRecordings,Modifier.testTag("saved_recordings").semantics { contentDescription = historyLabel },enabled=!state.audioBusy) {
-                        Text(stringResource(R.string.saved_recordings,savedRecordings))
-                    }
-                    Text(stringResource(R.string.history_swipe_hint),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Text(stringResource(R.string.current_tap_hint), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                TextButton(onFloatingSetup, Modifier.testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
             }
         }
     }

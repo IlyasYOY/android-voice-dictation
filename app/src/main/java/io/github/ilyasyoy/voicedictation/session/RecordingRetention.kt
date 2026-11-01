@@ -19,6 +19,7 @@ interface RecordingRetention {
     fun discard(audio: File)
     fun restoreDraft():String? = null
     fun saveDraft(text:String) = Unit
+    fun draftSourceId():String? = null
     fun liveText(text:String,partial:Boolean,seconds:Int) = Unit
 }
 
@@ -40,6 +41,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     private var sourceId:String?=null
     private var liveId:String?=null
     private var liveActive=false
+    override fun draftSourceId():String? = sourceId
     private fun <T> stored(action: () -> T): T = try { action() } catch (e: Exception) { throw RecordingStorageFailure(e) }
     override fun beginSession() {liveId=null;liveActive=true}
     override fun endSession() {liveActive=false;repository.releaseText(liveId)}

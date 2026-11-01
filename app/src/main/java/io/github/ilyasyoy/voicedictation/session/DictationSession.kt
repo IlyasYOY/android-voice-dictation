@@ -98,6 +98,7 @@ class DictationSession(
         update { it.copy(mode = mode, problem = null, phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT) }
     }
     fun edit(text: String) { if (!closed && !state.value.busy) {update { it.copy(text = text, livePartial = false) };persistDraft(text)} }
+    fun draftSourceId():String? = recordings.draftSourceId()
     fun clear() { if (!closed && !state.value.busy) { cancel(); if(persistDraft(""))update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
     fun refreshDraft() {
         if(closed || state.value.audioBusy || state.value.canRetry)return

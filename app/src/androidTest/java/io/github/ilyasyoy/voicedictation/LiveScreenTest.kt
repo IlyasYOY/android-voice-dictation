@@ -95,7 +95,7 @@ class LiveScreenTest {
     private fun click(tag: String) {
         val configuration = tag in setOf("mode_record", "mode_live", "forget")
         if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
-        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (tag=="saved_recordings") compose.onNodeWithTag(tag).performClick() else compose.onNodeWithTag(tag).performScrollTo().performClick()
         if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
     }
     private fun waitFor(test: () -> Boolean) { compose.waitUntil(30_000, test) }
@@ -115,8 +115,11 @@ class LiveScreenTest {
         waitFor { model.state.value.phase == Phase.RESULT }
         assertEquals("Live words. Synthetic server result.", model.state.value.text)
         assertFalse(model.state.value.livePartial)
+        click("saved_recordings")
+        val id = AndroidRecordingStorage.repository(instrumentation.targetContext).records().first { it.transcript == model.state.value.text }.id
+        compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
         compose.onNodeWithTag("transcript").performScrollTo(); screenshot("09-live-final")
-        click("copy"); assertEquals(1, server.requestCount)
+        click("history_copy_$id"); assertEquals(1, server.requestCount)
     }
     @Test fun disconnectKeepsPartialAndOnlyExplicitRecordReconnects() {
         disconnect.set(true); click("record"); waitFor { model.state.value.phase == Phase.ERROR }

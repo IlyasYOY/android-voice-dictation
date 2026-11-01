@@ -131,7 +131,7 @@ class OfflineRecordRuntimeTest {
             waitFor("Activity stop transfers audio to process recovery") {RecordingRecovery.processOwned.count==1}
             SystemClock.sleep(2000);assertEquals(1,calls.get());assertEquals(0,server.requestCount)
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            find(By.text(context.getString(R.string.saved_recordings,1))).click()
+            find(By.descContains(context.getString(R.string.history_open))).click()
             find(By.text(context.getString(R.string.retry)))
             screenshot("05-manual-recovery-after-network-restored")
             assertEquals(0,server.requestCount)

@@ -39,7 +39,7 @@ class MainErrorScreenTest {
             }
             compose.runOnIdle {state=state.copy(problem=Problem.AUTH)}
             compose.onNodeWithTag("retry").performScrollTo().performClick();assertEquals(1,retries)
-            compose.onNodeWithTag("saved_recordings").performScrollTo().performClick();assertEquals(1,saved)
+            compose.onNodeWithTag("saved_recordings").performClick();assertEquals(1,saved)
             compose.onNodeWithTag("open_settings").performScrollTo().assertIsEnabled().performClick()
             compose.onNodeWithTag("api_key").assertExists();assertEquals(0,discards)
         }

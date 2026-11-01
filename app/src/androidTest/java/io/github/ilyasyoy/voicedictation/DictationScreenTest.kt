@@ -63,7 +63,7 @@ class DictationScreenTest {
     private fun click(tag: String) {
         val configuration = tag in setOf("mode_record", "mode_live", "forget")
         if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
-        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (tag in setOf("saved_recordings", "history_close")) compose.onNodeWithTag(tag).performClick() else compose.onNodeWithTag(tag).performScrollTo().performClick()
         if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
     }
     private fun screenshot(name: String) {
@@ -92,10 +92,18 @@ class DictationScreenTest {
         waitPhase(Phase.RESULT); screenshot("04-result");assertSavedAudio("A thought captured. Test server response.")
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(request.bodySize > 1000); assertEquals("Bearer synthetic-test-key", request.getHeader("Authorization"))
+        val id = AndroidRecordingStorage.repository(context).records().first { it.transcript == "A thought captured. Test server response." }.id
+        val peaks = kotlinx.coroutines.runBlocking {
+            io.github.ilyasyoy.voicedictation.playback.AndroidAudioWaveform.read(AndroidRecordingStorage.repository(context).audio(id))
+        }
+        assertEquals("Actual AAC has a decodable local thumbnail", 40, checkNotNull(peaks).size)
+        click("saved_recordings")
+        compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
         compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("Edited thought")
-        click("copy")
+        click("history_copy_$id")
         scenario.onActivity { assertEquals("Edited thought", it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-        assertNoPendingAudio(); click("clear"); assertEquals("", model.state.value.text)
+        assertNoPendingAudio(); click("history_menu_$id"); compose.onNodeWithTag("clear").performClick(); assertEquals("", model.state.value.text)
+        click("history_close")
         click("forget"); assertEquals("", model.state.value.key)
     }
     @Test fun serverErrorCanRetryThenRetainsAudioAndText() {
@@ -108,7 +116,7 @@ class DictationScreenTest {
         compose.onNodeWithTag("cancel").assertDoesNotExist()
         compose.onNodeWithTag("open_settings").assertIsEnabled()
         compose.onNodeWithText(context.getString(R.string.current_settings)).assertDoesNotExist()
-        compose.onNodeWithTag("saved_recordings").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("saved_recordings").assertIsDisplayed()
         screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
         click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
     }
@@ -123,7 +131,7 @@ class DictationScreenTest {
         assertFalse(row.id in store.ownedIds())
         compose.onNodeWithTag("history_retry_${row.id}").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
-        compose.waitUntil(15000) {compose.onAllNodesWithText("Pause").fetchSemanticsNodes().isNotEmpty()}
+        compose.waitUntil(15000) {compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty()}
         screenshot("07-current-failure-history-real-m4a-playing")
         compose.onNodeWithTag("history_close").performClick()
         assertTrue(store.audio(row.id).length()>1000)
