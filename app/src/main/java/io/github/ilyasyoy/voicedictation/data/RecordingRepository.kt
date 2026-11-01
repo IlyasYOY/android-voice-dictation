@@ -183,15 +183,24 @@ internal class RecordingRepository(
         // reduction. Ordinary starts were admitted before transport/microphone use.
         val record=previous ?: SavedRecording(id?.takeIf(::validId) ?: UUID.randomUUID().toString(),now,now,
             SavedRecordingStatus.INTERRUPTED,kind=SavedRecordingKind.LIVE)
-        if(previous==null) {
-            val folder = directory(record.id)
-            check(folder.mkdir() || folder.isDirectory)
-            if (metadata(record.id).exists()) require(read(folder).kind == SavedRecordingKind.LIVE)
-            AtomicRecordingCommit.syncDirectory(root)
-        } else require(previous.kind == SavedRecordingKind.LIVE)
-        if(active)reserved+=record.id else reserved-=record.id
-        save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
-            status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
+        try {
+            if(previous==null) {
+                val folder = directory(record.id)
+                check(folder.mkdir() || folder.isDirectory)
+                if (metadata(record.id).exists()) require(read(folder).kind == SavedRecordingKind.LIVE)
+                AtomicRecordingCommit.syncDirectory(root)
+            } else require(previous.kind == SavedRecordingKind.LIVE)
+            if(active)reserved+=record.id else reserved-=record.id
+            save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
+                failure=null,status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
+        } catch (e: Exception) {
+            // A failed first checkpoint may already have staged bytes. Keep that
+            // directory counted after admission release, just as restart would.
+            if (previous == null && directory(record.id).exists()) rows[record.id] = record.copy(status=SavedRecordingStatus.UNAVAILABLE,
+                failure=SavedRecordingFailure.STORAGE)
+            changed()
+            throw e
+        }
         return record.id
     }
     fun observe(observer: () -> Unit): () -> Unit { observers += observer; return { observers -= observer } }

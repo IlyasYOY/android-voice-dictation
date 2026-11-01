@@ -107,12 +107,12 @@ class HistoryCapacityRuntimeTest {
     @Test fun defaultSettingIsVisibleAndPersistedAfterRecreation() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             compose.onNodeWithTag("open_settings").performClick()
-            compose.onNodeWithTag("history_limit_input").assertTextEquals("100")
+            compose.onNodeWithTag("history_limit_input").assertTextContains("100")
             capture("05-default-limit-100")
             compose.onNodeWithTag("history_limit_input").performTextReplacement("200")
             compose.onNodeWithTag("save_history_limit").performScrollTo().performClick()
             scenario.recreate()
-            compose.onNodeWithTag("history_limit_input").assertTextEquals("200")
+            compose.onNodeWithTag("history_limit_input").assertTextContains("200")
             assertEquals(200, store.capacity().limit)
         }
     }

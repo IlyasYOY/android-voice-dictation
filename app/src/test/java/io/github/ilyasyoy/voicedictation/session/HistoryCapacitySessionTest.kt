@@ -111,6 +111,38 @@ class HistoryCapacitySessionTest {
         assertEquals("final words", store.records().single().transcript)
         assertTrue(store.ownedIds().isEmpty()); session.close()
     }
+    @Test fun allLiveCheckpointsFailThroughFinishWithoutFreeingRetainedCapacity() = runTest {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root, commit = RecordingCommit { target, p ->
+            if (target.name == "record.properties") {
+                java.io.FileOutputStream(File(target.parentFile, "record.properties.tmp")).use { p.store(it, null); it.fd.sync() }
+                throw IOException("all Live checkpoints fixture")
+            }
+            AtomicRecordingCommit.write(target, p)
+        }); store.setHistoryLimit(1)
+        lateinit var emit: (LiveEvent) -> Unit
+        val live = DictationSession(backgroundScope, Recorder(store), Transcriber { _, _ -> error("no HTTP") },
+            object : PcmSource {
+                override fun start(onAudio: (ByteArray) -> Unit, onError: (Exception) -> Unit) = Unit
+                override fun stop() = Unit
+            }, RealtimeTranscriber { _, callback -> emit = callback; object : LiveSession {
+                override fun append(pcm: ByteArray) = Unit
+                override fun finish() = Unit
+                override fun cancel() = Unit
+            } }, recordings = StoredRecordingRetention(store))
+        live.setKey("synthetic"); live.setMode(Mode.LIVE); live.start(true)
+        emit(LiveEvent.Ready); runCurrent()
+        emit(LiveEvent.Transcript("received before failure", true, 0)); runCurrent()
+        live.stop(); emit(LiveEvent.Transcript("final received words", false, 0)); emit(LiveEvent.Finished); runCurrent()
+        assertEquals(Problem.LOCAL_STORAGE, live.state.value.problem)
+        assertEquals("final received words", live.state.value.text)
+        assertEquals(1, store.capacity().used); assertTrue(store.ownedIds().isEmpty())
+        val recorder = Recorder(store)
+        val next = DictationSession(backgroundScope, recorder, Transcriber { _, _ -> error("no HTTP") }, recordings = StoredRecordingRetention(store))
+        next.start(true); assertTrue(next.state.value.capacityBlocked); assertEquals(0, recorder.starts)
+        assertEquals(1, RecordingRepository(root).capacity().used)
+        next.close(); live.close()
+    }
     @Test fun floatingRaceUsesTheSameAdmissionGateAndPreservesItsEditorToken() = runTest {
         val store = RecordingRepository(temporary.newFolder()); store.setHistoryLimit(1); fill(store)
         val recorder = Recorder(store)

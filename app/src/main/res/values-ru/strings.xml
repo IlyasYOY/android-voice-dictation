@@ -114,7 +114,7 @@
   <string name="history_delete">Удалить</string>
   <string name="history_retry">Повторить распознавание</string>
   <string name="history_full">История заполнена</string>
-  <string name="history_places_used">Занято мест: %1$d / %2$d</string>
+  <string name="history_places_used">Занято: %1$d / %2$d</string>
   <string name="capacity_history">История</string>
   <string name="capacity_limit">Лимит</string>
   <string name="history_limit_title">Лимит истории</string>

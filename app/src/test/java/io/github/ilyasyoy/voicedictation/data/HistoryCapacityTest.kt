@@ -143,6 +143,41 @@ class HistoryCapacityTest {
         assertEquals(1, store.capacity().used); assertTrue(store.ownedIds().isEmpty())
         assertEquals(SavedRecordingStatus.UNAVAILABLE, store.records().single().status)
     }
+    @Test fun firstLiveStagingFailureRemainsCountedAfterAdmissionEndsAndRestart() {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root, commit = RecordingCommit { target, p ->
+            if (target.name == "record.properties") {
+                java.io.FileOutputStream(File(target.parentFile, "record.properties.tmp")).use { p.store(it, null); it.fd.sync() }
+                throw IOException("before rename fixture")
+            }
+            AtomicRecordingCommit.write(target, p)
+        }); store.setHistoryLimit(1)
+        val id = store.reserveLive()
+        assertThrows(IOException::class.java) { store.liveText(id, "already received", true, 1, true) }
+        store.releaseText(id)
+        assertEquals(1, store.capacity().used); assertTrue(store.capacity().full)
+        assertEquals(SavedRecordingKind.LIVE, store.record(id)?.kind)
+        assertThrows(HistoryCapacityReached::class.java) { store.allocate() }
+        val staged = File(root, "$id/record.properties.tmp"); val bytes = staged.readBytes()
+        val restarted = RecordingRepository(root)
+        assertEquals(1, restarted.capacity().used)
+        assertEquals(SavedRecordingStatus.UNAVAILABLE, restarted.record(id)?.status)
+        assertArrayEquals(bytes, staged.readBytes())
+    }
+    @Test fun firstLivePostRenameFailureKeepsCommittedTextAndCountOnRestart() {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root, commit = RecordingCommit { target, p ->
+            AtomicRecordingCommit.write(target, p)
+            if (target.name == "record.properties") throw IOException("after rename fixture")
+        }); store.setHistoryLimit(1)
+        val id = store.reserveLive()
+        assertThrows(IOException::class.java) { store.liveText(id, "committed Live text", true, 1, true) }
+        store.releaseText(id)
+        assertEquals(1, store.capacity().used)
+        val restarted = RecordingRepository(root)
+        assertEquals(1, restarted.capacity().used)
+        assertEquals("committed Live text", restarted.record(id)?.transcript)
+    }
     @Test fun LiveCheckpointRetriesItsAdmittedDirectoryAfterAnInterruptedCommit() {
         var fail = true
         val store = RecordingRepository(temporary.newFolder(), commit = RecordingCommit { target, values ->
@@ -154,5 +189,6 @@ class HistoryCapacityTest {
         assertEquals(1, store.capacity().used)
         assertEquals(id, store.liveText(id, "complete received words", false, 2, true))
         assertEquals(1, store.capacity().used); assertEquals("complete received words", store.record(id)?.transcript)
+        assertNull(store.record(id)?.failure)
     }
 }

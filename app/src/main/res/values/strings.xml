@@ -112,7 +112,7 @@
   <string name="history_delete">Delete</string>
   <string name="history_retry">Retry transcription</string>
   <string name="history_full">History full</string>
-  <string name="history_places_used">%1$d / %2$d places used</string>
+  <string name="history_places_used">Used: %1$d / %2$d</string>
   <string name="capacity_history">History</string>
   <string name="capacity_limit">Limit</string>
   <string name="history_limit_title">History limit</string>
