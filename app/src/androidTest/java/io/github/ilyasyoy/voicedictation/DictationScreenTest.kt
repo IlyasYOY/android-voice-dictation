@@ -112,6 +112,23 @@ class DictationScreenTest {
         screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
         click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
     }
+    @Test fun failedCurrentRecordingCanBePlayedAndRetriedInMainHistoryWithoutBackgrounding() {
+        key();server.enqueue(MockResponse().setResponseCode(500))
+        click("record");waitPhase(Phase.RECORDING);SystemClock.sleep(1600);click("stop");waitPhase(Phase.ERROR)
+        val store=AndroidRecordingStorage.repository(context)
+        val row=store.records().first {it.status==io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.FAILED}
+        assertTrue(row.id in store.ownedIds())
+        click("saved_recordings")
+        assertFalse(model.state.value.canRetry)
+        assertFalse(row.id in store.ownedIds())
+        compose.onNodeWithTag("history_retry_${row.id}").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
+        compose.waitUntil(15000) {compose.onAllNodesWithText("Pause").fetchSemanticsNodes().isNotEmpty()}
+        screenshot("07-current-failure-history-real-m4a-playing")
+        compose.onNodeWithTag("history_close").performClick()
+        assertTrue(store.audio(row.id).length()>1000)
+        assertEquals(1,server.requestCount)
+    }
     @Test fun cancelAndBackgroundStopRealMicrophone() {
         key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoPendingAudio()
         click("record"); waitPhase(Phase.RECORDING)

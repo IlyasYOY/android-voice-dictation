@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
                     savedRecordings = recovery.savedCount,
-                    onSavedRecordings = { historyOpen = true })
+                    onSavedRecordings = { retainRetryRecording(); historyOpen = true })
                 if (historyOpen) RecordingHistorySheet { historyOpen = false; model.refreshDraft() }
             }
         }
@@ -74,9 +74,12 @@ class MainActivity : ComponentActivity() {
             startWithPermission()
         } else { requestingPermission = true; permission.launch(Manifest.permission.RECORD_AUDIO) }
     }
-    private fun startWithPermission() {
+    private fun retainRetryRecording() {
         val problem=model.state.value.problem
         model.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(problem)) }
+    }
+    private fun startWithPermission() {
+        retainRetryRecording()
         model.start(true)
     }
     private fun copy() {
