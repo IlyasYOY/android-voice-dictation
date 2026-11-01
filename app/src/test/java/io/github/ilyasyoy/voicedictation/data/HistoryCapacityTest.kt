@@ -137,6 +137,18 @@ class HistoryCapacityTest {
         store.setHistoryLimit(1); assertTrue(store.capacity().readable)
         assertTrue(store.discard(checkNotNull(store.record(file)).id))
     }
+    @Test fun settingPostRenameFailureUsesVisibleLimitAndMatchesRestart() {
+        val root = temporary.newFolder(); var fail = false
+        val store = RecordingRepository(root, commit = RecordingCommit { target, values ->
+            AtomicRecordingCommit.write(target, values)
+            if (fail && target.name == "history-limit.properties") throw IOException("after rename fixture")
+        })
+        val file = pending(store); store.setHistoryLimit(2); fail = true
+        assertThrows(IOException::class.java) { store.setHistoryLimit(1) }
+        assertEquals(1, store.capacity().limit); assertEquals(1, RecordingRepository(root).capacity().limit)
+        assertThrows(HistoryCapacityReached::class.java) { store.allocate() }
+        assertEquals("original audio", file.readText())
+    }
     @Test fun failedRecordAllocationIsUnownedAndCountedInsteadOfBeingBypassed() {
         val store = RecordingRepository(temporary.newFolder(), commit = RecordingCommit { _, _ -> throw IOException("fixture") })
         assertThrows(IOException::class.java) { store.allocate() }

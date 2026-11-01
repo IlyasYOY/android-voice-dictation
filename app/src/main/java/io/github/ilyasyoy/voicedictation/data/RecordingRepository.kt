@@ -85,12 +85,7 @@ internal class RecordingRepository(
         val created=root.mkdirs()
         check(created || root.isDirectory) { "Recording directory unavailable" }
         if(created)root.parentFile?.let(AtomicRecordingCommit::syncDirectory)
-        val setting = File(root, "history-limit.properties")
-        if (setting.exists()) try {
-            val p = Properties().apply { setting.inputStream().use { load(it) } }
-            require(p.getProperty("format") == "1")
-            countLimit = checkNotNull(HistoryCapacity.parse(p.getProperty("limit", "")))
-        } catch (_: Exception) { limitReadable = false }
+        readHistoryLimit()
         root.listFiles()?.filter { it.isDirectory && validId(it.name) }?.forEach { directory ->
             // A crash after the final tombstone unlink may leave an empty directory, never audio.
             if(directory.listFiles()?.isEmpty()==true) {
@@ -124,9 +119,25 @@ internal class RecordingRepository(
     @Synchronized fun setHistoryLimit(limit: Int) {
         require(limit > 0)
         val values = Properties().apply { setProperty("format", "1"); setProperty("limit", limit.toString()) }
-        commit.write(File(root, "history-limit.properties"), values)
+        try { commit.write(File(root, "history-limit.properties"), values) }
+        catch (e: Exception) {
+            // A directory-sync failure can happen after atomic replacement. Match the
+            // visible setting instead of admitting against a stale, possibly larger limit.
+            readHistoryLimit(); changed(); throw e
+        }
         countLimit = limit; limitReadable = true
         changed()
+    }
+    private fun readHistoryLimit() {
+        val setting = File(root, "history-limit.properties")
+        try {
+            val restored = if (!setting.exists()) HistoryCapacity.DEFAULT_LIMIT else {
+                val p = Properties().apply { setting.inputStream().use { load(it) } }
+                require(p.getProperty("format") == "1")
+                checkNotNull(HistoryCapacity.parse(p.getProperty("limit", "")))
+            }
+            countLimit = restored; limitReadable = true
+        } catch (_: Exception) { limitReadable = false }
     }
     @Synchronized fun reserveLive(): String {
         requireCapacity()
@@ -216,11 +227,13 @@ internal class RecordingRepository(
     @Synchronized fun allocate(): File {
         requireCapacity()
         val id = UUID.randomUUID().toString()
-        check(directory(id).mkdir()) { "Recording directory unavailable" }
-        AtomicRecordingCommit.syncDirectory(root)
         val now = clock()
+        check(directory(id).mkdir()) { "Recording directory unavailable" }
         reserved += id
-        try { save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING)) }
+        try {
+            AtomicRecordingCommit.syncDirectory(root)
+            save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
+        }
         catch (e: Exception) {
             // Track even a partially committed allocation. No audio has started yet;
             // unknown metadata/bytes stay intact and count until explicit cleanup.

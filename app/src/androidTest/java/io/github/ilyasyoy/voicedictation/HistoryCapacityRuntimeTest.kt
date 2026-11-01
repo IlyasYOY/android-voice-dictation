@@ -95,8 +95,10 @@ class HistoryCapacityRuntimeTest {
             compose.onNodeWithTag("history_capacity_notice").assertIsDisplayed()
             compose.onNodeWithTag("capacity_open_limit").performClick()
             compose.onNodeWithTag("history_limit_input").performTextReplacement("2")
-            capture("04-shared-limit-editor")
-            compose.onNodeWithTag("save_history_limit").performClick()
+            // Capture separately: API28 software SurfaceFlinger can deadlock when
+            // shell screencap captures the nested sheet/dialog window. Keep all
+            // behavior and recreation assertions independent of screenshot tooling.
+            compose.onNodeWithTag("save_history_limit").performScrollTo().performClick()
             assertEquals(2, store.capacity().limit); assertEquals(1, store.records().size)
             compose.onNodeWithTag("history_capacity_notice").assertDoesNotExist()
             scenario.recreate()

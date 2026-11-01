@@ -1,6 +1,8 @@
 package io.github.ilyasyoy.voicedictation.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -49,7 +51,9 @@ internal fun HistoryLimitCard(capacity: HistoryCapacity, onSave: (Int) -> Boolea
 @Composable
 internal fun HistoryLimitDialog(capacity: HistoryCapacity, onSave: (Int) -> Boolean, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.history_limit_title)) },
-        text = { HistoryLimitEditor(capacity, onSave, onDismiss) }, confirmButton = {},
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            HistoryLimitEditor(capacity, onSave, onDismiss)
+        } }, confirmButton = {},
         dismissButton = { TextButton(onDismiss) { Text(stringResource(android.R.string.cancel)) } })
 }
 
