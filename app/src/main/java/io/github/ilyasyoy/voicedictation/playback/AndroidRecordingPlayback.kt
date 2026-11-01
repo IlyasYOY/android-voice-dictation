@@ -29,7 +29,7 @@ private class AndroidPlaybackDriver(context: Context, private val lost: () -> Un
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        .setAudioAttributes(attributes).setOnAudioFocusChangeListener { if (it < 0) lost() }.build()
+        .setAudioAttributes(attributes).setOnAudioFocusChangeListener { if (it < 0 && focused) lost() }.build()
     private var focused = false
     private val player = MediaPlayer().apply { setAudioAttributes(attributes) }
     override fun prepare(file: File, ready: () -> Unit, ended: () -> Unit, failed: () -> Unit) {

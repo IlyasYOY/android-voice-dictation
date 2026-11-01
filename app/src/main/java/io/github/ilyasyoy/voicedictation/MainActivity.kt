@@ -13,7 +13,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
@@ -50,7 +51,9 @@ class MainActivity : ComponentActivity() {
         })[DictationViewModel::class.java]
         setContent {
             VoiceDictationTheme {
+                var historyOpen by rememberSaveable { mutableStateOf(false) }
                 val state by model.state.collectAsStateWithLifecycle()
+                LaunchedEffect(state.audioBusy) { if (state.audioBusy) historyOpen = false }
                 val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
@@ -58,7 +61,8 @@ class MainActivity : ComponentActivity() {
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
                     savedRecordings = recovery.savedCount,
-                    onSavedRecordings = { startActivity(Intent(this,SavedRecordingsActivity::class.java)) })
+                    onSavedRecordings = { historyOpen = true })
+                if (historyOpen) RecordingHistorySheet { historyOpen = false; model.refreshDraft() }
             }
         }
     }

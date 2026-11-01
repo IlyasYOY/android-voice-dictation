@@ -98,4 +98,21 @@
   <string name="saved_back">Back</string>
   <string name="saved_unsaved_text">Received text could not be saved. Copy it or save it again without another upload.</string>
   <string name="saved_save_received">Save received text</string>
+  <string name="history_title">History</string>
+  <string name="history_count">%1$d saved</string>
+  <string name="history_close">Close</string>
+  <string name="history_open">Open recording history</string>
+  <string name="history_swipe_hint">Swipe up for history</string>
+  <string name="history_empty_hint">Your recordings and transcripts will appear here.</string>
+  <string name="history_play">Play</string>
+  <string name="history_pause">Pause</string>
+  <string name="history_loading">Loading…</string>
+  <string name="history_failed">Transcription failed</string>
+  <string name="history_transcribe">Transcribe</string>
+  <string name="history_missing_audio">Audio unavailable</string>
+  <string name="history_playback_error">Could not play this audio. Your recording has been kept.</string>
+  <string name="history_interrupted_audio">Audio was interrupted and may be incomplete.</string>
+  <string name="history_full_text">Full text</string>
+  <string name="history_less">Show less</string>
+  <string name="history_delete">Delete</string>
 </resources>

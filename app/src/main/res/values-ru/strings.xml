@@ -98,4 +98,21 @@
   <string name="saved_back">Назад</string>
   <string name="saved_unsaved_text">Полученный текст не удалось записать. Скопируйте его или сохраните повторно без новой отправки.</string>
   <string name="saved_save_received">Сохранить полученный текст</string>
+  <string name="history_title">История</string>
+  <string name="history_count">Сохранено: %1$d</string>
+  <string name="history_close">Закрыть</string>
+  <string name="history_open">Открыть историю записей</string>
+  <string name="history_swipe_hint">Свайп вверх — история</string>
+  <string name="history_empty_hint">Здесь появятся ваши записи и расшифровки.</string>
+  <string name="history_play">Слушать</string>
+  <string name="history_pause">Пауза</string>
+  <string name="history_loading">Загрузка…</string>
+  <string name="history_failed">Не удалось распознать</string>
+  <string name="history_transcribe">Распознать</string>
+  <string name="history_missing_audio">Аудио недоступно</string>
+  <string name="history_playback_error">Не удалось прослушать аудио. Запись сохранена.</string>
+  <string name="history_interrupted_audio">Аудиозапись была прервана и может быть неполной.</string>
+  <string name="history_full_text">Весь текст</string>
+  <string name="history_less">Свернуть</string>
+  <string name="history_delete">Удалить</string>
 </resources>

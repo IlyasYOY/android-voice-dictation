@@ -1,0 +1,142 @@
+package io.github.ilyasyoy.voicedictation
+
+import android.content.ClipboardManager
+import android.os.ParcelFileDescriptor
+import android.os.SystemClock
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ilyasyoy.voicedictation.data.*
+import io.github.ilyasyoy.voicedictation.playback.*
+import io.github.ilyasyoy.voicedictation.session.*
+import io.github.ilyasyoy.voicedictation.ui.*
+import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
+import org.junit.*
+import org.junit.Assert.*
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+/** Synthetic PCM fixture, actual ledger, sheet, MediaPlayer and clipboard. No OpenAI requests. */
+class RecordingHistoryRuntimeTest {
+    @get:Rule val compose=createEmptyComposeRule()
+    private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
+    private val context get()=instrumentation.targetContext
+    private val repository get()=AndroidRecordingStorage.repository(context)
+    private val ids=mutableListOf<String>()
+    private val transcript="A quiet place for a thought. This is a synthetic transcript for history acceptance."
+    private fun seed(status: SavedRecordingStatus, text: String=""):String {
+        val store=repository
+        val file=store.allocate()
+        file.writeBytes(wav())
+        store.finalized(file,12);store.retain(file)
+        val id=checkNotNull(store.record(file)).id;ids+=id
+        if(status==SavedRecordingStatus.COMPLETE) store.complete(checkNotNull(store.beginUpload(file)),text)
+        if(status==SavedRecordingStatus.FAILED) store.markFailed(file,SavedRecordingFailure.NETWORK)
+        return id
+    }
+    private fun wav():ByteArray {
+        val count=16000*12
+        val b=ByteBuffer.allocate(44+count*2).order(ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(36+count*2).put("WAVEfmt ".toByteArray()).putInt(16)
+            .putShort(1).putShort(1).putInt(16000).putInt(32000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(count*2)
+        repeat(count) { b.putShort((kotlin.math.sin(it*2*Math.PI*220/16000)*300).toInt().toShort()) }
+        return b.array()
+    }
+    private fun capture(name:String) {
+        compose.waitForIdle()
+        for(cmd in listOf("mkdir -p /sdcard/Download/vd008","screencap -p /sdcard/Download/vd008/$name.png"))
+            instrumentation.uiAutomation.executeShellCommand(cmd).use { ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+    }
+    @Before fun before() { instrumentation.runOnMainSync {
+        DictationSessions.prepare(context)
+        // Dedicated emulator only; previous fixture history is removed explicitly.
+        repository.records().forEach {repository.discard(it.id)}
+        MainActivity.testNotice="TEST DATA · synthetic audio and transcript"
+    } }
+    @After fun after() { instrumentation.runOnMainSync {
+        AndroidRecordingPlayback.interrupt()
+        ids.forEach {repository.discard(it)}
+        MainActivity.testNotice=null
+    } }
+    @Test fun historyTapPlaybackCopyDeleteAndSwipeUseDurableRecords() {
+        lateinit var success:String;lateinit var pending:String
+        instrumentation.runOnMainSync { pending=seed(SavedRecordingStatus.PENDING);success=seed(SavedRecordingStatus.COMPLETE,transcript) }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            capture("01-main-history-entry")
+            compose.onNodeWithTag("saved_recordings").performScrollTo().performClick()
+            compose.onNodeWithTag("history_sheet").assertExists()
+            compose.onNodeWithTag("history_play_$success").performScrollTo().performClick()
+            compose.waitUntil(15000) { compose.onAllNodesWithText("Pause").fetchSemanticsNodes().isNotEmpty() }
+            SystemClock.sleep(1000)
+            capture("02-history-success-playing")
+            compose.onNodeWithTag("history_play_$success").performClick()
+            compose.onNodeWithTag("history_play_$success").assertTextEquals("Play")
+            compose.onNodeWithTag("history_copy_$success").performScrollTo().performClick()
+            scenario.onActivity { assertEquals(transcript,it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
+            compose.onNodeWithTag("history_delete_$success").performClick()
+            compose.onNodeWithText("Cancel").performClick()
+            assertNotNull(repository.record(success))
+            compose.onNodeWithTag("history_delete_$success").performClick()
+            compose.onNodeWithTag("history_confirm_delete").performClick()
+            compose.waitUntil {repository.record(success)==null}
+            compose.onNodeWithTag("history_retry_$pending").performScrollTo().assertIsEnabled()
+            capture("03-history-pending")
+            compose.onNodeWithTag("history_close").performClick()
+            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+            compose.onNodeWithTag("history_swipe").performScrollTo().performTouchInput { swipeUp() }
+            compose.onNodeWithTag("history_sheet").assertExists()
+        }
+        assertNotNull(repository.record(pending))
+    }
+    @Test fun navigationAndMicrophoneInterruptionReleaseActualPlayer() {
+        lateinit var id:String
+        instrumentation.runOnMainSync {id=seed(SavedRecordingStatus.COMPLETE,transcript)}
+        val player=AndroidRecordingPlayback.create(context)
+        instrumentation.runOnMainSync {AndroidRecordingPlayback.claim(player);player.toggle(id,repository.audio(id))}
+        compose.waitUntil(15000) {player.state.value.playing}
+        SystemClock.sleep(600)
+        instrumentation.runOnMainSync {player.tick();assertTrue(player.state.value.position>0);AndroidRecordingPlayback.interrupt()}
+        assertNull(player.state.value.id)
+        ActivityScenario.launch(SavedRecordingsActivity::class.java).use { scenario ->
+            compose.onNodeWithTag("history_play_$id").performScrollTo().performClick()
+            compose.waitUntil(15000) { compose.onAllNodesWithText("Pause").fetchSemanticsNodes().isNotEmpty() }
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.onNodeWithTag("history_play_$id").performScrollTo().assertTextEquals("Play")
+        }
+    }
+    @Test fun longTextAndLargeFontActionsRemainReachableWithCollapsedPreview() {
+        val id="large-font-fixture"
+        val text="Synthetic long transcript. ".repeat(70)
+        val row=SavedRecording(id,1700000000000,1700000000000,SavedRecordingStatus.COMPLETE,12,text)
+        ActivityScenario.launch(MainActivity::class.java).use {scenario ->
+            for(font in listOf(1f,2f)) {
+                var copied="";var deleted=false
+                scenario.onActivity {activity ->activity.setContent {
+                    val density=LocalDensity.current.density
+                    CompositionLocalProvider(LocalDensity provides Density(density,font)) {VoiceDictationTheme {
+                        Box(Modifier.width(280.dp).height(480.dp)) {
+                            RecordingHistory(RecordingRecoveryState(records=listOf(row)),PlaybackState(),{true},{},{},{deleted=true},{copied=it},{})
+                        }
+                    }}
+                }}
+                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
+                assertEquals(text,copied)
+                capture("04-history-long-text-font-$font")
+                compose.onNodeWithTag("history_delete_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_confirm_delete").performClick();assertTrue(deleted)
+            }
+        }
+    }
+}
