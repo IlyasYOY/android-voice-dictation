@@ -83,7 +83,6 @@
   <string name="current_retry_service_error">The service could not transcribe this recording. Check your account or try later. Your recording is still saved.</string>
   <string name="saved_recordings">Saved recordings (%1$d)</string>
   <string name="recording_storage_error">Could not save the recording. Check available device storage. Existing saved data has been kept.</string>
-  <string name="saved_title">Saved recordings</string>
   <string name="saved_retention">Audio and text stay on this device until you delete them. Nothing is uploaded automatically.</string>
   <string name="saved_empty">No saved recordings yet.</string>
   <string name="saved_transcribed">Transcribed</string>
@@ -91,15 +90,12 @@
   <string name="saved_unavailable">Recording needs attention. Its data has been kept.</string>
   <string name="saved_pending">Awaiting transcription</string>
   <string name="saved_live_text">Live transcript · no local audio file</string>
-  <string name="saved_audio_kept">Audio saved</string>
   <string name="saved_delete">Delete recording</string>
   <string name="saved_delete_confirm">Delete this recording, its audio and saved text?</string>
-  <string name="saved_more">Show more</string>
-  <string name="saved_back">Back</string>
   <string name="saved_unsaved_text">Received text could not be saved. Copy it or save it again without another upload.</string>
   <string name="saved_save_received">Save received text</string>
   <string name="history_title">History</string>
-  <string name="history_count">%1$d saved</string>
+  <string name="history_count">Saved: %1$d</string>
   <string name="history_close">Close</string>
   <string name="history_open">Open recording history</string>
   <string name="history_swipe_hint">Swipe up for history</string>

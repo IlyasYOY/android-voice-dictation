@@ -19,6 +19,10 @@ import io.github.ilyasyoy.voicedictation.playback.*
 import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.MockResponse
+import java.util.concurrent.TimeUnit
 import org.junit.*
 import org.junit.Assert.*
 import java.io.File
@@ -98,14 +102,46 @@ class RecordingHistoryRuntimeTest {
         }
         assertNotNull(repository.record(pending))
     }
+    @Test fun explicitRetryIsSingleFlightAndKeepsAudioAndTranscript() {
+        val server=MockWebServer()
+        server.enqueue(MockResponse().setBody("{\"text\":\"A synthetic retry result.\"}").setBodyDelay(10,TimeUnit.SECONDS))
+        server.start()
+        val key=AndroidApiKeyStore(context,".test.crossapp")
+        runBlocking {key.save("synthetic-history-fixture")}
+        context.getSharedPreferences("floating_fixture",0).edit().putBoolean("enabled",true).putInt("port",server.port).commit()
+        lateinit var id:String
+        instrumentation.runOnMainSync {id=seed(SavedRecordingStatus.FAILED)}
+        val bytes=repository.audio(id).readBytes()
+        try {
+            ActivityScenario.launch(SavedRecordingsActivity::class.java).use {
+                compose.onNodeWithTag("history_retry_$id").performScrollTo().performClick()
+                compose.waitUntil(15000) {repository.record(id)?.status==SavedRecordingStatus.UPLOADING}
+                compose.onNodeWithTag("history_delete_$id").assertIsNotEnabled()
+                compose.waitUntil(15000) {server.requestCount==1}
+                capture("05-history-processing")
+                compose.waitUntil(20000) {repository.record(id)?.status==SavedRecordingStatus.COMPLETE}
+                assertEquals(1,server.requestCount)
+                assertEquals("A synthetic retry result.",repository.record(id)?.transcript)
+                assertArrayEquals(bytes,repository.audio(id).readBytes())
+                compose.onNodeWithTag("history_retry_$id").assertDoesNotExist()
+                capture("06-history-explicit-retry-success")
+            }
+        } finally {
+            context.getSharedPreferences("floating_fixture",0).edit().clear().commit()
+            runBlocking {key.forget()};server.shutdown()
+        }
+    }
     @Test fun navigationAndMicrophoneInterruptionReleaseActualPlayer() {
         lateinit var id:String
         instrumentation.runOnMainSync {id=seed(SavedRecordingStatus.COMPLETE,transcript)}
         val player=AndroidRecordingPlayback.create(context)
         instrumentation.runOnMainSync {AndroidRecordingPlayback.claim(player);player.toggle(id,repository.audio(id))}
         compose.waitUntil(15000) {player.state.value.playing}
-        SystemClock.sleep(600)
-        instrumentation.runOnMainSync {player.tick();assertTrue(player.state.value.position>0);AndroidRecordingPlayback.interrupt()}
+        compose.waitUntil(15000) {
+            instrumentation.runOnMainSync {player.tick()}
+            player.state.value.position>0
+        }
+        instrumentation.runOnMainSync {AndroidRecordingPlayback.interrupt()}
         assertNull(player.state.value.id)
         ActivityScenario.launch(SavedRecordingsActivity::class.java).use { scenario ->
             compose.onNodeWithTag("history_play_$id").performScrollTo().performClick()
