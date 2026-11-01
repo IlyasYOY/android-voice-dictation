@@ -116,6 +116,50 @@ class HistoryCapacityRuntimeTest {
             assertEquals(200, store.capacity().limit)
         }
     }
+    @Test fun actualLiveReservesBeforePcmAndFinishesAfterLimitReductionWithoutDroppingWords() {
+        instrumentation.uiAutomation.executeShellCommand("pm grant ${context.packageName} android.permission.RECORD_AUDIO").use {
+            ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+        }
+        lateinit var emit: (LiveEvent) -> Unit
+        lateinit var model: DictationViewModel
+        val pcmBytes = java.util.concurrent.atomic.AtomicInteger()
+        instrumentation.runOnMainSync {
+            store.setHistoryLimit(2)
+            MainActivity.testFactory = { app -> DictationViewModel { scope -> DictationSessions.create(app, scope,
+                keyStore = NoKeyStore, initialMode = Mode.LIVE, mainDraft = true,
+                liveTranscriber = RealtimeTranscriber { _, callback ->
+                    emit = callback; callback(LiveEvent.Ready)
+                    object : LiveSession {
+                        override fun append(pcm: ByteArray) { pcmBytes.addAndGet(pcm.size) }
+                        override fun finish() {
+                            emit(LiveEvent.Transcript("Synthetic Live capacity words.", false, 1)); emit(LiveEvent.Finished)
+                        }
+                        override fun cancel() = Unit
+                    }
+                }) }.also { model = it } }
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { model.setKey("synthetic-key") }
+            compose.onNodeWithTag("record").performScrollTo().performClick()
+            compose.waitUntil(30000) { model.state.value.phase == Phase.RECORDING && pcmBytes.get() > 0 }
+            assertEquals(1, store.capacity().used); assertEquals(1, store.capacity().reservedLive)
+            assertTrue(store.records().isEmpty())
+            instrumentation.runOnMainSync { seed(true); store.setHistoryLimit(1) }
+            scenario.onActivity { assertEquals(Phase.RECORDING, model.state.value.phase) }
+            compose.onNodeWithTag("stop").performClick()
+            compose.waitUntil(30000) { model.state.value.phase == Phase.RESULT }
+            assertEquals(2, store.capacity().used); assertEquals(0, store.capacity().reservedLive)
+            assertTrue(store.ownedIds().isEmpty())
+            val live = store.records().single { it.kind == SavedRecordingKind.LIVE }
+            assertEquals("Synthetic Live capacity words.", live.transcript)
+            assertFalse(store.audio(live.id).exists())
+            compose.onNodeWithTag("capacity_open_history").performScrollTo().performClick()
+            compose.onNodeWithTag("history_play_${live.id}").assertDoesNotExist()
+            compose.onNodeWithTag("history_expand_${live.id}").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals("Synthetic Live capacity words.")
+            capture("06-live-completes-above-reduced-limit")
+        }
+    }
     @Test fun fullDoesNotPreventExplicitRetryOrDeleteOfExistingFailedAudio() {
         lateinit var id: String
         instrumentation.runOnMainSync { id = seed(true); store.setHistoryLimit(1) }
