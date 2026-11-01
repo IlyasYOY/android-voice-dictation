@@ -25,24 +25,26 @@ import kotlinx.coroutines.withContext
 internal object AndroidAudioWaveform {
     private data class Key(val path: String, val size: Long, val modified: Long)
     private val lock = Mutex()
-    private val cache = linkedMapOf<Key, List<Float>?>()
+    private val cache = linkedMapOf<Key, List<Float>>()
     suspend fun read(file: File): List<Float>? = withContext(Dispatchers.IO) {
         lock.withLock {
             val key = Key(file.absolutePath, file.length(), file.lastModified())
-            if (cache.containsKey(key)) return@withLock cache[key]
+            cache[key]?.let { return@withLock it }
             val result = try { decode(file) }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { null }
             currentCoroutineContext().ensureActive()
-            if (cache.size >= 16) cache.remove(cache.keys.first())
-            cache[key] = result
+            if (result != null) {
+                if (cache.size >= 16) cache.remove(cache.keys.first())
+                cache[key] = result
+            }
             result
         }
     }
 
     private suspend fun decode(file: File): List<Float>? {
         if (!file.isFile || file.length() == 0L) return null
-        val deadline = SystemClock.elapsedRealtime() + 4_000L
+        val deadline = SystemClock.elapsedRealtime() + 8_000L
         // Canonical PCM WAV needs no media-service IPC or codec. Sample its real
         // frames directly; other WAV layouts and compressed formats use the SDK.
         canonicalPcm(file, deadline)?.let { return it }
@@ -64,6 +66,13 @@ internal object AndroidAudioWaveform {
                 decoder = MediaCodec.createDecoderByType(mime)
                 decoder.configure(format, null, null, 0)
                 decoder.start()
+            }
+            // AAC frames are independently addressable. Feed small windows through
+            // one decoder run, rather than flushing/reconfiguring it forty times.
+            // The first frame in each window restores overlap history; measure
+            // the second. This bounds work even for long retained recordings.
+            if (mime == "audio/mp4a-latm" && decoder != null) {
+                return sampleAac(extractor, decoder, format, duration, deadline)
             }
             val pcm = ByteBuffer.allocate(65_536).order(ByteOrder.LITTLE_ENDIAN)
             val peaks = ArrayList<Float>(40)
@@ -122,6 +131,61 @@ internal object AndroidAudioWaveform {
             runCatching { decoder?.release() }
             runCatching { extractor.release() }
         }
+    }
+
+    private suspend fun sampleAac(extractor: MediaExtractor, codec: MediaCodec,
+        format: MediaFormat, duration: Long, deadline: Long): List<Float>? {
+        val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        if (rate <= 0) return null
+        val frameTime = 1_024_000_000L / rate
+        val peaks = FloatArray(40)
+        val measured = BooleanArray(40)
+        val info = MediaCodec.BufferInfo()
+        var slot = 0
+        var ended = false
+        while (!ended) {
+            currentCoroutineContext().ensureActive()
+            if (SystemClock.elapsedRealtime() >= deadline) return null
+            val input = if (slot <= 80) codec.dequeueInputBuffer(0) else -1
+            if (input >= 0) {
+                if (slot < 80) {
+                    if (slot % 2 == 0) {
+                        val target = duration * (slot / 2) / 40
+                        extractor.seekTo((target - frameTime).coerceAtLeast(0), MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                    }
+                    val buffer = checkNotNull(codec.getInputBuffer(input))
+                    buffer.clear()
+                    val size = extractor.readSampleData(buffer, 0)
+                    if (size <= 0) return null
+                    codec.queueInputBuffer(input, 0, size, slot * frameTime, 0)
+                    // Reuse the final valid frame for a window at the clip tail.
+                    if (extractor.sampleTime + frameTime < duration) extractor.advance()
+                    slot++
+                } else {
+                    codec.queueInputBuffer(input, 0, 0, slot * frameTime, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    slot++
+                }
+            }
+            val output = codec.dequeueOutputBuffer(info, 10_000)
+            if (output >= 0) {
+                try {
+                    if (info.size > 0) {
+                        val outputSlot = ((info.presentationTimeUs + frameTime / 2) / frameTime).toInt()
+                        if (outputSlot in 0 until 80 && outputSlot % 2 == 1) {
+                            val buffer = checkNotNull(codec.getOutputBuffer(output)).order(ByteOrder.LITTLE_ENDIAN)
+                            buffer.position(info.offset); buffer.limit(info.offset + info.size)
+                            val bucket = outputSlot / 2
+                            peaks[bucket] = peak(buffer, encoding(codec.getOutputFormat(output)))
+                            measured[bucket] = true
+                        }
+                    }
+                    ended = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                } finally { codec.releaseOutputBuffer(output, false) }
+            }
+        }
+        if (!measured.all { it }) return null
+        val maximum = peaks.maxOrNull() ?: return null
+        return peaks.map { if (maximum > 0f) (it / maximum).coerceIn(0f, 1f) else it }
     }
 
     private suspend fun canonicalPcm(file: File, deadline: Long): List<Float>? = RandomAccessFile(file, "r").use { input ->

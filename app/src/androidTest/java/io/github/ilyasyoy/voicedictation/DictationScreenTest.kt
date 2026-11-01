@@ -93,11 +93,12 @@ class DictationScreenTest {
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(request.bodySize > 1000); assertEquals("Bearer synthetic-test-key", request.getHeader("Authorization"))
         val id = AndroidRecordingStorage.repository(context).records().first { it.transcript == "A thought captured. Test server response." }.id
+        click("saved_recordings")
+        compose.waitUntil(20000) { compose.onAllNodesWithTag("history_waveform_$id").fetchSemanticsNodes().isNotEmpty() }
         val peaks = kotlinx.coroutines.runBlocking {
             io.github.ilyasyoy.voicedictation.playback.AndroidAudioWaveform.read(AndroidRecordingStorage.repository(context).audio(id))
         }
         assertEquals("Actual AAC has a decodable local thumbnail", 40, checkNotNull(peaks).size)
-        click("saved_recordings")
         compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
         compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("Edited thought")
         click("history_copy_$id")
@@ -119,6 +120,32 @@ class DictationScreenTest {
         compose.onNodeWithTag("saved_recordings").assertIsDisplayed()
         screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
         click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
+    }
+    @Test fun appGeneratedShortAndNormalAacLoadWaveformsInHistory() {
+        key()
+        for ((index, length) in listOf(600L, 10000L).withIndex()) {
+            val text = "Synthetic AAC fixture $length"
+            server.enqueue(MockResponse().setBody("{\"text\":\"$text\"}"))
+            click("record");waitPhase(Phase.RECORDING);SystemClock.sleep(length);click("stop");waitPhase(Phase.RESULT)
+            val store = AndroidRecordingStorage.repository(context)
+            val row = store.records().first { it.transcript == text }
+            val file = store.audio(row.id)
+            val before = file.readBytes()
+            // Load through the real sheet first: no metadata call or cache prewarming.
+            click("saved_recordings")
+            compose.waitUntil(20000) { compose.onAllNodesWithTag("history_waveform_${row.id}").fetchSemanticsNodes().isNotEmpty() }
+            val peaks = kotlinx.coroutines.runBlocking { io.github.ilyasyoy.voicedictation.playback.AndroidAudioWaveform.read(file) }
+            assertEquals(40, checkNotNull(peaks).size)
+            assertArrayEquals(before, file.readBytes())
+            compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
+            compose.waitUntil(15000) { compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty() }
+            screenshot("aac-$length-real-recorder-waveform")
+            compose.onNodeWithTag("history_play_${row.id}").performClick()
+            compose.onNodeWithTag("history_expand_${row.id}").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals(text)
+            assertEquals(index + 1, server.requestCount)
+            click("history_close")
+        }
     }
     @Test fun failedCurrentRecordingCanBePlayedAndRetriedInMainHistoryWithoutBackgrounding() {
         key();server.enqueue(MockResponse().setResponseCode(500))
