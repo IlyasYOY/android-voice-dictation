@@ -286,7 +286,10 @@ class RecordingHistoryRuntimeTest {
     @Test fun historyDismissesByBackDownwardGestureAndAccessibleAction() {
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.onNodeWithTag("saved_recordings").performClick()
-            androidx.test.uiautomator.UiDevice.getInstance(instrumentation).pressBack()
+            compose.onNodeWithTag("history_sheet").assertIsDisplayed()
+            compose.waitForIdle()
+            val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+            device.waitForIdle(); device.pressBack()
             compose.onNodeWithTag("history_sheet").assertDoesNotExist()
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_sheet").performTouchInput { swipeDown() }
