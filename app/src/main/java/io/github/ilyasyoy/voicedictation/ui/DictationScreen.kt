@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
@@ -25,6 +26,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -45,8 +47,22 @@ fun DictationScreen(
     val scroll = rememberScrollState()
     LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
     LaunchedEffect(state.audioBusy) { if (!state.audioBusy) controlsOpen = false }
+    val historyGesture = remember(settingsOpen, state.audioBusy, onSavedRecordings) {
+        object : NestedScrollConnection {
+            var distance = 0f
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && !settingsOpen && !state.audioBusy) {
+                    distance = if (available.y < 0) distance - available.y else 0f
+                    if (distance > 80f) { distance = 0f; onSavedRecordings() }
+                }
+                return Offset.Zero
+            }
+        }
+    }
     BackHandler(settingsOpen) { settingsOpen = false }
-    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), topBar = {
+    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), bottomBar = {
+        if (!settingsOpen) HistoryEntrance(savedRecordings, !state.audioBusy, onSavedRecordings)
+    }, topBar = {
         Column {
             if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(evidenceNotice, Modifier.fillMaxWidth().padding(8.dp),
@@ -62,7 +78,7 @@ fun DictationScreen(
     }) { insets ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
             val controlSize = minOf(228.dp, maxWidth - 48.dp, maxHeight * .40f).coerceAtLeast(112.dp)
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll)
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().nestedScroll(historyGesture).verticalScroll(scroll)
                 .padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 val settingsLabel = stringResource(R.string.current_settings)
@@ -151,29 +167,19 @@ fun DictationScreen(
                 if (state.mode == Mode.RECORD && state.audioBusy) TextButton(onCancel, Modifier.testTag("cancel")) {
                     Text(stringResource(if (state.mode == Mode.LIVE) R.string.cancel_live else R.string.cancel))
                 }
-                if (!state.validKey && !state.audioBusy && state.problem == null) TextButton({ settingsOpen = true }, Modifier.testTag("add_key")) { Text(stringResource(R.string.current_add_key)) }
                 if (state.mode == Mode.LIVE && state.audioBusy) Text(stringResource(when (state.phase) {
                     Phase.CONNECTING -> R.string.live_connect_status; Phase.RECORDING -> R.string.live_stream_status; else -> R.string.live_finish_status
                 }), Modifier.testTag("live_status"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (state.safetyStopped && state.problem == null) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 if (state.canRetry) Button(onRetry, Modifier.testTag("retry"), enabled = state.validKey && !state.keyBusy) { Text(stringResource(R.string.retry)) }
-                if (state.text.isNotBlank() || state.phase == Phase.RESULT) {
-                    OutlinedTextField(state.text, onEdit, Modifier.fillMaxWidth().testTag("transcript"), label = { Text(stringResource(R.string.transcript)) },
-                        minLines = 2, readOnly = state.busy, shape = RoundedCornerShape(24.dp))
+                if (state.mode == Mode.LIVE && state.audioBusy && state.text.isNotBlank()) {
+                    Text(state.text.takeLast(180), Modifier.fillMaxWidth().testTag("live_preview"),
+                        maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                     if (state.mode == Mode.LIVE && state.livePartial) Text(
                         stringResource(R.string.partial_text),
                         Modifier.testTag("live_text_status"), style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onCopy, Modifier.weight(1f).testTag("copy"), enabled = !state.busy && state.text.isNotBlank()) { Text(stringResource(R.string.copy)) }
-                        OutlinedButton(onClear, Modifier.weight(1f).testTag("clear"), enabled = !state.busy && state.text.isNotEmpty()) { Text(stringResource(R.string.clear)) }
-                    }
                 }
-                if(savedRecordings>0) OutlinedButton(onSavedRecordings,Modifier.testTag("saved_recordings"),enabled=!state.audioBusy) {
-                    Text(stringResource(R.string.saved_recordings,savedRecordings))
-                }
-                Text(stringResource(R.string.current_tap_hint), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                TextButton(onFloatingSetup, Modifier.testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
             }
         }
     }

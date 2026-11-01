@@ -408,10 +408,23 @@ class CrossAppTest {
     }
     private fun durableStateFile()=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"vd004-upgrade.properties")
     private fun digest(audio:ByteArray)=MessageDigest.getInstance("SHA-256").digest(audio).joinToString("") {"%02x".format(it)}
+    private fun historyPlay() = By.pkg(APP).descContains("Play, ")
+    private fun historyUploadAction() = By.pkg(APP).desc(Pattern.compile("Transcribe|Retry transcription"))
+    private fun savedTranscript() = By.pkg(APP).text(Pattern.compile(".*(?:voice test|Recorded offline).*"))
     private fun openSavedFromMain() {
         launch("$APP.MainActivity")
-        find(By.text(Pattern.compile("Saved recordings \\(.*\\)")),60_000).click()
-        find(By.text("Saved recordings"),30_000)
+        find(By.pkg(APP).descContains("Open recording history"), 60_000).click()
+        // The sheet has no visible title; wait for an actual audio control.
+        find(historyPlay(), 30_000)
+    }
+    private fun expandSavedTranscript() {
+        scrollFind(By.pkg(APP).desc("Show transcript")).click()
+        scrollFind(savedTranscript())
+    }
+    private fun deleteSavedMessage() {
+        scrollFind(By.pkg(APP).descContains("Message options")).click()
+        find(By.pkg(APP).text("Delete")).click()
+        find(By.pkg(APP).text("Delete recording")).click()
     }
     @Test fun uDurablePhase1CreateFailedRecordingInAcceptedVersionBeforeUpgrade() {
         launch("$APP.floating.DebugFloatingSetupActivity",server.port)
@@ -434,35 +447,37 @@ class CrossAppTest {
     @Test fun vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload() {
         assertTrue(durableStateFile().isFile)
         openSavedFromMain()
-        find(appId("floating_retry_audio"),30_000)
-        assertTrue(has(By.text("Audio saved"),10_000))
+        find(historyUploadAction(),30_000)
+        assertTrue(has(historyPlay(),10_000))
         SystemClock.sleep(1500);assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         screenshot("41-after-upgrade-pending-before-reboot")
         checkpoint("Upgrade phase2: candidate restored legacy cache into durable storage; manual Retry visible; zero startup HTTP/WS; host must reboot before phase3")
     }
     @Test fun wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart() {
         val expected=Properties().apply {durableStateFile().inputStream().use {load(it)}}
-        openSavedFromMain();find(appId("floating_retry_audio"),30_000)
+        openSavedFromMain();find(historyUploadAction(),30_000)
         SystemClock.sleep(1200);assertEquals(0,fileRequests.get())
-        find(appId("floating_retry_audio")).click()
+        find(historyUploadAction()).click()
         val end=SystemClock.elapsedRealtime()+40_000
         while(fileRequests.get()<1 && SystemClock.elapsedRealtime()<end)SystemClock.sleep(100)
         assertEquals(1,fileRequests.get());assertEquals(expected.getProperty("audio_sha256"),digest(lastFileAudio.get()))
         assertEquals(expected.getProperty("audio_bytes").toInt(),lastFileAudio.get().size)
-        assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
-        assertTrue(has(By.text("Audio saved"),10_000))
+        expandSavedTranscript()
+        assertTrue(scrollFind(savedTranscript()).text.contains("voice test"))
+        assertTrue(has(historyPlay(),10_000))
         device.executeShellCommand("am force-stop $APP")
         openSavedFromMain()
-        assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
-        assertTrue(has(By.text("Audio saved"),10_000))
-        assertFalse(device.hasObject(appId("floating_retry_audio")));assertEquals(1,fileRequests.get())
+        expandSavedTranscript()
+        assertTrue(scrollFind(savedTranscript()).text.contains("voice test"))
+        assertTrue(has(historyPlay(),10_000))
+        assertFalse(device.hasObject(historyUploadAction()));assertEquals(1,fileRequests.get())
         screenshot("42-success-audio-and-text-after-process-death")
-        scrollFind(appId("saved_delete")).click();find(By.res("android","button1")).click()
+        deleteSavedMessage()
         find(By.text("No saved recordings yet."),30_000)
         screenshot("43-explicit-delete-complete")
         device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
-        SystemClock.sleep(1800)
-        assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
+        // Wait for the cold main window, then require its actual persisted empty count.
+        find(By.pkg(APP).descContains("Saved recordings (0)"), 60_000)
         assertEquals(1,fileRequests.get())
         checkpoint("Upgrade + real reboot + manual retry passed: every audio byte matched; successful audio/text survived process death; explicit delete survived restart; exactly one explicit post-reboot HTTP and zero WS")
     }
@@ -470,21 +485,23 @@ class CrossAppTest {
     @Test fun xDurableMainSuccessSurvivesProcessDeathAndExplicitDelete() {
         val expected="Recorded offline. Uploaded by explicit retry."
         openSavedFromMain()
-        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
-        assertTrue(has(By.text("Audio saved"),10_000))
+        expandSavedTranscript()
+        assertTrue(scrollFind(savedTranscript()).text.contains(expected))
+        assertTrue(has(historyPlay(),10_000))
         device.executeShellCommand("am force-stop $APP")
         openSavedFromMain()
-        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
-        assertTrue(has(By.text("Audio saved"),10_000))
-        assertFalse(device.hasObject(appId("floating_retry_audio")))
+        expandSavedTranscript()
+        assertTrue(scrollFind(savedTranscript()).text.contains(expected))
+        assertTrue(has(historyPlay(),10_000))
+        assertFalse(device.hasObject(historyUploadAction()))
         assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         screenshot("44-main-success-audio-text-after-process-death")
-        scrollFind(appId("saved_delete")).click();find(By.res("android","button1")).click()
+        deleteSavedMessage()
         find(By.text("No saved recordings yet."),30_000)
         screenshot("45-main-explicit-delete-complete")
         device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
-        SystemClock.sleep(1800)
-        assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
+        // Wait for the cold main window, then require its actual persisted empty count.
+        find(By.pkg(APP).descContains("Saved recordings (0)"), 60_000)
         assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         checkpoint("Fresh guest: main offline/manual-retry success audio and text survived process death; explicit delete survived restart; zero recovery HTTP/WS; separate from interrupted legacy reboot UI run")
     }

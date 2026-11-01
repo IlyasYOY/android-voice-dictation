@@ -14,7 +14,10 @@ interface PcmSource {
 /** Fresh AudioRecord per run. Non-blocking reads allow shutdown/release on the capture worker. */
 class AndroidPcmSource : PcmSource {
     private val worker = PcmCaptureWorker(::capture)
-    override fun start(onAudio: (ByteArray) -> Unit, onError: (Exception) -> Unit) = worker.start(onAudio, onError)
+    override fun start(onAudio: (ByteArray) -> Unit, onError: (Exception) -> Unit) {
+        io.github.ilyasyoy.voicedictation.playback.AndroidRecordingPlayback.interrupt()
+        worker.start(onAudio, onError)
+    }
     override fun stop() = worker.stop()
 
     @SuppressLint("MissingPermission") // Explicit caller permission gate; revocation is also handled as failure.

@@ -108,7 +108,9 @@ class OfflineRecordRuntimeTest {
             }
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             checkpoint("Opening main Record control while saved-key read is suspended")
-            find(By.desc(context.getString(R.string.record)));screenshot("01-airplane-idle-before-key-read")
+            // Wait for the cold main window before the generic finder can scroll the old Settings window.
+            checkNotNull(device.wait(Until.findObject(By.desc(context.getString(R.string.record))), 60_000))
+            screenshot("01-airplane-idle-before-key-read")
             val recordControl=find(By.desc(context.getString(R.string.record)))
             tapAt=SystemClock.elapsedRealtime();recordControl.click()
             waitFor("Local capture starts while key loading is suspended") {capturing.get() && model.state.value.phase==Phase.RECORDING}
@@ -131,11 +133,11 @@ class OfflineRecordRuntimeTest {
             waitFor("Activity stop transfers audio to process recovery") {RecordingRecovery.processOwned.count==1}
             SystemClock.sleep(2000);assertEquals(1,calls.get());assertEquals(0,server.requestCount)
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            find(By.text(context.getString(R.string.saved_recordings,1))).click()
-            find(By.res(context.packageName,"floating_retry_audio"))
+            find(By.descContains(context.getString(R.string.history_open))).click()
+            find(By.desc(context.getString(R.string.history_retry)))
             screenshot("05-manual-recovery-after-network-restored")
             assertEquals(0,server.requestCount)
-            find(By.res(context.packageName,"floating_retry_audio")).click()
+            find(By.desc(context.getString(R.string.history_retry))).click()
             waitFor("Only explicit Retry completes the retained upload") {RecordingRecovery.processOwned.count==0 && FloatingFeedback.processOwned.text.isNotBlank()}
             assertEquals(1,server.requestCount)
             assertEquals("Recorded offline. Uploaded by explicit retry.",FloatingFeedback.processOwned.text)

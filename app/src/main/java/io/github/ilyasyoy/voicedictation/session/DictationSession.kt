@@ -44,6 +44,8 @@ class DictationSession(
     private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore,
         text=draft,phase=if(draft.isBlank())Phase.IDLE else Phase.RESULT,problem=if(restoredDraft.isFailure)Problem.LOCAL_STORAGE else null))
     val state = mutableState.asStateFlow()
+    private var unpersistedDraft = false
+    private var problemBeforeDraftFailure: Problem? = null
     private var pendingAudio: File? = null
     private var request: Job? = null
     private var ticker: Job? = null
@@ -98,14 +100,34 @@ class DictationSession(
         update { it.copy(mode = mode, problem = null, phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT) }
     }
     fun edit(text: String) { if (!closed && !state.value.busy) {update { it.copy(text = text, livePartial = false) };persistDraft(text)} }
-    fun clear() { if (!closed && !state.value.busy) { cancel(); if(persistDraft(""))update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
+    fun draftSourceId():String? = recordings.draftSourceId()
+    fun clear() { if (!closed && !state.value.busy) { cancel(); if(clearDraft())update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
     fun refreshDraft() {
         if(closed || state.value.audioBusy || state.value.canRetry)return
-        try {recordings.restoreDraft()?.let {text -> update {it.copy(text=text,phase=if(text.isBlank())Phase.IDLE else Phase.RESULT)}}}
+        try {
+            // A failed checkpoint cannot authorize replacing newer in-memory edits. A
+            // confirmed deletion still invalidates its source, including a dirty edit.
+            if (unpersistedDraft && recordings.draftSourceAvailable()) return
+            recordings.restoreDraft()?.let { text ->
+                draftPersisted()
+                update { it.copy(text=text,phase=if(text.isBlank())Phase.IDLE else Phase.RESULT) }
+            }
+        }
         catch(_:Exception) {update {it.copy(problem=Problem.LOCAL_STORAGE)}}
     }
-    private fun persistDraft(text:String):Boolean = try {recordings.saveDraft(text);true}
-        catch(_:Exception) {update {it.copy(problem=Problem.LOCAL_STORAGE)};false}
+    private fun persistDraft(text:String):Boolean = try {recordings.saveDraft(text);draftPersisted();true}
+        catch(_:Exception) {draftFailed();false}
+    private fun clearDraft():Boolean = try {recordings.clearDraft();draftPersisted();true}
+        catch(_:Exception) {draftFailed();false}
+    private fun draftFailed() {
+        if (!unpersistedDraft) problemBeforeDraftFailure = state.value.problem
+        unpersistedDraft = true
+        update { it.copy(problem=Problem.LOCAL_STORAGE) }
+    }
+    private fun draftPersisted() {
+        if (unpersistedDraft && state.value.problem == Problem.LOCAL_STORAGE) update { it.copy(problem=problemBeforeDraftFailure) }
+        unpersistedDraft = false; problemBeforeDraftFailure = null
+    }
     fun permissionDenied() { if (!closed && !state.value.audioBusy) error(Problem.PERMISSION) }
     fun start(hasPermission: Boolean) {
         if (closed || state.value.audioBusy || state.value.canRetry || (state.value.mode==Mode.LIVE && state.value.keyBusy)) return
@@ -313,7 +335,7 @@ class DictationSession(
         persistDraft(state.value.text)
         releaseLive()
         runCatching { recorder.cancel() }; val removed=discardAudio()
-        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false) }
+        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed && !unpersistedDraft)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false) }
     }
     private fun discardAudio(): Boolean {
         val audio=pendingAudio ?: return true

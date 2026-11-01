@@ -21,6 +21,7 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
 
     @Suppress("DEPRECATION")
     override fun start(onLimit: () -> Unit) {
+        io.github.ilyasyoy.voicedictation.playback.AndroidRecordingPlayback.interrupt()
         check(recorder == null)
         val target = try { files.allocate() } catch(e:Exception) {throw RecordingStorageFailure(e)}
         file = target

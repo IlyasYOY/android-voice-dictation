@@ -32,6 +32,8 @@ The debug fixture is a separate UID with harmless fields and a local determinist
 
 See [review and validation](architecture-review.md), [floating contract](floating-contract.md), and [OpenAI contract](realtime-contract.md).
 
-See [VD003 local Record ordering and temporary ownership](immediate-record.md). The existing recovery collection is shared by main and floating; VD004 adds durable storage and explicit per-record recovery. It does not add automatic uploads, swipe history or playback.
+See [VD003 local Record ordering and temporary ownership](immediate-record.md). The existing recovery collection is shared by main and floating; VD004 adds durable storage and explicit per-record recovery. It does not add automatic uploads. VD008 adds the shared history sheet and an independently owned playback adapter.
 
 See [durable recording transactions and retention](durable-recordings.md). Both successful audio and transcript remain until explicit discard; no count/age eviction is active.
+
+See [history and playback ownership](recording-history.md).

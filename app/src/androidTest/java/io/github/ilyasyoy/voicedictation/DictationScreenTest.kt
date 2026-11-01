@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation
 
 import android.Manifest
+import androidx.compose.ui.semantics.SemanticsActions
 import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -61,9 +62,12 @@ class DictationScreenTest {
     private fun key() { scenario.onActivity { model.setKey("synthetic-test-key") } }
     private fun waitPhase(phase: Phase) { compose.waitUntil(30_000) { model.state.value.phase == phase } }
     private fun click(tag: String) {
+        if (tag == "history_close") {
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }; return
+        }
         val configuration = tag in setOf("mode_record", "mode_live", "forget")
         if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
-        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        if (tag in setOf("saved_recordings", "history_close")) compose.onNodeWithTag(tag).performClick() else compose.onNodeWithTag(tag).performScrollTo().performClick()
         if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()
     }
     private fun screenshot(name: String) {
@@ -88,14 +92,23 @@ class DictationScreenTest {
         key()
         server.enqueue(MockResponse().setBody("{\"text\":\"A thought captured. Test server response.\"}").setBodyDelay(5, TimeUnit.SECONDS))
         click("record"); waitPhase(Phase.RECORDING); screenshot("02-recording")
-        SystemClock.sleep(1800); click("stop"); waitPhase(Phase.TRANSCRIBING); screenshot("03-transcribing")
+        SystemClock.sleep(600); click("stop"); waitPhase(Phase.TRANSCRIBING); screenshot("03-transcribing")
         waitPhase(Phase.RESULT); screenshot("04-result");assertSavedAudio("A thought captured. Test server response.")
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(request.bodySize > 1000); assertEquals("Bearer synthetic-test-key", request.getHeader("Authorization"))
+        val id = AndroidRecordingStorage.repository(context).records().first { it.transcript == "A thought captured. Test server response." }.id
+        click("saved_recordings")
+        compose.waitUntil(20000) { compose.onAllNodesWithTag("history_waveform_$id").fetchSemanticsNodes().isNotEmpty() }
+        val peaks = kotlinx.coroutines.runBlocking {
+            io.github.ilyasyoy.voicedictation.playback.AndroidAudioWaveform.read(AndroidRecordingStorage.repository(context).audio(id))
+        }
+        assertEquals("Actual AAC has a decodable local thumbnail", 40, checkNotNull(peaks).size)
+        compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
         compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("Edited thought")
-        click("copy")
+        click("history_copy_$id")
         scenario.onActivity { assertEquals("Edited thought", it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-        assertNoPendingAudio(); click("clear"); assertEquals("", model.state.value.text)
+        assertNoPendingAudio(); click("history_menu_$id"); compose.onNodeWithTag("clear").performClick(); assertEquals("", model.state.value.text)
+        click("history_close")
         click("forget"); assertEquals("", model.state.value.key)
     }
     @Test fun serverErrorCanRetryThenRetainsAudioAndText() {
@@ -108,9 +121,52 @@ class DictationScreenTest {
         compose.onNodeWithTag("cancel").assertDoesNotExist()
         compose.onNodeWithTag("open_settings").assertIsEnabled()
         compose.onNodeWithText(context.getString(R.string.current_settings)).assertDoesNotExist()
-        compose.onNodeWithTag("saved_recordings").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("saved_recordings").assertIsDisplayed()
         screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
         click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
+    }
+    @Test fun appGeneratedShortAndNormalAacLoadWaveformsInHistory() {
+        key()
+        for ((index, length) in listOf(600L, 10000L).withIndex()) {
+            val text = "Synthetic AAC fixture $length"
+            server.enqueue(MockResponse().setBody("{\"text\":\"$text\"}"))
+            click("record");waitPhase(Phase.RECORDING);SystemClock.sleep(length);click("stop");waitPhase(Phase.RESULT)
+            val store = AndroidRecordingStorage.repository(context)
+            val row = store.records().first { it.transcript == text }
+            val file = store.audio(row.id)
+            val before = file.readBytes()
+            // Load through the real sheet first: no metadata call or cache prewarming.
+            click("saved_recordings")
+            compose.waitUntil(20000) { compose.onAllNodesWithTag("history_waveform_${row.id}").fetchSemanticsNodes().isNotEmpty() }
+            val peaks = kotlinx.coroutines.runBlocking { io.github.ilyasyoy.voicedictation.playback.AndroidAudioWaveform.read(file) }
+            assertEquals(40, checkNotNull(peaks).size)
+            assertArrayEquals(before, file.readBytes())
+            compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
+            compose.waitUntil(15000) { compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty() }
+            screenshot("aac-$length-real-recorder-waveform")
+            compose.onNodeWithTag("history_play_${row.id}").performClick()
+            compose.onNodeWithTag("history_expand_${row.id}").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals(text)
+            assertEquals(index + 1, server.requestCount)
+            click("history_close")
+        }
+    }
+    @Test fun failedCurrentRecordingCanBePlayedAndRetriedInMainHistoryWithoutBackgrounding() {
+        key();server.enqueue(MockResponse().setResponseCode(500))
+        click("record");waitPhase(Phase.RECORDING);SystemClock.sleep(1600);click("stop");waitPhase(Phase.ERROR)
+        val store=AndroidRecordingStorage.repository(context)
+        val row=store.records().first {it.status==io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.FAILED}
+        assertTrue(row.id in store.ownedIds())
+        click("saved_recordings")
+        assertFalse(model.state.value.canRetry)
+        assertFalse(row.id in store.ownedIds())
+        compose.onNodeWithTag("history_retry_${row.id}").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
+        compose.waitUntil(15000) {compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty()}
+        screenshot("07-current-failure-history-real-m4a-playing")
+        compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
+        assertTrue(store.audio(row.id).length()>1000)
+        assertEquals(1,server.requestCount)
     }
     @Test fun cancelAndBackgroundStopRealMicrophone() {
         key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoPendingAudio()

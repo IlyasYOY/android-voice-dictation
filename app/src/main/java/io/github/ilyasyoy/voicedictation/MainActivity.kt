@@ -13,7 +13,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
@@ -50,7 +51,9 @@ class MainActivity : ComponentActivity() {
         })[DictationViewModel::class.java]
         setContent {
             VoiceDictationTheme {
+                var historyOpen by rememberSaveable { mutableStateOf(false) }
                 val state by model.state.collectAsStateWithLifecycle()
+                LaunchedEffect(state.audioBusy) { if (state.audioBusy) historyOpen = false }
                 val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
@@ -58,7 +61,14 @@ class MainActivity : ComponentActivity() {
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
                     savedRecordings = recovery.savedCount,
-                    onSavedRecordings = { startActivity(Intent(this,SavedRecordingsActivity::class.java)) })
+                    onSavedRecordings = { retainRetryRecording(); historyOpen = true })
+                if (historyOpen) RecordingHistorySheet(
+                    onDismiss = { historyOpen = false; model.refreshDraft() },
+                    onRecordsChanged = model::refreshDraft,
+                    draft = HistoryDraft(state.text, model.draftSourceId(), state.text.isNotBlank() || model.draftSourceId() != null || state.phase == io.github.ilyasyoy.voicedictation.session.Phase.RESULT),
+                    draftProblem = state.problem == io.github.ilyasyoy.voicedictation.session.Problem.LOCAL_STORAGE,
+                    onDraftEdit = if (state.busy) null else model::edit,
+                    onDraftClear = if (state.busy) null else model::clear)
             }
         }
     }
@@ -70,9 +80,12 @@ class MainActivity : ComponentActivity() {
             startWithPermission()
         } else { requestingPermission = true; permission.launch(Manifest.permission.RECORD_AUDIO) }
     }
-    private fun startWithPermission() {
+    private fun retainRetryRecording() {
         val problem=model.state.value.problem
         model.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(problem)) }
+    }
+    private fun startWithPermission() {
+        retainRetryRecording()
         model.start(true)
     }
     private fun copy() {

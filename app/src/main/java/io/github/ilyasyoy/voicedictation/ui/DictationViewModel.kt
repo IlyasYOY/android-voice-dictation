@@ -23,6 +23,7 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     fun setKey(key: String) = session.setKey(key)
     fun setMode(mode: Mode) = session.setMode(mode)
     fun edit(text: String) = session.edit(text)
+    fun draftSourceId():String? = session.draftSourceId()
     fun clear() = session.clear()
     fun refreshDraft() = session.refreshDraft()
     fun permissionDenied() = session.permissionDenied()
