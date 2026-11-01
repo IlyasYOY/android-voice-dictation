@@ -26,6 +26,7 @@ internal data class RecordingRecoveryState(
     val records: List<SavedRecording> = emptyList(), val storageProblem: Boolean=false,
     val receivedTexts:Map<String,String> = emptyMap(),
     val ownedIds:Set<String> = emptySet(),
+    val capacity: HistoryCapacity = HistoryCapacity(),
 ) {
     val savedCount get()=if(records.isEmpty())count else records.size
     override fun toString()="RecordingRecoveryState(count=$count, retrying=$retrying, savedCount=$savedCount, storageProblem=$storageProblem)"
@@ -56,7 +57,7 @@ internal class RecordingRecovery {
     }
     fun storageUnavailable() {storageProblem=true;publish(RecordingRetryFailure.STORAGE)}
     private fun publish(failure: RecordingRetryFailure?=mutable.value.failure) {
-        mutable.value=RecordingRecoveryState(count,retrying,failure,repository?.records().orEmpty(),storageProblem,repository?.receivedTexts().orEmpty(),repository?.ownedIds().orEmpty())
+        mutable.value=RecordingRecoveryState(count,retrying,failure,repository?.records().orEmpty(),storageProblem,repository?.receivedTexts().orEmpty(),repository?.ownedIds().orEmpty(), repository?.capacity() ?: HistoryCapacity(readable = false))
     }
     fun retain(file: File,failure: RecordingRetryFailure?=null):File {
         val store=repository

@@ -17,6 +17,7 @@ data class DictationState(
     val livePartial: Boolean = false,
     val completedSegments: Int = 0,
     val safetyStopped: Boolean = false,
+    val capacityBlocked: Boolean = false,
 ) {
     val audioBusy get() = phase in setOf(Phase.CONNECTING, Phase.RECORDING, Phase.TRANSCRIBING, Phase.FINALIZING)
     val busy get() = audioBusy || keyBusy

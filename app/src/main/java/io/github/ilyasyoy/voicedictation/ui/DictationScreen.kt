@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation.ui
 
 import io.github.ilyasyoy.voicedictation.session.*
+import io.github.ilyasyoy.voicedictation.data.HistoryCapacity
 import io.github.ilyasyoy.voicedictation.ui.design.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -39,7 +40,9 @@ fun DictationScreen(
     onClear: () -> Unit, onForget: () -> Unit, onMode: (Mode) -> Unit,
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
     savedRecordings: Int = 0, onSavedRecordings: () -> Unit = onFloatingSetup,
+    historyCapacity: HistoryCapacity? = null, onHistoryLimit: (Int) -> Boolean = { false },
 ) {
+    val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
@@ -110,6 +113,7 @@ fun DictationScreen(
                     }
                 }
                 if (settingsOpen) {
+                    if (historyCapacity != null) HistoryLimitCard(historyCapacity, onHistoryLimit)
                     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(stringResource(R.string.current_mode), style = MaterialTheme.typography.titleMedium)
@@ -142,15 +146,17 @@ fun DictationScreen(
                     OutlinedButton(onFloatingSetup, Modifier.fillMaxWidth().testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
                     return@Column
                 }
+                if (capacityFull && !state.audioBusy) HistoryCapacityNotice(historyCapacity,
+                    onHistory = onSavedRecordings, onLimit = { settingsOpen = true })
                 val recording = state.phase == Phase.RECORDING
                 val processing = state.phase in setOf(Phase.CONNECTING, Phase.TRANSCRIBING, Phase.FINALIZING)
                 CurrentControl(stringResource(if (recording) (if (state.mode == Mode.LIVE) R.string.stop_live else R.string.stop) else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
-                    when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; else -> CurrentVisual.IDLE },
-                    if (recording) true else !processing && (state.mode==Mode.RECORD || (state.validKey && !state.keyBusy)),
+                    when { recording -> CurrentVisual.RECORDING; state.phase == Phase.CONNECTING || state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; capacityFull -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE },
+                    if (recording) true else !capacityFull && !processing && (state.mode==Mode.RECORD || (state.validKey && !state.keyBusy)),
                     if (recording) onStop else onRecord, controlSize)
                 ModeSelector(state.mode, !state.busy && !state.canRetry, onMode)
-                Column(Modifier.fillMaxWidth().heightIn(min = 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                Column(Modifier.fillMaxWidth().heightIn(min = if (capacityFull) 0.dp else 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.problem != null) {
                     Text(stringResource(R.string.error), Modifier.testTag("problem")
