@@ -108,7 +108,9 @@ class OfflineRecordRuntimeTest {
             }
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             checkpoint("Opening main Record control while saved-key read is suspended")
-            find(By.desc(context.getString(R.string.record)));screenshot("01-airplane-idle-before-key-read")
+            // Wait for the cold main window before the generic finder can scroll the old Settings window.
+            checkNotNull(device.wait(Until.findObject(By.desc(context.getString(R.string.record))), 60_000))
+            screenshot("01-airplane-idle-before-key-read")
             val recordControl=find(By.desc(context.getString(R.string.record)))
             tapAt=SystemClock.elapsedRealtime();recordControl.click()
             waitFor("Local capture starts while key loading is suspended") {capturing.get() && model.state.value.phase==Phase.RECORDING}
