@@ -476,8 +476,8 @@ class CrossAppTest {
         find(By.text("No saved recordings yet."),30_000)
         screenshot("43-explicit-delete-complete")
         device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
-        SystemClock.sleep(1800)
-        assertTrue(has(By.pkg(APP).descContains("Saved recordings (0)"),10_000))
+        // Wait for the cold main window, then require its actual persisted empty count.
+        find(By.pkg(APP).descContains("Saved recordings (0)"), 60_000)
         assertEquals(1,fileRequests.get())
         checkpoint("Upgrade + real reboot + manual retry passed: every audio byte matched; successful audio/text survived process death; explicit delete survived restart; exactly one explicit post-reboot HTTP and zero WS")
     }
@@ -500,8 +500,8 @@ class CrossAppTest {
         find(By.text("No saved recordings yet."),30_000)
         screenshot("45-main-explicit-delete-complete")
         device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
-        SystemClock.sleep(1800)
-        assertTrue(has(By.pkg(APP).descContains("Saved recordings (0)"),10_000))
+        // Wait for the cold main window, then require its actual persisted empty count.
+        find(By.pkg(APP).descContains("Saved recordings (0)"), 60_000)
         assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         checkpoint("Fresh guest: main offline/manual-retry success audio and text survived process death; explicit delete survived restart; zero recovery HTTP/WS; separate from interrupted legacy reboot UI run")
     }
