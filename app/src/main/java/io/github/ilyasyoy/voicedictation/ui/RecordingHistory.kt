@@ -163,10 +163,6 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                         onPlay, onRetry, { deleteId = record.id }, onCopy, waveform)
                 }
             }
-            item("privacy") {
-                Text(stringResource(R.string.saved_retention), Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
     }
 }

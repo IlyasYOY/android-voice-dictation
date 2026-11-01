@@ -111,6 +111,7 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithTag("history_confirm_delete").performClick()
             compose.waitUntil {repository.record(success)==null}
             compose.onNodeWithTag("history_retry_$pending").performScrollTo().assertIsEnabled()
+            compose.onNodeWithText("Audio and text stay on this device until you delete them. Nothing is uploaded automatically.").assertDoesNotExist()
             capture("05-history-pending")
             compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
             compose.onNodeWithTag("history_sheet").assertDoesNotExist()
