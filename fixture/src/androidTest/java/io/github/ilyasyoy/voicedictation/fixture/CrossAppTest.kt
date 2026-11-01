@@ -434,7 +434,7 @@ class CrossAppTest {
     @Test fun vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload() {
         assertTrue(durableStateFile().isFile)
         openSavedFromMain()
-        find(By.text(Pattern.compile("Transcribe|Retry")),30_000)
+        find(By.text(Pattern.compile("Transcribe|Retry.*")),30_000)
         assertTrue(has(By.text("Play"),10_000))
         SystemClock.sleep(1500);assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         screenshot("41-after-upgrade-pending-before-reboot")
@@ -442,9 +442,9 @@ class CrossAppTest {
     }
     @Test fun wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart() {
         val expected=Properties().apply {durableStateFile().inputStream().use {load(it)}}
-        openSavedFromMain();find(By.text(Pattern.compile("Transcribe|Retry")),30_000)
+        openSavedFromMain();find(By.text(Pattern.compile("Transcribe|Retry.*")),30_000)
         SystemClock.sleep(1200);assertEquals(0,fileRequests.get())
-        find(By.text(Pattern.compile("Transcribe|Retry"))).click()
+        find(By.text(Pattern.compile("Transcribe|Retry.*"))).click()
         val end=SystemClock.elapsedRealtime()+40_000
         while(fileRequests.get()<1 && SystemClock.elapsedRealtime()<end)SystemClock.sleep(100)
         assertEquals(1,fileRequests.get());assertEquals(expected.getProperty("audio_sha256"),digest(lastFileAudio.get()))
@@ -455,7 +455,7 @@ class CrossAppTest {
         openSavedFromMain()
         assertTrue(scrollFind(By.text(Pattern.compile(".*(?:voice test|Recorded offline).*"))).text.contains("voice test"))
         assertTrue(has(By.text("Play"),10_000))
-        assertFalse(device.hasObject(By.text(Pattern.compile("Transcribe|Retry"))));assertEquals(1,fileRequests.get())
+        assertFalse(device.hasObject(By.text(Pattern.compile("Transcribe|Retry.*"))));assertEquals(1,fileRequests.get())
         screenshot("42-success-audio-and-text-after-process-death")
         scrollFind(By.text("Delete")).click();find(By.text("Delete recording")).click()
         find(By.text("No saved recordings yet."),30_000)
@@ -476,7 +476,7 @@ class CrossAppTest {
         openSavedFromMain()
         assertTrue(scrollFind(By.text(Pattern.compile(".*(?:voice test|Recorded offline).*"))).text.contains(expected))
         assertTrue(has(By.text("Play"),10_000))
-        assertFalse(device.hasObject(By.text(Pattern.compile("Transcribe|Retry"))))
+        assertFalse(device.hasObject(By.text(Pattern.compile("Transcribe|Retry.*"))))
         assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
         screenshot("44-main-success-audio-text-after-process-death")
         scrollFind(By.text("Delete")).click();find(By.text("Delete recording")).click()
