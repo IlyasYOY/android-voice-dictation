@@ -17,6 +17,9 @@ import io.github.ilyasyoy.voicedictation.data.OpenAiTranscriber
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 import io.github.ilyasyoy.voicedictation.session.Phase
 import io.github.ilyasyoy.voicedictation.session.RecordingRecovery
+import io.github.ilyasyoy.voicedictation.session.StoredRecordingRetention
+import io.github.ilyasyoy.voicedictation.session.DictationSessions
+import io.github.ilyasyoy.voicedictation.data.AndroidRecordingStorage
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -43,8 +46,9 @@ class DictationScreenTest {
         shell("pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}")
         MainActivity.testNotice = "TEST SERVER · synthetic text · no OpenAI call"
         MainActivity.testFactory = {
+            DictationSessions.prepare(it)
             DictationViewModel(AndroidAudioRecorder(it), OpenAiTranscriber(OkHttpClient.Builder()
-                .retryOnConnectionFailure(false).build(), endpoint)).also { m -> model = m }
+                .retryOnConnectionFailure(false).build(), endpoint),recordings=StoredRecordingRetention(AndroidRecordingStorage.repository(it))).also { m -> model = m }
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
@@ -70,8 +74,13 @@ class DictationScreenTest {
         shell("mkdir -p /sdcard/Download/dictation-evidence")
         shell("cp ${File(out, "$name.png").absolutePath} /sdcard/Download/dictation-evidence/$name.png")
     }
-    private fun assertNoAudio() {
-        assertTrue(File(context.cacheDir, "dictation").listFiles().orEmpty().isEmpty())
+    private fun assertNoPendingAudio() {
+        assertTrue(AndroidRecordingStorage.repository(context).pending().isEmpty())
+    }
+    private fun assertSavedAudio(text:String) {
+        val store=AndroidRecordingStorage.repository(context)
+        val record=store.records().first {it.transcript==text}
+        assertTrue(store.audio(record.id).length()>1000)
     }
     @Test fun recordUploadEditCopyAndClear() {
         screenshot("01-idle")
@@ -80,24 +89,31 @@ class DictationScreenTest {
         server.enqueue(MockResponse().setBody("{\"text\":\"A thought captured. Test server response.\"}").setBodyDelay(5, TimeUnit.SECONDS))
         click("record"); waitPhase(Phase.RECORDING); screenshot("02-recording")
         SystemClock.sleep(1800); click("stop"); waitPhase(Phase.TRANSCRIBING); screenshot("03-transcribing")
-        waitPhase(Phase.RESULT); screenshot("04-result")
+        waitPhase(Phase.RESULT); screenshot("04-result");assertSavedAudio("A thought captured. Test server response.")
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(request.bodySize > 1000); assertEquals("Bearer synthetic-test-key", request.getHeader("Authorization"))
         compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("Edited thought")
         click("copy")
         scenario.onActivity { assertEquals("Edited thought", it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-        assertNoAudio(); click("clear"); assertEquals("", model.state.value.text)
+        assertNoPendingAudio(); click("clear"); assertEquals("", model.state.value.text)
         click("forget"); assertEquals("", model.state.value.key)
     }
-    @Test fun serverErrorCanRetryThenDeletesAudio() {
+    @Test fun serverErrorCanRetryThenRetainsAudioAndText() {
         key(); server.enqueue(MockResponse().setResponseCode(500).setBody("private error"))
         server.enqueue(MockResponse().setBody("{\"text\":\"Recovered via explicit retry.\"}"))
         click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1600); click("stop")
-        waitPhase(Phase.ERROR); screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
-        click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount); assertNoAudio()
+        waitPhase(Phase.ERROR)
+        compose.onNodeWithTag("problem").assertTextEquals(context.getString(R.string.error))
+        compose.onNodeWithTag("status").assertDoesNotExist()
+        compose.onNodeWithTag("cancel").assertDoesNotExist()
+        compose.onNodeWithTag("open_settings").assertIsEnabled()
+        compose.onNodeWithText(context.getString(R.string.current_settings)).assertDoesNotExist()
+        compose.onNodeWithTag("saved_recordings").performScrollTo().assertIsDisplayed()
+        screenshot("05-error-retry"); assertTrue(model.state.value.canRetry)
+        click("retry"); waitPhase(Phase.RESULT); assertEquals(2, server.requestCount);assertSavedAudio("Recovered via explicit retry.");assertNoPendingAudio()
     }
     @Test fun cancelAndBackgroundStopRealMicrophone() {
-        key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoAudio()
+        key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoPendingAudio()
         click("record"); waitPhase(Phase.RECORDING)
         scenario.moveToState(Lifecycle.State.CREATED); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(Phase.IDLE,model.state.value.phase)
         scenario.moveToState(Lifecycle.State.RESUMED); assertEquals(0, server.requestCount)
@@ -119,7 +135,7 @@ class DictationScreenTest {
         try {
             key(); click("record"); waitPhase(Phase.RECORDING); SystemClock.sleep(1500)
             click("stop"); waitPhase(Phase.TRANSCRIBING)
-            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; waitPhase(Phase.IDLE); assertNoAudio()
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; waitPhase(Phase.IDLE); assertNoPendingAudio()
             release.countDown(); SystemClock.sleep(500)
             assertEquals("",model.state.value.text)
         } finally { release.countDown() }

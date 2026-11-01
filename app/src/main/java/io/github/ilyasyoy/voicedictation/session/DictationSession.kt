@@ -33,12 +33,16 @@ class DictationSession(
     private val realtime: RealtimeTranscriber? = null,
     private val keyStore: ApiKeyStore = NoKeyStore,
     initialMode: Mode = Mode.RECORD,
+    private val recordings: RecordingRetention = TemporaryRecordingRetention,
 ) : AutoCloseable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private var closed = false
     private var savedKey: String? = null
     private var keyProblem: Problem? = null
-    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore))
+    private val restoredDraft=runCatching {recordings.restoreDraft()}
+    private val draft=restoredDraft.getOrNull().orEmpty()
+    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore,
+        text=draft,phase=if(draft.isBlank())Phase.IDLE else Phase.RESULT,problem=if(restoredDraft.isFailure)Problem.LOCAL_STORAGE else null))
     val state = mutableState.asStateFlow()
     private var pendingAudio: File? = null
     private var request: Job? = null
@@ -51,6 +55,8 @@ class DictationSession(
     private var livePrefix = ""
     private var liveText = ""
     private var livePrefixPartial = false
+    private var liveCheckpointSegments=-1
+    private var liveLatestPartial=true
     private fun update(block: (DictationState) -> DictationState) { if (!closed) mutableState.value = block(mutableState.value) }
     fun setKey(key: String) { if (!closed && !state.value.busy) update { it.copy(key = key.trim(), keySaved = key.trim() == savedKey, problem = null) } }
     init {
@@ -91,21 +97,30 @@ class DictationSession(
         if (closed || state.value.audioBusy || state.value.canRetry) return
         update { it.copy(mode = mode, problem = null, phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT) }
     }
-    fun edit(text: String) { if (!closed && !state.value.busy) update { it.copy(text = text, livePartial = false) } }
-    fun clear() { if (!closed && !state.value.busy) { cancel(); update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
+    fun edit(text: String) { if (!closed && !state.value.busy) {update { it.copy(text = text, livePartial = false) };persistDraft(text)} }
+    fun clear() { if (!closed && !state.value.busy) { cancel(); if(persistDraft(""))update { it.copy(text = "", phase = Phase.IDLE, livePartial = false, completedSegments = 0) } } }
+    fun refreshDraft() {
+        if(closed || state.value.audioBusy || state.value.canRetry)return
+        try {recordings.restoreDraft()?.let {text -> update {it.copy(text=text,phase=if(text.isBlank())Phase.IDLE else Phase.RESULT)}}}
+        catch(_:Exception) {update {it.copy(problem=Problem.LOCAL_STORAGE)}}
+    }
+    private fun persistDraft(text:String):Boolean = try {recordings.saveDraft(text);true}
+        catch(_:Exception) {update {it.copy(problem=Problem.LOCAL_STORAGE)};false}
     fun permissionDenied() { if (!closed && !state.value.audioBusy) error(Problem.PERMISSION) }
     fun start(hasPermission: Boolean) {
         if (closed || state.value.audioBusy || state.value.canRetry || (state.value.mode==Mode.LIVE && state.value.keyBusy)) return
         if (state.value.mode==Mode.LIVE && !state.value.validKey) { error(Problem.KEY); return }
         if (!hasPermission) { permissionDenied(); return }
-        discardAudio()
+        if (!discardAudio()) { error(Problem.LOCAL_STORAGE); return }
+        recordings.beginSession()
         update { it.copy(problem = null, seconds = 0, canRetry = false, safetyStopped = false, livePartial = if (it.mode == Mode.LIVE) it.livePartial else false, completedSegments = 0) }
         if (state.value.mode == Mode.LIVE) { startLive(); return }
         val current = ++generation
         try {
             recorder.start { scope.launch { if (current == generation) safetyStop() } }
             update { it.copy(phase = Phase.RECORDING) }; startTicker()
-        } catch (_: SecurityException) { runCatching { recorder.cancel() }; error(Problem.PERMISSION) }
+        } catch (e: RecordingStorageFailure) { runCatching { recorder.cancel() }; error(Problem.LOCAL_STORAGE) }
+        catch (_: SecurityException) { runCatching { recorder.cancel() }; error(Problem.PERMISSION) }
         catch (_: Exception) { runCatching { recorder.cancel() }; error(Problem.RECORDING) }
     }
     private fun startTicker() {
@@ -126,6 +141,7 @@ class DictationSession(
         val current = ++generation
         livePrefixPartial = state.value.livePartial
         liveText = ""; livePrefix = state.value.text.takeIf(String::isNotBlank)?.plus("\n").orEmpty()
+        liveCheckpointSegments=-1;liveLatestPartial=true
         update { it.copy(phase = Phase.CONNECTING) }
         request = scope.launch { delay(15_000); if (generation == current && state.value.phase == Phase.CONNECTING) liveFailure(IOException()) }
         val queue = Channel<LiveEvent>(64)
@@ -162,13 +178,19 @@ class DictationSession(
                             is LiveEvent.Transcript -> {
                                 if (state.value.phase !in setOf(Phase.RECORDING, Phase.FINALIZING)) continue
                                 liveText = event.text
+                                liveLatestPartial=event.partial
                                 update { it.copy(text = livePrefix + event.text, livePartial = livePrefixPartial || event.partial, completedSegments = event.completed) }
+                                if(event.completed>liveCheckpointSegments) {checkpointLive(true);liveCheckpointSegments=event.completed}
                             }
                             LiveEvent.Finished -> {
                                 if (state.value.phase != Phase.FINALIZING) { liveFailure(InvalidTranscript()); continue }
                                 releaseLive()
                                 if (liveText.isBlank()) error(Problem.RESPONSE)
-                                else update { it.copy(phase = Phase.RESULT) }
+                                else {
+                                    val saved=checkpointLive(liveLatestPartial)
+                                    update {it.copy(phase=if(saved)Phase.RESULT else Phase.ERROR,problem=if(saved)null else Problem.LOCAL_STORAGE)}
+                                    persistDraft(state.value.text)
+                                }
                             }
                             is LiveEvent.Failure -> liveFailure(event.error)
                         }
@@ -188,15 +210,21 @@ class DictationSession(
         // Each port must get its cleanup even if another adapter/driver fails.
         runCatching { pcm?.stop() }
         runCatching { live?.cancel() }; live = null
+        runCatching {recordings.endSession()}
     }
     private fun liveFailure(e: Exception, recording: Boolean = false) {
         releaseLive()
-        error(if (recording && e !is SecurityException) Problem.RECORDING else problem(e))
+        val saved=checkpointLive(true);persistDraft(state.value.text)
+        error(if(!saved)Problem.LOCAL_STORAGE else if (recording && e !is SecurityException) Problem.RECORDING else problem(e))
     }
+    private fun checkpointLive(partial:Boolean):Boolean = try {
+        recordings.liveText(liveText,partial,state.value.seconds);true
+    } catch(_:Exception) {update {it.copy(problem=Problem.LOCAL_STORAGE)};false}
     fun stop() {
         if (closed || state.value.phase != Phase.RECORDING) return
         ticker?.cancel(); ticker = null
         if (state.value.mode == Mode.LIVE) {
+            checkpointLive(true);persistDraft(state.value.text)
             update { it.copy(phase = Phase.FINALIZING) }
             try { pcm?.stop() }
             catch (e: Exception) { liveFailure(e, recording = true); return }
@@ -206,7 +234,8 @@ class DictationSession(
             return
         }
         update { it.copy(phase = Phase.TRANSCRIBING) }
-        try { pendingAudio = recorder.stop(); upload() }
+        try { pendingAudio = recorder.stop(); recordings.stopped(checkNotNull(pendingAudio),state.value.seconds); upload() }
+        catch (_: RecordingStorageFailure) {error(Problem.LOCAL_STORAGE,retry=pendingAudio?.exists()==true)}
         catch (_: SecurityException) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.PERMISSION) }
         catch (_: Exception) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.RECORDING) }
     }
@@ -223,8 +252,10 @@ class DictationSession(
         if(!recording && pendingAudio==null)return null
         releaseLive() // Invalidate a suspended/late upload before transferring its file.
         val audio=if(recording) try {recorder.stop()} catch(_:Exception) {runCatching {recorder.cancel()};null} else pendingAudio
+        if(recording && audio!=null)runCatching {recordings.stopped(audio,state.value.seconds)}
+        val released=audio?.let { runCatching { recordings.release(it) }.isSuccess } ?: true
         pendingAudio=null
-        update { it.copy(phase=if(it.text.isBlank())Phase.IDLE else Phase.RESULT,problem=null,canRetry=false) }
+        update { it.copy(phase=if(it.text.isBlank())Phase.IDLE else Phase.RESULT,problem=if(released)null else Problem.LOCAL_STORAGE,canRetry=false) }
         return audio?.takeIf {it.exists()}
     }
     private fun upload() {
@@ -235,25 +266,38 @@ class DictationSession(
             try {
                 // Stop ends local capture first. A local credential read may finish later; it never
                 // delays Record start. This is the one Stop-requested attempt, not reconnect retry.
-                if(state.value.keyBusy)state.first { !it.keyBusy }
+                val received=recordings.receivedText(audio)
+                if(received==null && state.value.keyBusy)state.first { !it.keyBusy }
                 if(current!=generation || closed)return@launch
-                if(!state.value.validKey) {
-                    error(keyProblem ?: Problem.KEY,retry=audio.exists()); return@launch
+                if(received==null && !state.value.validKey) {
+                    val problem=keyProblem ?: Problem.KEY
+                    recordings.failed(audio,problem)
+                    error(problem,retry=audio.exists()); return@launch
                 }
                 val key=state.value.key
-                val text = transcriber.transcribe(audio, key)
+                recordings.beforeUpload(audio)
+                val text = received ?: transcriber.transcribe(audio, key)
                 if (current == generation) {
                     if (text.isBlank()) throw InvalidTranscript()
-                    discardAudio(); update { it.copy(text = text, phase = Phase.RESULT, canRetry = false, livePartial = false) }
+                    // A local commit failure must still leave the received words available to Copy.
+                    update { it.copy(text=text,livePartial=false) }
+                    recordings.completed(audio,text); pendingAudio=null
+                    update { it.copy(text = text, phase = Phase.RESULT, canRetry = false, livePartial = false) }
+                    persistDraft(text)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { if (current == generation) error(problem(e), retry = audio.exists()) }
+            catch (e: Exception) { if (current == generation) {
+                val problem=problem(e)
+                val retained=runCatching { recordings.failed(audio,problem) }.isSuccess
+                error(if(retained)problem else Problem.LOCAL_STORAGE,retry=audio.exists())
+            } }
         }
     }
     private fun problem(e: Exception) = when (e) {
         is SecurityException -> Problem.PERMISSION
         is ApiFailure -> when (e.status) { 401, 403 -> Problem.AUTH; 429 -> Problem.QUOTA; else -> Problem.SERVER }
         is InvalidTranscript -> Problem.RESPONSE
+        is RecordingStorageFailure -> Problem.LOCAL_STORAGE
         is IOException -> Problem.NETWORK
         else -> Problem.RESPONSE
     }
@@ -265,11 +309,18 @@ class DictationSession(
     }
     fun cancel() {
         if (closed) return
+        if(state.value.mode==Mode.LIVE && state.value.audioBusy)checkpointLive(true)
+        persistDraft(state.value.text)
         releaseLive()
-        runCatching { recorder.cancel() }; discardAudio()
-        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = null, canRetry = false, safetyStopped = false) }
+        runCatching { recorder.cancel() }; val removed=discardAudio()
+        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false) }
     }
-    private fun discardAudio() { pendingAudio?.delete(); pendingAudio = null }
+    private fun discardAudio(): Boolean {
+        val audio=pendingAudio ?: return true
+        val removed=runCatching { recordings.discard(audio) }.isSuccess
+        pendingAudio=null // Disk failure must not prevent microphone/key/scope cleanup on close.
+        return removed
+    }
     override fun close() {
         if (closed) return
         cancel()

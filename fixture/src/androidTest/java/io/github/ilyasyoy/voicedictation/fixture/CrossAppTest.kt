@@ -20,11 +20,15 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.security.MessageDigest
+import java.util.Properties
 import org.junit.runners.MethodSorters
 
 /** Instrumentation belongs to the fixture UID, not the product UID. No product instrumentation exemptions. */
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class CrossAppTest {
+    @get:Rule val testName=org.junit.rules.TestName()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val device get() = UiDevice.getInstance(instrumentation)
     private fun checkpoint(value: String) { instrumentation.sendStatus(2, android.os.Bundle().apply { putString("stream", "\nCHECKPOINT: $value\n") }) }
@@ -157,9 +161,13 @@ class CrossAppTest {
     @Before fun prepare() {
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
+        val passiveRecovery=testName.methodName in setOf("vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload",
+            "wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart",
+            "xDurableMainSuccessSurvivesProcessDeathAndExplicitDelete")
         if (!configured) {
-            configureFake(); setupUserOptIn(); configured = true
+            configureFake(); if(!passiveRecovery)setupUserOptIn(); configured = true
         }
+        if(passiveRecovery) {checkpoint("Main saved-recording recovery requires no microphone or Accessibility grant");return}
         checkpoint("Opening harmless fixture editor")
         launch("$FIXTURE.FixtureActivity", server.port)
         // Show on-screen keyboards in this isolated emulator even when a virtual hardware keyboard is attached.
@@ -398,6 +406,88 @@ class CrossAppTest {
             device.executeShellCommand(if(originalScale=="null")"settings delete system font_scale" else "settings put system font_scale $originalScale")
         }
     }
+    private fun durableStateFile()=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"vd004-upgrade.properties")
+    private fun digest(audio:ByteArray)=MessageDigest.getInstance("SHA-256").digest(audio).joinToString("") {"%02x".format(it)}
+    private fun openSavedFromMain() {
+        launch("$APP.MainActivity")
+        find(By.text(Pattern.compile("Saved recordings \\(.*\\)")),60_000).click()
+        find(By.text("Saved recordings"),30_000)
+    }
+    @Test fun uDurablePhase1CreateFailedRecordingInAcceptedVersionBeforeUpgrade() {
+        launch("$APP.floating.DebugFloatingSetupActivity",server.port)
+        find(label("Use default Record fixture mode")).click();focusField("body")
+        find(fixtureId("body")).click();focusField("body")
+        failFileNext.set(true)
+        find(appId("floating_start")).click();find(appId("floating_stop"),40_000)
+        SystemClock.sleep(2200);assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        find(appId("floating_stop")).click()
+        val end=SystemClock.elapsedRealtime()+40_000
+        while(fileRequests.get()<1 && SystemClock.elapsedRealtime()<end)SystemClock.sleep(100)
+        assertEquals(1,fileRequests.get());assertTrue(lastFileAudio.get().size>1000)
+        find(appId("floating_start"),40_000)
+        assertFalse(device.hasObject(appId("floating_status")))
+        val state=Properties().apply {setProperty("audio_sha256",digest(lastFileAudio.get()));setProperty("audio_bytes",lastFileAudio.get().size.toString())}
+        java.io.FileOutputStream(durableStateFile()).use {state.store(it,null);it.fd.sync()}
+        screenshot("40-before-upgrade-failed-recording")
+        checkpoint("Upgrade phase1: accepted old APK captured ${lastFileAudio.get().size} bytes; HTTP503; stopped audio remains; host must install candidate without clearing product data")
+    }
+    @Test fun vDurablePhase2UpgradeRestoresLegacyAudioWithoutAnAutomaticUpload() {
+        assertTrue(durableStateFile().isFile)
+        openSavedFromMain()
+        find(appId("floating_retry_audio"),30_000)
+        assertTrue(has(By.text("Audio saved"),10_000))
+        SystemClock.sleep(1500);assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        screenshot("41-after-upgrade-pending-before-reboot")
+        checkpoint("Upgrade phase2: candidate restored legacy cache into durable storage; manual Retry visible; zero startup HTTP/WS; host must reboot before phase3")
+    }
+    @Test fun wDurablePhase3RebootManualRetryKeepsSuccessThenExplicitDeleteSurvivesRestart() {
+        val expected=Properties().apply {durableStateFile().inputStream().use {load(it)}}
+        openSavedFromMain();find(appId("floating_retry_audio"),30_000)
+        SystemClock.sleep(1200);assertEquals(0,fileRequests.get())
+        find(appId("floating_retry_audio")).click()
+        val end=SystemClock.elapsedRealtime()+40_000
+        while(fileRequests.get()<1 && SystemClock.elapsedRealtime()<end)SystemClock.sleep(100)
+        assertEquals(1,fileRequests.get());assertEquals(expected.getProperty("audio_sha256"),digest(lastFileAudio.get()))
+        assertEquals(expected.getProperty("audio_bytes").toInt(),lastFileAudio.get().size)
+        assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        device.executeShellCommand("am force-stop $APP")
+        openSavedFromMain()
+        assertTrue(scrollFind(appId("floating_preview")).text.contains("voice test"))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        assertFalse(device.hasObject(appId("floating_retry_audio")));assertEquals(1,fileRequests.get())
+        screenshot("42-success-audio-and-text-after-process-death")
+        scrollFind(appId("saved_delete")).click();find(By.res("android","button1")).click()
+        find(By.text("No saved recordings yet."),30_000)
+        screenshot("43-explicit-delete-complete")
+        device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
+        SystemClock.sleep(1800)
+        assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
+        assertEquals(1,fileRequests.get())
+        checkpoint("Upgrade + real reboot + manual retry passed: every audio byte matched; successful audio/text survived process death; explicit delete survived restart; exactly one explicit post-reboot HTTP and zero WS")
+    }
+    /** Separate fresh-guest proof, after OfflineRecordRuntimeTest; does not claim legacy/reboot continuity. */
+    @Test fun xDurableMainSuccessSurvivesProcessDeathAndExplicitDelete() {
+        val expected="Recorded offline. Uploaded by explicit retry."
+        openSavedFromMain()
+        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        device.executeShellCommand("am force-stop $APP")
+        openSavedFromMain()
+        assertTrue(scrollFind(appId("floating_preview")).text.contains(expected))
+        assertTrue(has(By.text("Audio saved"),10_000))
+        assertFalse(device.hasObject(appId("floating_retry_audio")))
+        assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        screenshot("44-main-success-audio-text-after-process-death")
+        scrollFind(appId("saved_delete")).click();find(By.res("android","button1")).click()
+        find(By.text("No saved recordings yet."),30_000)
+        screenshot("45-main-explicit-delete-complete")
+        device.executeShellCommand("am force-stop $APP");launch("$APP.MainActivity")
+        SystemClock.sleep(1800)
+        assertFalse(device.hasObject(By.text(Pattern.compile("Saved recordings \\(.*\\)"))))
+        assertEquals(0,fileRequests.get());assertEquals(0,connections.get())
+        checkpoint("Fresh guest: main offline/manual-retry success audio and text survived process death; explicit delete survived restart; zero recovery HTTP/WS; separate from interrupted legacy reboot UI run")
+    }
     @Test fun zDisableRevokesAccessAndCleansTestConfiguration() {
         launch("$APP.MainActivity")
         find(label("Set up floating dictation"), 60_000).click()
@@ -419,6 +509,7 @@ class CrossAppTest {
         private val fileRequests = AtomicInteger()
         private val failFileNext=AtomicBoolean()
         private val fileBytes = AtomicInteger()
+        private val lastFileAudio=AtomicReference(ByteArray(0))
         private val bytes = AtomicInteger()
         private val failNext = AtomicBoolean()
         private var configured = false
@@ -431,7 +522,15 @@ class CrossAppTest {
                 dispatcher = object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse {
                         if(request.path?.startsWith("/v1/audio/transcriptions")==true) {
-                            fileRequests.incrementAndGet(); fileBytes.addAndGet(request.bodySize.toInt())
+                            val raw=request.body.clone().readByteArray()
+                            val boundary=checkNotNull(request.getHeader("Content-Type")).substringAfter("boundary=").trim('"')
+                            fun locate(needle:ByteArray,from:Int=0):Int=(from..raw.size-needle.size).firstOrNull {start->needle.indices.all {raw[start+it]==needle[it]}} ?: -1
+                            val fileHeader=locate("filename=\"dictation.m4a\"".toByteArray())
+                            val begin=locate("\r\n\r\n".toByteArray(),fileHeader)+4
+                            val finish=locate(("\r\n--"+boundary).toByteArray(),begin)
+                            check(fileHeader>=0 && begin>=4 && finish>begin)
+                            lastFileAudio.set(raw.copyOfRange(begin,finish))
+                            fileBytes.addAndGet(request.bodySize.toInt());fileRequests.incrementAndGet()
                             if(failFileNext.compareAndSet(true,false))return MockResponse().setResponseCode(503)
                             return MockResponse().setBody("{\"text\":\"voice test\"}")
                         }

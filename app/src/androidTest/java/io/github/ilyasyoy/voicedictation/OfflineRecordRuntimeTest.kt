@@ -104,7 +104,7 @@ class OfflineRecordRuntimeTest {
                     override suspend fun load():String? {keyRead.await();return saved.load()}
                     override suspend fun save(key:String)=saved.save(key)
                     override suspend fun forget()=saved.forget()
-                }).also {model=it}
+                },recordings=StoredRecordingRetention(AndroidRecordingStorage.repository(owner))).also {model=it}
             }
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             checkpoint("Opening main Record control while saved-key read is suspended")

@@ -6,9 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.core.net.toUri
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -47,7 +45,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 (testFactory?.invoke(this@MainActivity) ?: DictationViewModel { scope ->
-                    DictationSessions.create(applicationContext, scope, initialMode = ModePreferences.load(applicationContext))
+                    DictationSessions.create(applicationContext, scope, initialMode = ModePreferences.load(applicationContext),mainDraft=true)
                 }) as T
         })[DictationViewModel::class.java]
         setContent {
@@ -57,14 +55,14 @@ class MainActivity : ComponentActivity() {
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 DictationScreen(state, model::setKey, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
-                    { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())) },
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
-                    savedRecordings = recovery.count,
-                    onSavedRecordings = { startActivity(Intent(this,FloatingSetupActivity::class.java).putExtra(FloatingSetupActivity.SHOW_RECORDINGS,true)) })
+                    savedRecordings = recovery.savedCount,
+                    onSavedRecordings = { startActivity(Intent(this,SavedRecordingsActivity::class.java)) })
             }
         }
     }
+    override fun onStart() {super.onStart();if(::model.isInitialized)model.refreshDraft()}
     private fun record() {
         val state=model.state.value
         if (requestingPermission || state.audioBusy || (state.mode==Mode.LIVE && state.keyBusy)) return

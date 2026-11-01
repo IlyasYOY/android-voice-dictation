@@ -8,7 +8,7 @@ One Android application module and a separate validation fixture. Compose render
 
 `DictationViewModel` is the Activity lifecycle adapter. Activity stop finalizes/transfers local Record audio to process recovery; explicit Back cancels/discards audio; ViewModel clearing closes the session. `FloatingCapture` owns one explicit bubble tap and its original editor while local Record starts or a Live key loads/audio runs. The AccessibilityService owns Android windows, permissions, foreground notification and native connection. Closing/cancelling/disabling/unbinding closes the capture; no UI ViewModelStore is created in a service.
 
-`DictationSessions` is the application composition root. HTTP clients and the normal encrypted key repository are shared. Each session receives fresh PCM/recorder ownership; file recording is allocated only when needed. `VoiceDictationApplication` prepares the process-owned `RecordingFiles` store once at process startup, including service/setup/live-only entry points, before session allocation, so another owner cannot delete active/retry recordings.
+`DictationSessions` is the application composition root. HTTP clients and the normal encrypted key repository are shared. Each session receives fresh PCM/recorder ownership; file recording is allocated only when needed. `VoiceDictationApplication` restores the private, backup-excluded `RecordingRepository` at startup, including service/setup/live-only entry points. It imports legacy cache audio before any cleanup. No recorder or network request is opened by restore. Per-session `RecordingRetention` adapters own submission tokens; the repository owns durable audio/text.
 
 ## Ports and asynchronous boundaries
 
@@ -32,4 +32,6 @@ The debug fixture is a separate UID with harmless fields and a local determinist
 
 See [review and validation](architecture-review.md), [floating contract](floating-contract.md), and [OpenAI contract](realtime-contract.md).
 
-See [VD003 local Record ordering and temporary ownership](immediate-record.md). The existing recovery collection is shared by main and floating; it is not a durable queue/history.
+See [VD003 local Record ordering and temporary ownership](immediate-record.md). The existing recovery collection is shared by main and floating; VD004 adds durable storage and explicit per-record recovery. It does not add automatic uploads, swipe history or playback.
+
+See [durable recording transactions and retention](durable-recordings.md). Both successful audio and transcript remain until explicit discard; no count/age eviction is active.

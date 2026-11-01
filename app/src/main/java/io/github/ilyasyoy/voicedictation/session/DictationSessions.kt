@@ -22,16 +22,19 @@ internal object DictationSessions {
         keys ?: AndroidApiKeyStore(context.applicationContext).also { keys = it }
 
     fun prepare(context: Context) {
-        RecordingFiles.shared(File(context.applicationContext.cacheDir, "dictation"))
+        runCatching {AndroidRecordingStorage.repository(context)}
+            .onSuccess {RecordingRecovery.processOwned.attach(it)}
+            .onFailure {RecordingRecovery.processOwned.storageUnavailable()}
     }
 
     fun create(context: Context, scope: CoroutineScope, keyStore: ApiKeyStore? = null,
                liveTranscriber: RealtimeTranscriber? = null, initialMode: Mode = Mode.RECORD,
-               fileTranscriber: Transcriber? = null): DictationSession {
+               fileTranscriber: Transcriber? = null, mainDraft:Boolean=false): DictationSession {
         val app = context.applicationContext
         prepare(app)
-        return DictationSession(scope, DeferredAudioRecorder { AndroidAudioRecorder(app) }, fileTranscriber ?: fileMode,
-            AndroidPcmSource(), liveTranscriber ?: liveMode, keyStore ?: keys(app), initialMode)
+        return DictationSession(scope, DeferredAudioRecorder {prepare(app);AndroidAudioRecorder(app)}, fileTranscriber ?: fileMode,
+            AndroidPcmSource(), liveTranscriber ?: liveMode, keyStore ?: keys(app), initialMode,
+            StoredRecordingRetention({AndroidRecordingStorage.repository(app)},mainDraft))
     }
 
     fun fixtureTransport(endpoint: String) = RealtimeTranscriber { key, emit ->

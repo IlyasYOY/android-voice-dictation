@@ -15,7 +15,8 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
         pcm: PcmSource? = null,
         realtime: RealtimeTranscriber? = null,
         keyStore: ApiKeyStore = NoKeyStore,
-    ) : this({ scope -> DictationSession(scope, recorder, transcriber, pcm, realtime, keyStore) })
+        recordings:RecordingRetention=TemporaryRecordingRetention,
+    ) : this({ scope -> DictationSession(scope, recorder, transcriber, pcm, realtime, keyStore,recordings=recordings) })
 
     private val session = createSession(viewModelScope)
     val state = session.state
@@ -23,6 +24,7 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     fun setMode(mode: Mode) = session.setMode(mode)
     fun edit(text: String) = session.edit(text)
     fun clear() = session.clear()
+    fun refreshDraft() = session.refreshDraft()
     fun permissionDenied() = session.permissionDenied()
     fun start(hasPermission: Boolean) = session.start(hasPermission)
     fun stop() = session.stop()

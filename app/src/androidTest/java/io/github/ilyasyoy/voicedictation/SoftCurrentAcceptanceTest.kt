@@ -44,7 +44,7 @@ class SoftCurrentAcceptanceTest {
                     CompositionLocalProvider(LocalDensity provides Density(density,font)) {
                         VoiceDictationTheme {
                             Box(Modifier.fillMaxSize()) { Box(Modifier.size(width.dp,height.dp)) {
-                                DictationScreen(state,{}, {}, {}, { cancelled=true; state=state.copy(phase=Phase.RESULT) },{}, {}, {}, {}, {}, {},
+                                DictationScreen(state,{}, {}, {}, { cancelled=true; state=state.copy(phase=Phase.RESULT) },{}, {}, {}, {}, {},
                                     { state=state.copy(mode=it) },{})
                             } }
                         }

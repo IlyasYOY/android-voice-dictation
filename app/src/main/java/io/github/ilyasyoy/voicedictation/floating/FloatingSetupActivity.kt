@@ -84,6 +84,7 @@ class FloatingSetupActivity : ComponentActivity() {
                         RecordingRetryFailure.KEY,RecordingRetryFailure.AUTH -> R.string.current_retry_key_error
                         RecordingRetryFailure.NETWORK -> R.string.current_retry_network_error
                         RecordingRetryFailure.SERVICE -> R.string.current_retry_service_error
+                        RecordingRetryFailure.STORAGE -> R.string.recording_storage_error
                     })
                     textSize=16f;setTextColor(ink);accessibilityLiveRegion=android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
                 })

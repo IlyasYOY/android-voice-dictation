@@ -17,12 +17,12 @@ class SavedRecordingSetupTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     @Test fun recreatedSetupObservesOldRetryCancellationAndReenablesActions() {
         val recovery=RecordingRecovery.processOwned
-        val file=File.createTempFile("setup-retry-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
+        var file=File.createTempFile("setup-retry-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
         val cleanup=CompletableDeferred<Unit>()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
         lateinit var retry:Job
         instrumentation.runOnMainSync {
-            recovery.discard();recovery.retain(file)
+            recovery.discard();file=recovery.retain(file)
             retry=scope.launch {recovery.retry {try {awaitCancellation()}finally {withContext(NonCancellable){cleanup.await()}}}}
         }
         try {
@@ -43,8 +43,8 @@ class SavedRecordingSetupTest {
     }
     @Test fun explicitRetryFailureGuidanceShowsInsideSetupWhileAudioIsRetained() {
         val recovery=RecordingRecovery.processOwned
-        val file=File.createTempFile("setup-guidance-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
-        instrumentation.runOnMainSync {recovery.discard();recovery.retain(file,RecordingRetryFailure.KEY)}
+        var file=File.createTempFile("setup-guidance-", ".m4a",instrumentation.targetContext.cacheDir).apply {writeText("synthetic fixture")}
+        instrumentation.runOnMainSync {recovery.discard();file=recovery.retain(file,RecordingRetryFailure.KEY)}
         try {
             ActivityScenario.launch(FloatingSetupActivity::class.java).use {scenario->
                 for((failure,message) in listOf(RecordingRetryFailure.KEY to R.string.current_retry_key_error,

@@ -132,7 +132,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.floating_stream_error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.count>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -298,7 +298,7 @@ class FloatingDictationService : AccessibilityService() {
         if (hideWindow) window?.hide()
     }
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    private fun openRecovery() { startActivity(Intent(this,FloatingSetupActivity::class.java).putExtra(FloatingSetupActivity.SHOW_RECORDINGS,true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    private fun openRecovery() { startActivity(Intent(this,io.github.ilyasyoy.voicedictation.SavedRecordingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     fun disableFromUser() { closeSession(); disableSelf() }
     override fun onInterrupt() { closeSession() }
     override fun onUnbind(intent: Intent?): Boolean { closeSession(); return super.onUnbind(intent) }
