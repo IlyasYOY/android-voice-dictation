@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation
 
 import android.Manifest
+import androidx.compose.ui.semantics.SemanticsActions
 import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -61,6 +62,9 @@ class DictationScreenTest {
     private fun key() { scenario.onActivity { model.setKey("synthetic-test-key") } }
     private fun waitPhase(phase: Phase) { compose.waitUntil(30_000) { model.state.value.phase == phase } }
     private fun click(tag: String) {
+        if (tag == "history_close") {
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }; return
+        }
         val configuration = tag in setOf("mode_record", "mode_live", "forget")
         if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
         if (tag in setOf("saved_recordings", "history_close")) compose.onNodeWithTag(tag).performClick() else compose.onNodeWithTag(tag).performScrollTo().performClick()
@@ -160,7 +164,7 @@ class DictationScreenTest {
         compose.onNodeWithTag("history_play_${row.id}").performScrollTo().performClick()
         compose.waitUntil(15000) {compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty()}
         screenshot("07-current-failure-history-real-m4a-playing")
-        compose.onNodeWithTag("history_close").performClick()
+        compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
         assertTrue(store.audio(row.id).length()>1000)
         assertEquals(1,server.requestCount)
     }

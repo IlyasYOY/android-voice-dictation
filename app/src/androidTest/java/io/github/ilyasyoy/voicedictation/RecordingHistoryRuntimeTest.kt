@@ -1,5 +1,6 @@
 package io.github.ilyasyoy.voicedictation
 
+import androidx.compose.ui.semantics.SemanticsActions
 import android.content.ClipboardManager
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -84,6 +85,9 @@ class RecordingHistoryRuntimeTest {
             capture("01-main-history-entry")
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_sheet").assertExists()
+            compose.onNodeWithText("History").assertDoesNotExist()
+            compose.onNodeWithText("Close").assertDoesNotExist()
+            compose.onNodeWithText("Transcribed").assertDoesNotExist()
             compose.onNodeWithTag("history_text_$success").assertDoesNotExist()
             compose.waitUntil(15000) { compose.onAllNodesWithTag("history_waveform_$success").fetchSemanticsNodes().isNotEmpty() }
             capture("02-history-collapsed")
@@ -108,7 +112,7 @@ class RecordingHistoryRuntimeTest {
             compose.waitUntil {repository.record(success)==null}
             compose.onNodeWithTag("history_retry_$pending").performScrollTo().assertIsEnabled()
             capture("05-history-pending")
-            compose.onNodeWithTag("history_close").performClick()
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
             compose.onNodeWithTag("history_sheet").assertDoesNotExist()
             compose.onNodeWithTag("history_swipe").performTouchInput { swipeUp() }
             compose.onNodeWithTag("history_sheet").assertExists()
@@ -159,8 +163,14 @@ class RecordingHistoryRuntimeTest {
         val bytes=repository.audio(id).readBytes()
         try {
             ActivityScenario.launch(SavedRecordingsActivity::class.java).use {
-                compose.onNodeWithTag("history_retry_$id").performScrollTo().performClick()
+                compose.onNodeWithText("Transcription failed").assertDoesNotExist()
+                compose.onNodeWithTag("history_expand_$id").assertDoesNotExist()
+                compose.onNodeWithTag("history_retry_$id").performScrollTo().assert(hasContentDescription("Retry transcription"))
+                capture("12-history-failed-retry")
+                compose.onNodeWithTag("history_retry_$id").performClick()
                 compose.waitUntil(15000) {repository.record(id)?.status==SavedRecordingStatus.UPLOADING}
+                compose.onNodeWithTag("history_retry_$id").assertDoesNotExist()
+                compose.onNodeWithTag("history_busy_$id").assertIsNotEnabled()
                 compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
                 compose.onNodeWithTag("history_delete_$id").assertIsNotEnabled()
                 androidx.test.uiautomator.UiDevice.getInstance(instrumentation).pressBack()
@@ -218,7 +228,15 @@ class RecordingHistoryRuntimeTest {
                         }
                     }}}
                 }}
-                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_play_$id").performScrollTo()
+                val play = compose.onNodeWithTag("history_play_$id").fetchSemanticsNode().boundsInRoot
+                val wave = compose.onNodeWithTag("history_waveform_pending_$id").fetchSemanticsNode().boundsInRoot
+                val action = compose.onNodeWithTag("history_expand_$id").fetchSemanticsNode().boundsInRoot
+                assertEquals(play.center.y, wave.center.y, 1f)
+                assertEquals(play.center.y, action.center.y, 1f)
+                assertEquals(play.width, action.width, 1f)
+                capture("13-history-aligned-collapsed-font-$font")
+                compose.onNodeWithTag("history_expand_$id").performClick()
                 compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
                 assertEquals(text,copied)
                 capture("06-history-long-text-font-$font")
@@ -226,6 +244,56 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_delete_$id").performClick()
                 compose.onNodeWithTag("history_confirm_delete").performClick();assertTrue(deleted)
             }
+        }
+    }
+
+    @Test fun compactRetryReplacesToggleAtNormalAndLargeFontAndRetainsReceivedText() {
+        val id = "compact-retry-fixture"
+        val row = SavedRecording(id, 1700000000000, 1700000000000, SavedRecordingStatus.FAILED, 12, "")
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            for (font in listOf(1f, 2f)) {
+                var retried = 0
+                var received by mutableStateOf(false)
+                scenario.onActivity { activity -> activity.setContent {
+                    val density = LocalDensity.current.density
+                    CompositionLocalProvider(LocalDensity provides Density(density, font)) { VoiceDictationTheme { key(font) {
+                        Box(Modifier.width(280.dp).height(480.dp)) {
+                            RecordingHistory(RecordingRecoveryState(records = listOf(row),
+                                receivedTexts = if (received) mapOf(id to "Already received synthetic words") else emptyMap()),
+                                PlaybackState(), { true }, {}, { retried++ }, {}, {}, {})
+                        }
+                    } } }
+                } }
+                compose.onNodeWithTag("history_retry_$id").performScrollTo().assertIsEnabled()
+                compose.onNodeWithTag("history_expand_$id").assertDoesNotExist()
+                compose.onNodeWithText("Transcription failed").assertDoesNotExist()
+                compose.onNodeWithText("Retry upload (may cost again)").assertDoesNotExist()
+                val play = compose.onNodeWithTag("history_play_$id").fetchSemanticsNode().boundsInRoot
+                val wave = compose.onNodeWithTag("history_waveform_pending_$id").fetchSemanticsNode().boundsInRoot
+                val retry = compose.onNodeWithTag("history_retry_$id").fetchSemanticsNode().boundsInRoot
+                assertEquals(play.center.y, wave.center.y, 1f)
+                assertEquals(play.center.y, retry.center.y, 1f)
+                assertEquals(play.width, retry.width, 1f)
+                capture("14-history-failed-retry-font-$font")
+                compose.onNodeWithTag("history_retry_$id").performClick();compose.runOnIdle { assertEquals(1, retried) }
+                compose.runOnIdle { received = true }
+                compose.onNodeWithTag("history_text_$id").assertTextEquals("Already received synthetic words")
+                compose.onNodeWithTag("history_retry_$id").assert(hasContentDescription(context.getString(R.string.saved_save_received)))
+            }
+        }
+    }
+
+    @Test fun historyDismissesByBackDownwardGestureAndAccessibleAction() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag("saved_recordings").performClick()
+            androidx.test.uiautomator.UiDevice.getInstance(instrumentation).pressBack()
+            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_sheet").performTouchInput { swipeDown() }
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("history_sheet").fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
+            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
         }
     }
 
@@ -287,7 +355,7 @@ class RecordingHistoryRuntimeTest {
             assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
             scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
-            compose.onNodeWithTag("history_close").performClick()
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_draft").assertDoesNotExist()
             compose.onNodeWithText("Replacement in the same message").assertDoesNotExist()
@@ -366,7 +434,7 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("transcript").performTextReplacement("Unsaved synthetic words remain copyable")
                 assertEquals("Saved synthetic draft", store.savedText(RecordingTextSlot.MAIN))
                 compose.onNodeWithTag("history_problem").assertTextEquals(context.getString(R.string.error))
-                compose.onNodeWithTag("history_close").performClick()
+                compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
                 compose.onNodeWithTag("saved_recordings").performClick()
                 compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
                 compose.onNodeWithTag("transcript").assertTextEquals("Unsaved synthetic words remain copyable")

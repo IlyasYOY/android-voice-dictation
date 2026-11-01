@@ -82,7 +82,6 @@
   <string name="recording_storage_error">Не удалось сохранить запись. Проверьте свободное место на устройстве. Уже сохранённые данные оставлены.</string>
   <string name="saved_retention">Звук и текст остаются на этом устройстве, пока вы их не удалите. Автоматической отправки нет.</string>
   <string name="saved_empty">Сохранённых записей пока нет.</string>
-  <string name="saved_transcribed">Распознано</string>
   <string name="saved_interrupted">Прервано · повтор только по вашему действию</string>
   <string name="saved_unavailable">Запись требует внимания. Её данные сохранены.</string>
   <string name="saved_pending">Ожидает распознавания</string>
@@ -107,7 +106,6 @@
   <string name="history_play">Слушать</string>
   <string name="history_pause">Пауза</string>
   <string name="history_loading">Загрузка…</string>
-  <string name="history_failed">Не удалось распознать</string>
   <string name="history_transcribe">Распознать</string>
   <string name="history_missing_audio">Аудио недоступно</string>
   <string name="history_playback_error">Не удалось прослушать аудио. Запись сохранена.</string>
@@ -115,4 +113,5 @@
   <string name="history_full_text">Показать текст</string>
   <string name="history_less">Скрыть текст</string>
   <string name="history_delete">Удалить</string>
+  <string name="history_retry">Повторить распознавание</string>
 </resources>

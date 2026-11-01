@@ -22,13 +22,13 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -124,12 +124,13 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
             Text(stringResource(R.string.saved_delete))
         } }, dismissButton = { TextButton({ deleteId = null }) { Text(stringResource(android.R.string.cancel)) } })
     val currentDraft = draft?.takeIf { it.visible }
-    Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.history_title), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Medium)
-            TextButton(onClose, Modifier.testTag("history_close")) { Text(stringResource(R.string.history_close)) }
-        }
+    val dismissLabel = stringResource(R.string.history_close)
+    val historyLabel = stringResource(R.string.history_title)
+    Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp)
+        .testTag("history_content").semantics {
+            paneTitle = historyLabel
+            dismiss(dismissLabel) { onClose(); true }
+        }) {
         LazyColumn(Modifier.fillMaxWidth().testTag("history_list"),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.storageProblem || draftProblem) item("storage") {
@@ -189,14 +190,15 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
         setOf(SavedRecordingStatus.PENDING, SavedRecordingStatus.FAILED, SavedRecordingStatus.INTERRUPTED)
     val playLabel = stringResource(if (active && playback.loading) R.string.history_loading else if (active && playback.playing) R.string.history_pause else R.string.history_play)
     val status = when (record.status) {
-        SavedRecordingStatus.COMPLETE -> if (record.partial) R.string.partial_text else R.string.saved_transcribed
+        SavedRecordingStatus.COMPLETE -> if (record.partial) R.string.partial_text else null
         SavedRecordingStatus.CAPTURING -> R.string.recording
         SavedRecordingStatus.UPLOADING -> R.string.transcribing
-        SavedRecordingStatus.FAILED -> R.string.history_failed
+        SavedRecordingStatus.FAILED -> null
         SavedRecordingStatus.INTERRUPTED -> R.string.saved_interrupted
         SavedRecordingStatus.UNAVAILABLE, SavedRecordingStatus.DELETING -> R.string.saved_unavailable
         SavedRecordingStatus.PENDING -> R.string.saved_pending
     }
+    val busyLabel = stringResource(if (record.status == SavedRecordingStatus.CAPTURING) R.string.recording else R.string.transcribing)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 8.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -210,33 +212,41 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                                 .semantics { contentDescription = "$playLabel, $timestamp" }) {
                             TransportMark(active && playback.playing, active && playback.loading)
                         }
-                        Column(Modifier.weight(1f).padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val trackModifier = Modifier.fillMaxWidth().height(28.dp)
-                            val position = if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f
-                            if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, trackModifier)
-                            else AudioTrack(null, position, trackModifier)
-                            Text(if (!available) stringResource(R.string.history_missing_audio)
-                                else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        val trackModifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(28.dp)
+                        val position = if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f
+                        if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, trackModifier)
+                        else AudioTrack(null, position, trackModifier)
                     } else Text(stringResource(R.string.saved_live_text), Modifier.weight(1f).padding(8.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (text.isNotBlank() || draft != null) TranscriptToggle(expanded, { expanded = !expanded }, "history_expand_${record.id}")
+                    val hasText = text.isNotBlank() || draft != null
+                    when {
+                        canRetry -> RetryControl(record.id, record.status == SavedRecordingStatus.PENDING,
+                            record.id in state.receivedTexts, enabled = !state.retrying && !owned,
+                            onRetry = { onRetry(record.id) })
+                        busy && record.kind == SavedRecordingKind.RECORD -> IconButton({}, enabled = false,
+                            modifier = Modifier.size(48.dp).testTag("history_busy_${record.id}")
+                                .semantics { contentDescription = busyLabel }) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        }
+                        hasText -> TranscriptToggle(expanded, { expanded = !expanded }, "history_expand_${record.id}")
+                        record.kind == SavedRecordingKind.RECORD -> Spacer(Modifier.size(48.dp))
+                    }
                 }
-                if (expanded) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
+                if (record.kind == SavedRecordingKind.RECORD) Text(
+                    if (!available) stringResource(R.string.history_missing_audio)
+                    else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
+                    modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (expanded || (canRetry && text.isNotBlank())) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)
                 if (record.id in state.receivedTexts) MessageNote(R.string.saved_unsaved_text, error = true)
-                if (canRetry) TextButton({ onRetry(record.id) }, enabled = !state.retrying && !owned,
-                    modifier = Modifier.testTag("history_retry_${record.id}")) {
-                    Text(stringResource(if (record.id in state.receivedTexts) R.string.saved_save_received else if (record.status == SavedRecordingStatus.PENDING) R.string.history_transcribe else R.string.retry))
-                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    if (largeText) Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                    if (status != null && largeText) Column(Modifier.weight(1f).padding(start = 8.dp)) {
                         MessageStatus(status, record.status == SavedRecordingStatus.FAILED)
                         Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Box(Modifier.weight(1f).padding(start = 8.dp)) { MessageStatus(status, record.status == SavedRecordingStatus.FAILED) }
+                        Box(Modifier.weight(1f).padding(start = 8.dp)) { if (status != null) MessageStatus(status, false) }
                         Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Box {
@@ -286,8 +296,39 @@ private fun DraftMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onCle
 @Composable
 private fun TranscriptToggle(expanded: Boolean, onToggle: () -> Unit, tag: String) {
     val label = stringResource(if (expanded) R.string.history_less else R.string.history_full_text)
-    IconButton(onToggle, Modifier.size(48.dp).testTag(tag).semantics { contentDescription = label }) {
-        Text(if (expanded) "⌃" else "⌄", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.clearAndSetSemantics { })
+    FilledTonalIconButton(onToggle, Modifier.size(48.dp).testTag(tag).semantics { contentDescription = label }) {
+        val color = LocalContentColor.current
+        Canvas(Modifier.size(20.dp)) {
+            val path = Path().apply {
+                moveTo(size.width * .2f, size.height * if (expanded) .65f else .35f)
+                lineTo(center.x, size.height * if (expanded) .35f else .65f)
+                lineTo(size.width * .8f, size.height * if (expanded) .65f else .35f)
+            }
+            drawPath(path, color, style = Stroke(2.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+private fun RetryControl(id: String, pending: Boolean, saveReceived: Boolean, enabled: Boolean, onRetry: () -> Unit) {
+    val label = stringResource(if (saveReceived) R.string.saved_save_received
+        else if (pending) R.string.history_transcribe else R.string.history_retry)
+    val colors = if (pending || saveReceived) IconButtonDefaults.filledIconButtonColors(
+        containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+        else IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.error)
+    FilledIconButton(onRetry, enabled = enabled, colors = colors,
+        modifier = Modifier.size(48.dp).testTag("history_retry_$id").semantics { contentDescription = label }) {
+        val color = LocalContentColor.current
+        Canvas(Modifier.size(20.dp)) {
+            drawArc(color, -40f, 280f, false, Offset(size.width * .15f, size.height * .15f),
+                Size(size.width * .7f, size.height * .7f), style = Stroke(2.dp.toPx()))
+            drawPath(Path().apply {
+                moveTo(size.width * .8f, size.height * .05f)
+                lineTo(size.width * .8f, size.height * .3f)
+                lineTo(size.width * .55f, size.height * .3f)
+            }, color, style = Stroke(2.dp.toPx()))
+        }
     }
 }
 
