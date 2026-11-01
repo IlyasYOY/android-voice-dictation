@@ -6,6 +6,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.SystemClock
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -41,9 +42,13 @@ internal object AndroidAudioWaveform {
 
     private suspend fun decode(file: File): List<Float>? {
         if (!file.isFile || file.length() == 0L) return null
+        val deadline = SystemClock.elapsedRealtime() + 4_000L
+        // Canonical PCM WAV needs no media-service IPC or codec. Sample its real
+        // frames directly; other WAV layouts and compressed formats use the SDK.
+        canonicalPcm(file, deadline)?.let { return it }
+        if (SystemClock.elapsedRealtime() >= deadline) return null
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
-        val deadline = SystemClock.elapsedRealtime() + 4_000L
         try {
             extractor.setDataSource(file.absolutePath)
             val track = (0 until extractor.trackCount).firstOrNull {
@@ -98,7 +103,10 @@ internal object AndroidAudioWaveform {
                     val output = codec.dequeueOutputBuffer(info, 10_000)
                     if (output >= 0) {
                         try {
-                            if (info.size > 0 && info.presentationTimeUs >= target) {
+                            // seekTo already chose the preceding audio frame. Its PCM can
+                            // straddle target; requiring a later frame rejects valid short
+                            // clips when the final target lies inside their last frame.
+                            if (info.size > 0) {
                                 val buffer = checkNotNull(codec.getOutputBuffer(output)).order(ByteOrder.LITTLE_ENDIAN)
                                 found = peak(buffer, encoding(codec.getOutputFormat(output)))
                             }
@@ -114,6 +122,35 @@ internal object AndroidAudioWaveform {
             runCatching { decoder?.release() }
             runCatching { extractor.release() }
         }
+    }
+
+    private suspend fun canonicalPcm(file: File, deadline: Long): List<Float>? = RandomAccessFile(file, "r").use { input ->
+        if (input.length() < 44) return null
+        val bytes = ByteArray(44); input.readFully(bytes)
+        fun label(offset: Int) = String(bytes, offset, 4, Charsets.US_ASCII)
+        val header = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        if (label(0) != "RIFF" || label(8) != "WAVE" || label(12) != "fmt " || label(36) != "data" ||
+            header.getInt(16) != 16 || header.getShort(20).toInt() != 1 || header.getShort(34).toInt() != 16) return null
+        val channels = header.getShort(22).toInt()
+        val rate = header.getInt(24)
+        if (channels !in 1..8 || rate !in 8000..192000) return null
+        val alignment = channels * 2
+        if (header.getShort(32).toInt() != alignment || header.getInt(28) != rate * alignment) return null
+        val size = minOf(header.getInt(40).toLong() and 0xffffffffL, input.length() - 44)
+        val frames = size / alignment
+        if (frames == 0L) return null
+        val samples = ByteArray(512 * alignment)
+        val peaks = ArrayList<Float>(40)
+        for (index in 0 until 40) {
+            currentCoroutineContext().ensureActive()
+            if (SystemClock.elapsedRealtime() >= deadline) return null
+            val frame = frames * index / 40
+            val count = minOf(512L, frames - frame).toInt() * alignment
+            input.seek(44 + frame * alignment); input.readFully(samples, 0, count)
+            peaks += peak(ByteBuffer.wrap(samples, 0, count).order(ByteOrder.LITTLE_ENDIAN), AudioFormat.ENCODING_PCM_16BIT)
+        }
+        val maximum = peaks.maxOrNull() ?: return null
+        if (maximum > 0f) peaks.map { (it / maximum).coerceIn(0f, 1f) } else peaks
     }
 
     private fun encoding(format: MediaFormat): Int =

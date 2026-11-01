@@ -88,7 +88,7 @@ class DictationScreenTest {
         key()
         server.enqueue(MockResponse().setBody("{\"text\":\"A thought captured. Test server response.\"}").setBodyDelay(5, TimeUnit.SECONDS))
         click("record"); waitPhase(Phase.RECORDING); screenshot("02-recording")
-        SystemClock.sleep(1800); click("stop"); waitPhase(Phase.TRANSCRIBING); screenshot("03-transcribing")
+        SystemClock.sleep(600); click("stop"); waitPhase(Phase.TRANSCRIBING); screenshot("03-transcribing")
         waitPhase(Phase.RESULT); screenshot("04-result");assertSavedAudio("A thought captured. Test server response.")
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(request.bodySize > 1000); assertEquals("Bearer synthetic-test-key", request.getHeader("Authorization"))

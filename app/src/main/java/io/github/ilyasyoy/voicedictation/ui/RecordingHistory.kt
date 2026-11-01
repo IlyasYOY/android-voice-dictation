@@ -43,6 +43,7 @@ import io.github.ilyasyoy.voicedictation.session.*
 import kotlinx.coroutines.*
 import java.text.DateFormat
 import java.util.Date
+import java.io.File
 
 internal data class HistoryDraft(val text: String, val sourceId: String?, val visible: Boolean = text.isNotBlank()) {
     override fun toString() = "HistoryDraft(textLength=${text.length}, sourceId=$sourceId, visible=$visible)"
@@ -102,13 +103,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
                 }
                 context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
             }, onClose = onDismiss, draft = currentDraft, draftProblem = draftProblem, onDraftEdit = onDraftEdit, onDraftClear = onDraftClear,
-            waveform = { id ->
-                val file = repository?.audio(id)
-                val peaks by produceState<List<Float>?>(null, id, file?.length(), file?.lastModified()) {
-                    if (file != null) value = AndroidAudioWaveform.read(file)
-                }
-                peaks
-            })
+            waveform = { id, position, modifier -> LoadedAudioTrack(id, repository?.audio(id), position, modifier) })
     }
 }
 
@@ -117,7 +112,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     audioAvailable: (String) -> Boolean, onPlay: (String) -> Unit, onRetry: (String) -> Unit,
     onDelete: (String) -> Unit, onCopy: (String) -> Unit, onClose: () -> Unit,
     draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
-    waveform: @Composable (String) -> List<Float>? = { null }) {
+    waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
+        AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
+    }) {
     var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
     if (deleteRecord != null) AlertDialog(onDismissRequest = { deleteId = null },
@@ -160,10 +157,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 item(record.id) {
                     val rowDraft = currentDraft?.takeIf { it.sourceId == record.id }
                     val available = audioAvailable(record.id)
-                    val peaks = if (available && record.kind == SavedRecordingKind.RECORD && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id) else null
-                    HistoryMessage(record, state, playback, available, peaks,
+                    HistoryMessage(record, state, playback, available,
                         rowDraft, if (rowDraft != null) onDraftEdit else null, if (rowDraft != null) onDraftClear else null,
-                        onPlay, onRetry, { deleteId = record.id }, onCopy)
+                        onPlay, onRetry, { deleteId = record.id }, onCopy, waveform)
                 }
             }
             item("privacy") {
@@ -176,8 +172,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
 
 @Composable
 private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState, playback: PlaybackState,
-    available: Boolean, peaks: List<Float>?, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
-    onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit) {
+    available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
+    onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
+    waveform: @Composable (String, Float, Modifier) -> Unit) {
     var expanded by rememberSaveable(record.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
@@ -214,8 +211,10 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                             TransportMark(active && playback.playing, active && playback.loading)
                         }
                         Column(Modifier.weight(1f).padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            AudioTrack(peaks, if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f,
-                                Modifier.fillMaxWidth().height(28.dp).testTag(if (peaks != null) "history_waveform_${record.id}" else "history_waveform_pending_${record.id}"))
+                            val trackModifier = Modifier.fillMaxWidth().height(28.dp)
+                            val position = if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f
+                            if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, trackModifier)
+                            else AudioTrack(null, position, trackModifier)
                             Text(if (!available) stringResource(R.string.history_missing_audio)
                                 else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -328,6 +327,14 @@ private fun TransportMark(showPause: Boolean, loading: Boolean) {
             drawRoundRect(color, Offset(size.width * .6f, 0f), Size(size.width * .22f, size.height), CornerRadius(1.dp.toPx()))
         } else drawPath(Path().apply { moveTo(size.width * .18f, 0f); lineTo(size.width, center.y); lineTo(size.width * .18f, size.height); close() }, color)
     }
+}
+
+@Composable
+private fun LoadedAudioTrack(id: String, file: File?, position: Float, modifier: Modifier) {
+    val peaks by produceState<List<Float>?>(null, id, file?.length(), file?.lastModified()) {
+        if (file != null) value = AndroidAudioWaveform.read(file)
+    }
+    AudioTrack(peaks, position, modifier.testTag(if (peaks != null) "history_waveform_$id" else "history_waveform_pending_$id"))
 }
 
 @Composable
