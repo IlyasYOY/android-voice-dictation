@@ -119,4 +119,49 @@ class StoredRecordingSessionTest {
         assertEquals("",store().savedText(RecordingTextSlot.MAIN));assertFalse(audio.exists())
     }
 
+    @Test fun temporaryEmptyEditKeepsItsSourceAndDeleteCannotLeaveReplacementOrphan()=runTest {
+        val store=store()
+        val audio=store.allocate().apply {writeText("audio")};store.finalized(audio)
+        store.complete(checkNotNull(store.beginUpload(audio)),"Original")
+        val id=checkNotNull(store.record(audio)).id
+        store.saveText(RecordingTextSlot.MAIN,"Original",id)
+        val session=DictationSession(backgroundScope,Capture(store),Transcriber {_,_->error("no upload")},recordings=StoredRecordingRetention(store,true))
+        session.edit("");assertEquals(id,store.savedDraft(RecordingTextSlot.MAIN).sourceId)
+        session.edit("Replacement");assertEquals(id,store.savedDraft(RecordingTextSlot.MAIN).sourceId)
+        assertTrue(store.discard(id));session.refreshDraft();session.cancel();session.close()
+        assertEquals("",store().savedText(RecordingTextSlot.MAIN))
+        assertEquals("",session.state.value.text)
+
+        val second=store.allocate().apply {writeText("audio")};store.finalized(second)
+        store.complete(checkNotNull(store.beginUpload(second)),"Keep this recording")
+        val secondId=checkNotNull(store.record(second)).id
+        store.saveText(RecordingTextSlot.MAIN,"Keep this recording",secondId)
+        val owner=DictationSession(backgroundScope,Capture(store),Transcriber {_,_->error("no upload")},recordings=StoredRecordingRetention(store,true))
+        owner.clear()
+        assertNull(store.savedDraft(RecordingTextSlot.MAIN).sourceId)
+        assertNotNull(store.record(secondId));owner.close()
+    }
+
+    @Test fun failedDraftCommitSurvivesRefreshButConfirmedSourceDeletionStillInvalidatesIt()=runTest {
+        var failDraft=false
+        val store=store(RecordingCommit {target,values ->
+            if(failDraft && target.name=="main-text.properties")throw IOException("synthetic draft failure")
+            AtomicRecordingCommit.write(target,values)
+        })
+        val audio=store.allocate().apply {writeText("audio")};store.finalized(audio)
+        store.complete(checkNotNull(store.beginUpload(audio)),"Saved")
+        val id=checkNotNull(store.record(audio)).id
+        store.saveText(RecordingTextSlot.MAIN,"Saved",id)
+        val session=DictationSession(backgroundScope,Capture(store),Transcriber {_,_->error("no upload")},recordings=StoredRecordingRetention(store,true))
+        failDraft=true;session.edit("Unsaved but copyable")
+        assertEquals(Problem.LOCAL_STORAGE,session.state.value.problem)
+        assertEquals("Saved",store.savedText(RecordingTextSlot.MAIN))
+        repeat(2) {session.refreshDraft();session.cancel()}
+        assertEquals("Unsaved but copyable",session.state.value.text)
+        assertEquals(Problem.LOCAL_STORAGE,session.state.value.problem)
+        failDraft=false
+        assertTrue(store.discard(id));session.refreshDraft();session.cancel();session.close()
+        assertEquals("",session.state.value.text)
+        assertEquals("",store().savedText(RecordingTextSlot.MAIN))
+    }
 }

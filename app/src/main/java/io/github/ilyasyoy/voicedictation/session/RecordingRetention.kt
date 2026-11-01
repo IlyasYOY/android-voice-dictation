@@ -19,7 +19,9 @@ interface RecordingRetention {
     fun discard(audio: File)
     fun restoreDraft():String? = null
     fun saveDraft(text:String) = Unit
+    fun clearDraft() = saveDraft("")
     fun draftSourceId():String? = null
+    fun draftSourceAvailable():Boolean = true
     fun liveText(text:String,partial:Boolean,seconds:Int) = Unit
 }
 
@@ -42,6 +44,13 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     private var liveId:String?=null
     private var liveActive=false
     override fun draftSourceId():String? = sourceId
+    override fun draftSourceAvailable():Boolean = stored {
+        sourceId?.let { repository.record(it)?.status !in setOf(null, io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING) } ?: true
+    }
+    override fun clearDraft() {
+        if (mainDraft) stored { repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN, "") }
+        sourceId = null
+    }
     private fun <T> stored(action: () -> T): T = try { action() } catch (e: Exception) { throw RecordingStorageFailure(e) }
     override fun beginSession() {liveId=null;liveActive=true}
     override fun endSession() {liveActive=false;repository.releaseText(liveId)}
@@ -57,7 +66,6 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
         // checkpoints cannot turn that stale text into an unlinked durable draft.
         val source=sourceId
         if(source!=null && repository.record(source)?.status in setOf(null,io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING))return
-        if(text.isBlank())sourceId=null
         if(mainDraft)stored {repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN,text,sourceId)}
     }
     override fun liveText(text:String,partial:Boolean,seconds:Int) = stored {

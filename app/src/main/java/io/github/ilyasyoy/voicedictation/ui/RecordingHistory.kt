@@ -51,7 +51,7 @@ internal data class HistoryDraft(val text: String, val sourceId: String?, val vi
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -> Unit = {},
-    draft: HistoryDraft? = null, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null) {
+    draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
@@ -61,14 +61,12 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
     val playing by playback.state.collectAsStateWithLifecycle()
     val repository = remember { runCatching { AndroidRecordingStorage.repository(context) }.getOrNull() }
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
-    // An emptied editor keeps its visual place until Close/Clear; the session still owns persistence.
-    val editorSource = remember { draft?.sourceId }
     LaunchedEffect(recovery.records) {
         if (draft == null) storedDraft = runCatching {
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val currentDraft = draft?.copy(sourceId = draft.sourceId ?: editorSource) ?: storedDraft
+    val currentDraft = draft ?: storedDraft
     DisposableEffect(lifecycle, playback) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) AndroidRecordingPlayback.release(playback)
@@ -103,7 +101,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
                     putBoolean("android.content.extra.IS_SENSITIVE",true)
                 }
                 context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
-            }, onClose = onDismiss, draft = currentDraft, onDraftEdit = onDraftEdit, onDraftClear = onDraftClear,
+            }, onClose = onDismiss, draft = currentDraft, draftProblem = draftProblem, onDraftEdit = onDraftEdit, onDraftClear = onDraftClear,
             waveform = { id ->
                 val file = repository?.audio(id)
                 val peaks by produceState<List<Float>?>(null, id, file?.length(), file?.lastModified()) {
@@ -118,7 +116,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
 internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackState,
     audioAvailable: (String) -> Boolean, onPlay: (String) -> Unit, onRetry: (String) -> Unit,
     onDelete: (String) -> Unit, onCopy: (String) -> Unit, onClose: () -> Unit,
-    draft: HistoryDraft? = null, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
+    draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     waveform: @Composable (String) -> List<Float>? = { null }) {
     var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
@@ -137,9 +135,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
         }
         LazyColumn(Modifier.fillMaxWidth().testTag("history_list"),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.storageProblem) item("storage") {
+            if (state.storageProblem || draftProblem) item("storage") {
                 Text(stringResource(R.string.error), color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(8.dp).semantics { liveRegion = LiveRegionMode.Polite })
+                    modifier = Modifier.padding(8.dp).testTag("history_problem").semantics { liveRegion = LiveRegionMode.Polite })
             }
             if (currentDraft != null && currentDraft.sourceId == null) item("current-text") {
                 DraftMessage(currentDraft, onDraftEdit, onDraftClear, onCopy)
@@ -217,7 +215,7 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         }
                         Column(Modifier.weight(1f).padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             AudioTrack(peaks, if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f,
-                                Modifier.fillMaxWidth().height(28.dp).testTag("history_waveform_${record.id}"))
+                                Modifier.fillMaxWidth().height(28.dp).testTag(if (peaks != null) "history_waveform_${record.id}" else "history_waveform_pending_${record.id}"))
                             Text(if (!available) stringResource(R.string.history_missing_audio)
                                 else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

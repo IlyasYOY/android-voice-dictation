@@ -55,7 +55,11 @@ internal object AndroidAudioWaveform {
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
             extractor.selectTrack(track)
             val raw = mime == "audio/raw"
-            if (!raw) decoder = MediaCodec.createDecoderByType(mime).also { it.configure(format, null, null, 0); it.start() }
+            if (!raw) {
+                decoder = MediaCodec.createDecoderByType(mime)
+                decoder.configure(format, null, null, 0)
+                decoder.start()
+            }
             val pcm = ByteBuffer.allocate(65_536).order(ByteOrder.LITTLE_ENDIAN)
             val peaks = ArrayList<Float>(40)
             val info = MediaCodec.BufferInfo()

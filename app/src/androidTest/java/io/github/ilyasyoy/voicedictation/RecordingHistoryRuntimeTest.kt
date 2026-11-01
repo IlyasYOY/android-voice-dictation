@@ -85,6 +85,7 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_sheet").assertExists()
             compose.onNodeWithTag("history_text_$success").assertDoesNotExist()
+            compose.waitUntil(15000) { compose.onAllNodesWithTag("history_waveform_$success").fetchSemanticsNodes().isNotEmpty() }
             capture("02-history-collapsed")
             compose.onNodeWithTag("history_play_$success").performScrollTo().performClick()
             compose.waitUntil(15000) { compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty() }
@@ -243,7 +244,7 @@ class RecordingHistoryRuntimeTest {
         try { assertNull(runBlocking { AndroidAudioWaveform.read(invalid) }) } finally { invalid.delete() }
     }
 
-    @Test fun linkedEditorAndUnlinkedDraftRemainAccessibleAfterRecreation() {
+    @Test fun linkedReplacementCannotReappearAfterDeleteBackgroundAndReopen() {
         lateinit var id: String
         lateinit var model: DictationViewModel
         instrumentation.runOnMainSync {
@@ -269,19 +270,28 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
             scenario.onActivity { assertEquals("Edited in the message", it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
             assertEquals("Edited in the message", repository.savedText(RecordingTextSlot.MAIN))
-            // Emptying and retyping the former main editor must not strand its text.
+            // A temporarily empty edit remains linked to the message that owns it.
             compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("")
-            compose.onNodeWithTag("transcript").performTextReplacement("Unlinked surviving text")
+            compose.onNodeWithTag("transcript").performTextReplacement("Replacement in the same message")
+            assertEquals(id, repository.savedDraft(RecordingTextSlot.MAIN).sourceId)
             scenario.recreate()
-            compose.onNodeWithTag("history_draft").assertExists()
-            compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
-            compose.onNodeWithTag("transcript").assertTextEquals("Unlinked surviving text")
-            capture("10-unlinked-text-after-recreation")
-            compose.onNodeWithTag("history_menu_draft").performScrollTo().performClick()
-            compose.onNodeWithTag("clear").performClick()
+            compose.onNodeWithTag("history_draft").assertDoesNotExist()
+            if (compose.onAllNodesWithTag("transcript").fetchSemanticsNodes().isEmpty())
+                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals("Replacement in the same message")
+            capture("10-linked-text-after-recreation")
+            compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("history_delete_$id").performClick()
+            compose.onNodeWithTag("history_confirm_delete").performClick()
             compose.runOnIdle { assertEquals("", model.state.value.text) }
             assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
-            assertEquals(transcript, repository.record(id)?.transcript)
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.onNodeWithTag("history_close").performClick()
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_draft").assertDoesNotExist()
+            compose.onNodeWithText("Replacement in the same message").assertDoesNotExist()
+            assertNull(repository.record(id))
         }
     }
 
@@ -301,5 +311,78 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
             compose.onNodeWithTag("history_text_$id").assertDoesNotExist()
         }
+    }
+
+    @Test fun unlinkedDraftRemainsEditableAndClearDoesNotDeleteRecordings() {
+        lateinit var model: DictationViewModel
+        lateinit var id: String
+        instrumentation.runOnMainSync {
+            id = seed(SavedRecordingStatus.COMPLETE, transcript)
+            repository.saveText(RecordingTextSlot.MAIN, "Unlinked synthetic text")
+            MainActivity.testFactory = { app -> DictationViewModel { scope ->
+                DictationSessions.create(app, scope, mainDraft = true)
+            }.also { model = it } }
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").performTextReplacement("Edited unlinked synthetic text")
+            scenario.recreate()
+            if (compose.onAllNodesWithTag("transcript").fetchSemanticsNodes().isEmpty())
+                compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals("Edited unlinked synthetic text")
+            capture("12-unlinked-text-after-recreation")
+            compose.onNodeWithTag("history_menu_draft").performScrollTo().performClick()
+            compose.onNodeWithTag("clear").performClick()
+            compose.runOnIdle { assertEquals("", model.state.value.text) }
+            assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
+            assertEquals(transcript, repository.record(id)?.transcript)
+        }
+    }
+
+    @Test fun failedDraftWriteRemainsCopyableAfterHistoryDismissAndReopen() {
+        var failDraft = false
+        val root = File(context.cacheDir, "history-draft-failure-${java.util.UUID.randomUUID()}")
+        val store = RecordingRepository(root, commit = RecordingCommit { target, values ->
+            if (failDraft && target.name == "main-text.properties") throw java.io.IOException("synthetic draft failure")
+            AtomicRecordingCommit.write(target, values)
+        })
+        store.saveText(RecordingTextSlot.MAIN, "Saved synthetic draft")
+        lateinit var model: DictationViewModel
+        instrumentation.runOnMainSync {
+            MainActivity.testFactory = { _ -> DictationViewModel { scope ->
+                DictationSession(scope, object : AudioRecorder {
+                    override fun start(onLimit: () -> Unit) { error("No recording in this fixture") }
+                    override fun stop(): File = error("No recording in this fixture")
+                    override fun cancel() = Unit
+                }, Transcriber { _, _ -> error("No HTTP in this fixture") }, recordings = StoredRecordingRetention(store, true))
+            }.also { model = it } }
+        }
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                compose.onNodeWithTag("saved_recordings").performClick()
+                compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+                scenario.onActivity { failDraft = true }
+                compose.onNodeWithTag("transcript").performTextReplacement("Unsaved synthetic words remain copyable")
+                assertEquals("Saved synthetic draft", store.savedText(RecordingTextSlot.MAIN))
+                compose.onNodeWithTag("history_problem").assertTextEquals(context.getString(R.string.error))
+                compose.onNodeWithTag("history_close").performClick()
+                compose.onNodeWithTag("saved_recordings").performClick()
+                compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+                compose.onNodeWithTag("transcript").assertTextEquals("Unsaved synthetic words remain copyable")
+                scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+                scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+                if (compose.onAllNodesWithTag("transcript").fetchSemanticsNodes().isEmpty())
+                    compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+                compose.onNodeWithTag("transcript").assertTextEquals("Unsaved synthetic words remain copyable")
+                compose.onNodeWithTag("history_problem").assertTextEquals(context.getString(R.string.error))
+                compose.onNodeWithTag("copy").performScrollTo().performClick()
+                scenario.onActivity { assertEquals(model.state.value.text, it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
+                capture("13-unsaved-draft-remains-copyable")
+                scenario.onActivity { failDraft = false; model.edit("Recovered synthetic draft") }
+                assertEquals("Recovered synthetic draft", store.savedText(RecordingTextSlot.MAIN))
+                compose.onNodeWithTag("history_problem").assertDoesNotExist()
+            }
+        } finally { root.deleteRecursively() }
     }
 }

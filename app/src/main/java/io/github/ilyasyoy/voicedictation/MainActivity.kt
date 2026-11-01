@@ -65,7 +65,8 @@ class MainActivity : ComponentActivity() {
                 if (historyOpen) RecordingHistorySheet(
                     onDismiss = { historyOpen = false; model.refreshDraft() },
                     onRecordsChanged = model::refreshDraft,
-                    draft = HistoryDraft(state.text, model.draftSourceId(), state.text.isNotBlank() || state.phase == io.github.ilyasyoy.voicedictation.session.Phase.RESULT),
+                    draft = HistoryDraft(state.text, model.draftSourceId(), state.text.isNotBlank() || model.draftSourceId() != null || state.phase == io.github.ilyasyoy.voicedictation.session.Phase.RESULT),
+                    draftProblem = state.problem == io.github.ilyasyoy.voicedictation.session.Problem.LOCAL_STORAGE,
                     onDraftEdit = if (state.busy) null else model::edit,
                     onDraftClear = if (state.busy) null else model::clear)
             }
