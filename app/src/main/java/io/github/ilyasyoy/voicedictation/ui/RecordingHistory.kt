@@ -127,13 +127,17 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 val available=audioAvailable(record.id)
                 val owned=record.id in state.ownedIds
                 val active=playback.id==record.id
+                val timestamp=DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(record.createdAt))
+                val playLabel=stringResource(if(active && playback.loading) R.string.history_loading else if(active && playback.playing) R.string.history_pause else R.string.history_play)
+                val copyLabel=stringResource(R.string.copy)
+                val deleteLabel=stringResource(R.string.history_delete)
                 val busy=record.status in setOf(SavedRecordingStatus.CAPTURING,SavedRecordingStatus.UPLOADING)
                 val canRetry=record.kind==SavedRecordingKind.RECORD && available && record.status in
                     setOf(SavedRecordingStatus.PENDING,SavedRecordingStatus.FAILED,SavedRecordingStatus.INTERRUPTED)
                 Surface(shape=MaterialTheme.shapes.extraLarge,color=MaterialTheme.colorScheme.surface,
                     modifier=Modifier.fillMaxWidth().testTag("history_card_${record.id}")) {
                     Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(record.createdAt)),
+                        Text(timestamp,
                             style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         val status=when(record.status) {
                             SavedRecordingStatus.COMPLETE -> if(record.partial) R.string.partial_text else R.string.saved_transcribed
@@ -151,8 +155,8 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                             Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surfaceContainer) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
                                     TextButton({onPlay(record.id)},enabled=available && state.records.none {it.status==SavedRecordingStatus.CAPTURING},
-                                        modifier=Modifier.testTag("history_play_${record.id}")) {
-                                        Text(stringResource(if(active && playback.loading) R.string.history_loading else if(active && playback.playing) R.string.history_pause else R.string.history_play))
+                                        modifier=Modifier.testTag("history_play_${record.id}").semantics {contentDescription="$playLabel, $timestamp"}) {
+                                        Text(playLabel)
                                     }
                                     Column(Modifier.weight(1f).padding(8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                                         Text(if(available) (if(active) "${clock(playback.position/1000)} / ${clock(playback.duration/1000)}" else clock(record.durationSeconds))
@@ -183,9 +187,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                                 modifier=Modifier.testTag("history_retry_${record.id}")) {
                                 Text(stringResource(if(record.id in state.receivedTexts) R.string.saved_save_received else if(record.status==SavedRecordingStatus.PENDING) R.string.history_transcribe else R.string.retry))
                             }
-                            if(text.isNotBlank()) TextButton({onCopy(text)},Modifier.testTag("history_copy_${record.id}")) { Text(stringResource(R.string.copy)) }
+                            if(text.isNotBlank()) TextButton({onCopy(text)},Modifier.testTag("history_copy_${record.id}").semantics {contentDescription="$copyLabel, $timestamp"}) { Text(copyLabel) }
                             TextButton({deleteId=record.id},enabled=!state.retrying && !owned && !busy,
-                                modifier=Modifier.testTag("history_delete_${record.id}")) { Text(stringResource(R.string.history_delete)) }
+                                modifier=Modifier.testTag("history_delete_${record.id}").semantics {contentDescription="$deleteLabel, $timestamp"}) { Text(deleteLabel) }
                         }
                     }
                 }
