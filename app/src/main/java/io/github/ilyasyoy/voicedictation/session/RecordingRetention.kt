@@ -50,7 +50,12 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
         sourceId=restored.sourceId;restored.text
     } else null
     override fun saveDraft(text:String) {
-        if(text.isBlank() || sourceId?.let {repository.record(it)}==null)sourceId=null
+        // A still-open owner can hold old text after explicit deletion elsewhere. Keep
+        // its deleted source identity until restore/new dictation, so repeated lifecycle
+        // checkpoints cannot turn that stale text into an unlinked durable draft.
+        val source=sourceId
+        if(source!=null && repository.record(source)?.status in setOf(null,io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING))return
+        if(text.isBlank())sourceId=null
         if(mainDraft)stored {repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN,text,sourceId)}
     }
     override fun liveText(text:String,partial:Boolean,seconds:Int) = stored {

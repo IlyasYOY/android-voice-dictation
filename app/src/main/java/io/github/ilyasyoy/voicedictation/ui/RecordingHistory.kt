@@ -36,7 +36,7 @@ import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RecordingHistorySheet(onDismiss: () -> Unit) {
+internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
@@ -73,7 +73,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit) {
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { /* Typed ledger state is rendered below; no content or diagnostics logged. */ }
                 }
-            }, onDelete = { id -> playback.stop(); owner.discard(id) }, onCopy = { text ->
+            }, onDelete = { id -> playback.stop(); owner.discard(id); onRecordsChanged() }, onCopy = { text ->
                 val clip = ClipData.newPlainText(context.getString(R.string.transcript),text)
                 if (Build.VERSION.SDK_INT >= 33) clip.description.extras = PersistableBundle().apply {
                     putBoolean("android.content.extra.IS_SENSITIVE",true)

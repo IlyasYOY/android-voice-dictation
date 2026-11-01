@@ -89,6 +89,21 @@ class StoredRecordingSessionTest {
         assertEquals("Known paid response",store().records().single().transcript)
         assertTrue(capture.audio.exists());session.close()
     }
+    @Test fun deletedSourceCannotBeResurrectedByRepeatedBackgroundCheckpoints()=runTest {
+        val store=store();val audio=store.allocate().apply {writeText("audio")};store.finalized(audio)
+        store.complete(checkNotNull(store.beginUpload(audio)),"Deleted words")
+        val id=checkNotNull(store.record(audio)).id
+        store.saveText(RecordingTextSlot.MAIN,"Deleted words",id)
+        val session=DictationSession(backgroundScope,Capture(store),Transcriber {_,_->error("no upload")},recordings=StoredRecordingRetention(store,true))
+        assertEquals("Deleted words",session.state.value.text)
+        assertTrue(store.discard(id))
+        repeat(2) {session.cancel()}
+        assertEquals("",store().savedText(RecordingTextSlot.MAIN))
+        session.refreshDraft();assertEquals("",session.state.value.text)
+        session.edit("A new deliberate draft")
+        assertEquals("A new deliberate draft",store().savedText(RecordingTextSlot.MAIN))
+        session.close()
+    }
     @Test fun restoredMainDraftKeepsItsDeletionLinkThroughBackgroundAndClose()=runTest {
         val first=store();val audio=first.allocate().apply {writeText("audio")};first.finalized(audio)
         first.complete(checkNotNull(first.beginUpload(audio)),"Saved words")

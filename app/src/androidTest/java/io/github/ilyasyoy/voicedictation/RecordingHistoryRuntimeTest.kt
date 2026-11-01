@@ -70,7 +70,7 @@ class RecordingHistoryRuntimeTest {
     @After fun after() { instrumentation.runOnMainSync {
         AndroidRecordingPlayback.interrupt()
         ids.forEach {repository.discard(it)}
-        MainActivity.testNotice=null
+        MainActivity.testNotice=null;MainActivity.testFactory=null
     } }
     @Test fun historyTapPlaybackCopyDeleteAndSwipeUseDurableRecords() {
         lateinit var success:String;lateinit var pending:String
@@ -101,6 +101,31 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithTag("history_sheet").assertExists()
         }
         assertNotNull(repository.record(pending))
+    }
+    @Test fun deleteSynchronizesMainBeforeBackgroundAndRecreationWithoutClosingHistory() {
+        lateinit var id:String
+        lateinit var model:DictationViewModel
+        instrumentation.runOnMainSync {
+            id=seed(SavedRecordingStatus.COMPLETE,transcript)
+            repository.saveText(RecordingTextSlot.MAIN,transcript,id)
+            MainActivity.testFactory={ app -> DictationViewModel { scope ->
+                DictationSessions.create(app,scope,mainDraft=true)
+            }.also {model=it} }
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {scenario ->
+            compose.onNodeWithTag("saved_recordings").performScrollTo().performClick()
+            compose.onNodeWithTag("history_delete_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("history_confirm_delete").performClick()
+            compose.runOnIdle {assertEquals("",model.state.value.text)}
+            compose.onNodeWithTag("history_sheet").assertExists()
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            scenario.recreate()
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            assertNull(repository.record(id))
+            assertEquals("",repository.savedText(RecordingTextSlot.MAIN))
+            compose.runOnIdle {assertEquals("",model.state.value.text)}
+            compose.onNodeWithTag("history_sheet").assertExists()
+        }
     }
     @Test fun explicitRetryIsSingleFlightAndKeepsAudioAndTranscript() {
         val server=MockWebServer()

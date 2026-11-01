@@ -62,7 +62,9 @@ class MainActivity : ComponentActivity() {
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
                     savedRecordings = recovery.savedCount,
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true })
-                if (historyOpen) RecordingHistorySheet { historyOpen = false; model.refreshDraft() }
+                if (historyOpen) RecordingHistorySheet(
+                    onDismiss = { historyOpen = false; model.refreshDraft() },
+                    onRecordsChanged = model::refreshDraft)
             }
         }
     }
