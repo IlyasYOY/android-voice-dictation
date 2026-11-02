@@ -87,6 +87,23 @@ class DictationScreenTest {
         val record=store.records().first {it.transcript==text}
         assertTrue(store.audio(record.id).length()>1000)
     }
+    @Test fun configurationRecreationDoesNotStopRecordingOrRestartUpload() {
+        key()
+        server.enqueue(MockResponse().setBody("{\"text\":\"Synthetic rotation result\"}").setBodyDelay(2, TimeUnit.SECONDS))
+        click("record"); waitPhase(Phase.RECORDING)
+        val retained = model
+        scenario.recreate()
+        assertSame(retained, model)
+        waitPhase(Phase.RECORDING)
+        assertEquals(0, server.requestCount)
+        click("stop"); waitPhase(Phase.TRANSCRIBING)
+        scenario.recreate()
+        assertSame(retained, model)
+        waitPhase(Phase.RESULT)
+        assertEquals(1, server.requestCount)
+        assertEquals("Synthetic rotation result", model.state.value.text)
+    }
+
     @Test fun recordUploadEditCopyAndClear() {
         screenshot("01-idle")
         compose.onNodeWithTag("record").assertIsEnabled()

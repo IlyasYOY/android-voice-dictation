@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.ilyasyoy.voicedictation"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "0.10.0"
+        versionCode = 20
+        versionName = "0.11.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -46,6 +46,7 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 dependencies {
     implementation(libs.okhttp)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.window)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

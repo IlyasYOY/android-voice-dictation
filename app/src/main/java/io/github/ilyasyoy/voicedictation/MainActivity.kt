@@ -20,6 +20,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.window.layout.WindowInfoTracker
+import androidx.window.layout.FoldingFeature
+import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.session.DictationSessions
@@ -38,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private var navigationProblem by mutableStateOf(false)
     private val setupPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { setupPermissionReturned() }
     private var requestingPermission = false
+    private var separatingHinge by mutableStateOf<FoldingFeature?>(null)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val requested = requestingPermission
         requestingPermission = false
@@ -48,6 +54,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->
+                    separatingHinge = info.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull { it.isSeparating }
+                }
+            }
+        }
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -62,6 +75,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             VoiceDictationTheme {
                 var historyOpen by rememberSaveable { mutableStateOf(false) }
+                val historyUi = rememberHistoryUiState()
+                val historyController: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                HistoryPlaybackLifecycle(historyController)
                 val state by model.state.collectAsStateWithLifecycle()
                 val draft by model.setupKey.collectAsStateWithLifecycle()
                 val setupUi = setupFlow?.state?.collectAsStateWithLifecycle()?.value ?: SetupUi()
@@ -73,6 +89,7 @@ class MainActivity : ComponentActivity() {
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
                 val showSetup = setupUi.step != null && !state.audioBusy && !historyOpen
                 BackHandler(showSetup) { deferSetup() }
+                AdaptiveHistoryLayout(separatingHinge, main = { wide ->
                 if (showSetup) SetupScreen(setupUi, state, draft, setupGrants, pasteProblem, navigationProblem,
                     microphoneSettings(), notificationSettings(), recovery.savedCount,
                     onKey = { pasteProblem = false; model.editSetupKey(it) }, onPaste = { pasteSetupKey(false) },
@@ -94,14 +111,19 @@ class MainActivity : ComponentActivity() {
                     }.isSuccess },
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true },
                     onSetup = if (setupUi.missing != 0) ({ model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
-                    onPasteKey = if (setupFlow != null) ({ pasteSetupKey(true) }) else null, pasteProblem = pasteProblem)
-                if (historyOpen) RecordingHistorySheet(
+                    onPasteKey = if (setupFlow != null) ({ pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
+                    showHistoryEntrance = !wide)
+                }, history = { wide, region, windowWidth, windowHeight ->
+                HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },
+                    recovery = recovery, controller = historyController, ui = historyUi,
+                    sheetRegion = region, windowWidth = windowWidth, windowHeight = windowHeight,
                     onRecordsChanged = model::refreshDraft,
                     draft = HistoryDraft(state.text, model.draftSourceId(), state.text.isNotBlank() || model.draftSourceId() != null || state.phase == io.github.ilyasyoy.voicedictation.session.Phase.RESULT),
                     draftProblem = state.problem == io.github.ilyasyoy.voicedictation.session.Problem.LOCAL_STORAGE,
                     onDraftEdit = if (state.busy) null else model::edit,
                     onDraftClear = if (state.busy) null else model::clear)
+                })
             }
         }
     }
@@ -202,7 +224,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         setupFlow?.background(continuation = isChangingConfigurations || requestingPermission)
         requestingPermission = false
-        if (::model.isInitialized) {
+        if (::model.isInitialized && !isChangingConfigurations) {
             val problem=model.state.value.problem
             model.background()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(problem)) }
         }
