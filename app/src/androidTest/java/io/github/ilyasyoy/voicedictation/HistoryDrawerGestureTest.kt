@@ -43,20 +43,20 @@ class HistoryDrawerGestureTest {
         } } }
         compose.onNodeWithTag("main_action").performClick()
         compose.runOnIdle { assertEquals(1, mainClicks); assertEquals(524f, sheet.requireOffset(), 1f) }
-        compose.onAllNodesWithTag("history_swipe").assertCountEquals(1)
+        compose.onAllNodesWithTag("history_swipe", useUnmergedTree = true).assertCountEquals(1)
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithTag("history_swipe").performTouchInput { down(center); moveBy(Offset(0f, -150f), 200) }
+        compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { down(center); moveBy(Offset(0f, -150f), 200) }
         compose.mainClock.advanceTimeByFrame()
         compose.runOnIdle {
             assertTrue("The same surface must move while the finger is still down", sheet.requireOffset() in 250f..450f)
             assertFalse(open)
         }
-        compose.onNodeWithTag("history_swipe").performTouchInput { moveBy(Offset(0f, -250f), 200); up() }
+        compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { moveBy(Offset(0f, -250f), 200); up() }
         compose.mainClock.autoAdvance = true; compose.waitForIdle()
         compose.runOnIdle { assertEquals(SheetValue.Expanded, sheet.currentValue); assertTrue(open) }
-        compose.onAllNodesWithTag("history_swipe").assertCountEquals(1)
+        compose.onAllNodesWithTag("history_swipe", useUnmergedTree = true).assertCountEquals(1)
         compose.onAllNodesWithTag("drawer_test_content").assertCountEquals(1)
-        compose.onNodeWithTag("history_swipe").performTouchInput {
+        compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput {
             swipe(center, center + Offset(0f, 400f), 600)
         }
         compose.runOnIdle { assertEquals(SheetValue.PartiallyExpanded, sheet.currentValue); assertFalse(open) }
@@ -111,12 +111,12 @@ class HistoryDrawerGestureTest {
             }
         } } }
         compose.onNodeWithTag("main_counter").performClick()
-        compose.onNodeWithTag("history_swipe").performTouchInput { swipe(center, center - Offset(0f, 400f), 400) }
+        compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { swipe(center, center - Offset(0f, 400f), 400) }
         compose.onNodeWithTag("words_tab").performClick()
         compose.onNodeWithTag("words_add_input").performTextInput("unfinished term")
         if (!compose.onNodeWithTag("words_add").isDisplayed()) compose.onNodeWithTag("words_add").performScrollTo()
         compose.onNodeWithTag("words_add").assertIsDisplayed()
-        compose.onNodeWithTag("history_swipe").performTouchInput { swipe(center, center + Offset(0f, 300f), 400) }
+        compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { swipe(center, center + Offset(0f, 300f), 400) }
         compose.onNodeWithTag("saved_recordings").performClick()
         compose.onNodeWithTag("words_add_input").assertTextContains("unfinished term")
         compose.runOnIdle { width.value = 700.dp }

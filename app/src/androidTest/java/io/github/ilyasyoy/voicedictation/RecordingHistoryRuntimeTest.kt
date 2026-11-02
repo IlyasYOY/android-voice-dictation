@@ -116,7 +116,7 @@ class RecordingHistoryRuntimeTest {
             capture("05-history-pending")
             compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
             compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
-            compose.onNodeWithTag("history_swipe").performTouchInput { swipeUp() }
+            compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { swipeUp() }
             compose.onNodeWithTag("history_sheet").assertExists()
         }
         assertNotNull(repository.record(pending))
