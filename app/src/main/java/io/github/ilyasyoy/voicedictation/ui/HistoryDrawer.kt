@@ -30,6 +30,7 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
     val expanded by rememberUpdatedState(onExpanded)
     val collapsed by rememberUpdatedState(onCollapsed)
     val requestedOpen by rememberUpdatedState(open)
+    val revealState = remember(state) { booleanArrayOf(false) }
     LaunchedEffect(open, enabled, state) {
         if (!enabled) state.partialExpand()
         else if (open && state.currentValue != SheetValue.Expanded) state.expand()
@@ -56,11 +57,10 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
             open || runCatching { state.requireOffset() < closedOffset - 1f }.getOrDefault(false)
         } }
         LaunchedEffect(state, closedOffset) {
-            var revealed = false
             snapshotFlow { runCatching { state.requireOffset() }.getOrNull() }.collect { offset ->
                 val moved = offset != null && offset < closedOffset - 1f
-                if (moved && !revealed) reveal()
-                revealed = moved
+                if (moved && !revealState[0]) reveal()
+                revealState[0] = moved
             }
         }
         BottomSheetScaffold(scaffoldState = rememberBottomSheetScaffoldState(state),
