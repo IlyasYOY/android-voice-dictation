@@ -27,6 +27,7 @@ import org.junit.Assert.*
 
 /** No secure-flag override: exercise the same capture policy as the installed app. */
 class ScreenshotPolicyTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 

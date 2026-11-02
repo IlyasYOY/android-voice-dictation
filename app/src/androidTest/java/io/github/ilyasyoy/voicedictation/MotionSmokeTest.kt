@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Native UI smoke with animations enabled; Compose idling is deliberately not used for a flowing surface. */
 class MotionSmokeTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val device get()=UiDevice.getInstance(instrumentation)
     private fun shell(cmd: String)=instrumentation.uiAutomation.executeShellCommand(cmd).use { ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString().trim() }

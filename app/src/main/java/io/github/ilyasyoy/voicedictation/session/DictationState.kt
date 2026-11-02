@@ -9,6 +9,8 @@ data class DictationState(
     val key: String = "",
     val keySaved: Boolean = false,
     val keyBusy: Boolean = false,
+    val keyLoaded: Boolean = true,
+    val keyStoreKnown: Boolean = true,
     val hasSavedKey: Boolean = false,
     val text: String = "",
     val seconds: Int = 0,

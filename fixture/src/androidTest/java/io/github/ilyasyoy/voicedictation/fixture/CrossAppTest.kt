@@ -32,12 +32,20 @@ class CrossAppTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val device get() = UiDevice.getInstance(instrumentation)
     private fun checkpoint(value: String) { instrumentation.sendStatus(2, android.os.Bundle().apply { putString("stream", "\nCHECKPOINT: $value\n") }) }
-    private fun launch(component: String, port: Int? = null) {
+    private fun launch(component: String, port: Int? = null, deferSetup: Boolean = true) {
         val intent = Intent().setComponent(ComponentName(if (component.startsWith("$FIXTURE.")) FIXTURE else APP, component))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         if (port != null) intent.putExtra("port", port)
         if (component == "$FIXTURE.FixtureActivity") intent.putExtra("field", "body")
         instrumentation.targetContext.startActivity(intent)
+        if (component == "$APP.MainActivity" && deferSetup) {
+            val deadline = SystemClock.elapsedRealtime() + 40_000
+            while (!device.hasObject(By.pkg(APP).desc("Settings")) && SystemClock.elapsedRealtime() < deadline) {
+                val notNow = device.findObject(By.pkg(APP).text("Not now"))
+                if (notNow != null) { notNow.click(); checkpoint("Explicitly deferred first-run setup for this existing-feature scenario"); break }
+                SystemClock.sleep(100)
+            }
+        }
     }
     private fun awaitObject(selector: BySelector, timeout: Long): UiObject2? =
         device.wait(Until.findObject(selector), timeout)
@@ -95,7 +103,7 @@ class CrossAppTest {
         launch("$APP.MainActivity")
         find(By.pkg(APP).desc("Settings"), 60_000).click()
         scrollFind(By.pkg(APP).text("Set up floating dictation")).click()
-        find(By.clazz("android.widget.ScrollView").pkg(APP), 40_000)
+        find(appId("floating_setup_title"), 40_000)
     }
     private fun setupUserOptIn() {
         val pm = instrumentation.targetContext.packageManager
@@ -107,6 +115,10 @@ class CrossAppTest {
         checkpoint("Opening explicit special-access onboarding")
         openFloatingSetupFromMain()
         screenshot("00-floating-setup")
+        if (device.hasObject(appId("floating_setup_status").text("Off"))) {
+            scrollFind(appId("floating_enable")).click()
+            scrollFind(appId("floating_consent")).click()
+        }
         if (instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) != 0) {
             checkpoint("Requesting microphone through OS UI")
             scrollFind(appId("floating_mic")).click()
@@ -116,12 +128,10 @@ class CrossAppTest {
             allow.click()
             device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
         }
-        if (Build.VERSION.SDK_INT >= 33 && instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) != 0) {
-            scrollFind(appId("floating_notifications")).click()
-            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 40_000).click()
-            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 40_000)
+        if (specialAccessEnabled()) {
+            grantFloatingNotificationsIfNeeded()
+            return
         }
-        if (specialAccessEnabled()) return
         // Scroll back to the explicit disclosure/opt-in button.
         repeat(3) { scroll(Direction.UP) }
         checkpoint("Opening accessibility disclosure/settings")
@@ -162,6 +172,15 @@ class CrossAppTest {
             SystemClock.sleep(200)
         }
         assertTrue("OS accessibility consent must actually enable the chosen service",specialAccessEnabled())
+        grantFloatingNotificationsIfNeeded()
+    }
+    private fun grantFloatingNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 && instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) != 0) {
+            openFloatingSetupFromMain()
+            scrollFind(appId("floating_notifications")).click()
+            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 40_000).click()
+            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 40_000)
+        }
     }
     @Before fun prepare() {
         device.wakeUp()

@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Actual AudioRecord + actual WebSocket. Only the transcription service is synthetic. */
 class LiveScreenTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val bytes = AtomicInteger()

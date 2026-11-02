@@ -20,6 +20,7 @@ import org.junit.*
 import org.junit.Assert.*
 
 class SecondRoundAcceptanceTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose=createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     @Test fun cloudSelectorAndSettingsStayInTheSamePositionAcrossSessionStatesWithoutSquareRipple() {

@@ -38,3 +38,14 @@ internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, e
         AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
     }
 }
+
+/** Decorative idle sample of the overlay: same drawable, 64dp bounds and 3dp content padding.
+ * It has no click/long-click action, service, recorder or network callback.
+ */
+@Composable
+internal fun FloatingButtonPreview(modifier: Modifier = Modifier) {
+    AndroidView(factory = { context -> CurrentMarkView(context).apply {
+        val inset = (3 * context.resources.displayMetrics.density).toInt()
+        setPadding(inset, inset, inset, inset)
+    } }, update = { it.mark.visual = CurrentVisual.IDLE }, modifier = modifier.size(64.dp))
+}
