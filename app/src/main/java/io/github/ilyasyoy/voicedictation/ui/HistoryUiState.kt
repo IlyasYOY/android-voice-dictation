@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation.ui
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -10,6 +11,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 /** Presentation state survives panel relocation. Includes unfinished vocabulary text, never credentials. */
 internal class HistoryUiState(val list: LazyListState = LazyListState(), val wordList: LazyListState = LazyListState()) {
     val expanded = mutableStateListOf<String>()
+    val wordFormScroll = ScrollState(0)
     var draftExpanded by mutableStateOf(false)
     var deleteId by mutableStateOf<String?>(null)
     var menuId by mutableStateOf<String?>(null)
@@ -21,6 +23,9 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     var wordMenu by mutableStateOf<String?>(null)
     var wordFocus by mutableStateOf<String?>(null)
     fun toggle(id: String) { if (!expanded.remove(id)) expanded.add(id) }
+    fun closeTransient() {
+        deleteId = null; limitOpen = false; menuId = null; wordMenu = null; wordFocus = null
+    }
     companion object {
         val Saver = listSaver<HistoryUiState, Any>(
             save = { listOf("history-ui-v2", it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,

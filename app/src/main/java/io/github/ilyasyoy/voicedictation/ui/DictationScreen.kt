@@ -16,7 +16,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
@@ -38,33 +37,20 @@ fun DictationScreen(
     onCancel: () -> Unit, onRetry: () -> Unit, onEdit: (String) -> Unit, onCopy: () -> Unit,
     onClear: () -> Unit, onForget: () -> Unit,
     onSave: () -> Unit, onFloatingSetup: () -> Unit = {}, evidenceNotice: String? = null,
-    savedRecordings: Int = 0, onSavedRecordings: () -> Unit = onFloatingSetup,
+    onSavedRecordings: () -> Unit = onFloatingSetup,
     historyCapacity: HistoryCapacity? = null, onHistoryLimit: (Int) -> Boolean = { false },
     onSetup: (() -> Unit)? = null, onPasteKey: (() -> Unit)? = null, pasteProblem: Boolean = false,
-    showHistoryEntrance: Boolean = true,
+    onSettingsVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
-    LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
-    val historyGesture = remember(settingsOpen, state.audioBusy, onSavedRecordings, showHistoryEntrance) {
-        object : NestedScrollConnection {
-            var distance = 0f
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && showHistoryEntrance && !settingsOpen && !state.audioBusy) {
-                    distance = if (available.y < 0) distance - available.y else 0f
-                    if (distance > 80f) { distance = 0f; onSavedRecordings() }
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    LaunchedEffect(settingsOpen) { scroll.scrollTo(0); onSettingsVisibilityChanged(settingsOpen) }
+    DisposableEffect(Unit) { onDispose { onSettingsVisibilityChanged(false) } }
     BackHandler(settingsOpen) { settingsOpen = false }
-    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), bottomBar = {
-        if (!settingsOpen && showHistoryEntrance) HistoryEntrance(savedRecordings, !state.audioBusy, onSavedRecordings)
-    }, topBar = {
+    Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), topBar = {
         Column {
             if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(evidenceNotice, Modifier.fillMaxWidth().padding(8.dp),
@@ -80,7 +66,7 @@ fun DictationScreen(
     }) { insets ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
             val controlSize = minOf(228.dp, maxWidth - 48.dp, maxHeight * .40f).coerceAtLeast(112.dp)
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().nestedScroll(historyGesture).verticalScroll(scroll)
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll)
                 .padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 val settingsLabel = stringResource(R.string.current_settings)

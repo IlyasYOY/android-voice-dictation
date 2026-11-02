@@ -72,8 +72,9 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onRecordsChanged: () -> Unit = {}, draft: HistoryDraft? = null, draftProblem: Boolean = false,
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
-    onOpenForDialog: () -> Unit = {}) {
+    onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
     val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
@@ -83,10 +84,11 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; ui.wordMenu = null; ui.wordFocus = null; onDismiss() }
+    val dismiss = { controller.background(); ui.closeTransient(); onDismiss() }
     val content: @Composable () -> Unit = {
+        if (visible) {
         HistoryPanel(ui, onWordsSelected = { controller.background(); ui.menuId = null },
-            modifier = Modifier.fillMaxHeight(if (wide) 1f else .9f),
+            modifier = Modifier.fillMaxHeight(),
             words = { VocabularyPanel(ui, it) }, history = { modifier -> Box(modifier) {
         RecordingHistory(recovery, playing,
             audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
@@ -97,8 +99,11 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             ui = ui, dismissible = !wide,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
+        } else Box(Modifier.fillMaxSize()) // Keep sheet geometry, without decoding hidden history waveforms.
     }
-    HistoryPanelHost(wide, open || pendingDialog, dismiss, sheetRegion, windowWidth, windowHeight, content)
+    if (embedded) {
+        if (wide) HistoryPanelHost(true, true, dismiss, content = content) else content()
+    } else HistoryPanelHost(wide, open || pendingDialog, dismiss, content)
     if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
         onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
         onDismiss = { ui.limitOpen = false })
@@ -108,18 +113,14 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HistoryPanelHost(wide: Boolean, open: Boolean, onDismiss: () -> Unit,
-    sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f, content: @Composable () -> Unit) {
+    content: @Composable () -> Unit) {
     if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(28.dp)) { content() }
-    else if (open) ModalBottomSheet(onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.background,
-        sheetMaxWidth = minOf(640.dp, sheetRegion?.width?.dp ?: 640.dp),
-        contentWindowInsets = { if (sheetRegion != null) WindowInsets(0) else BottomSheetDefaults.windowInsets },
-        modifier = (if (sheetRegion != null) Modifier
-            .absoluteOffset(x = (sheetRegion.left - (windowWidth - sheetRegion.width) / 2f).dp,
-                y = -(windowHeight - sheetRegion.top - sheetRegion.height).dp)
-            .heightIn(max = sheetRegion.height.dp) else Modifier).testTag("history_sheet")) { content() }
+    else {
+        val state = rememberStandardBottomSheetState(initialValue = if (open) SheetValue.Expanded else SheetValue.PartiallyExpanded)
+        HistoryDrawer(state, open, true, 0, {}, {}, onDismiss, Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
+            main = { Box(Modifier.fillMaxSize()) }, content = content)
+    }
 }
 
 @Composable

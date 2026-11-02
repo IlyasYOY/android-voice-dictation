@@ -1,43 +1,40 @@
 package io.github.ilyasyoy.voicedictation.ui.design
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import io.github.ilyasyoy.voicedictation.R
 
-/** A visible sheet lip, with equivalent tap and swipe actions and one accessible count. */
+/** Content of the drawer's only handle. Its parent standard sheet owns all vertical gestures. */
 @Composable
-internal fun HistoryEntrance(count: Int, enabled: Boolean, onOpen: () -> Unit) {
-    val description = stringResource(R.string.history_open) + ", " + stringResource(R.string.saved_recordings, count)
-    Box(Modifier.fillMaxWidth().testTag("history_swipe").pointerInput(enabled, onOpen) {
-        var distance = 0f
-        detectVerticalDragGestures(onDragStart = { distance = 0f }, onVerticalDrag = { change, amount ->
-            distance += amount
-            if (enabled) change.consume()
-        }, onDragEnd = { if (enabled && distance < -32.dp.toPx()) onOpen() })
-    }, contentAlignment = Alignment.BottomCenter) {
-        Surface(onClick = onOpen, enabled = enabled, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surface, tonalElevation = 1.dp,
-            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().testTag("saved_recordings")
-                .semantics { contentDescription = description; role = Role.Button }) {
-            Column(Modifier.heightIn(min = 76.dp).padding(top = 10.dp, bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+internal fun HistoryEntrance(count: Int, enabled: Boolean, expanded: Boolean, onToggle: () -> Unit,
+    modifier: Modifier = Modifier) {
+    val description = stringResource(if (expanded) R.string.history_close else R.string.history_open) + ", " + stringResource(R.string.saved_recordings, count)
+    val position = stringResource(if (expanded) R.string.history_drawer_expanded else R.string.history_drawer_collapsed)
+    BoxWithConstraints(modifier.fillMaxWidth().testTag("history_swipe"), contentAlignment = Alignment.TopCenter) {
+            val showCount = maxHeight >= 44.dp * LocalDensity.current.fontScale
+            Column(Modifier.fillMaxSize().clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
+                .testTag("saved_recordings").semantics {
+                    contentDescription = description
+                    stateDescription = position
+                }.padding(top = if (showCount) 10.dp else 0.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = if (showCount) Arrangement.spacedBy(8.dp) else Arrangement.Center) {
                 Box(Modifier.size(36.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f), RoundedCornerShape(2.dp)))
-                Text(pluralStringResource(R.plurals.history_saved_count, count, count), Modifier.clearAndSetSemantics { },
+                if (showCount) Text(pluralStringResource(R.plurals.history_saved_count, count, count), Modifier.clearAndSetSemantics { },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else .5f))
             }
-        }
     }
 }

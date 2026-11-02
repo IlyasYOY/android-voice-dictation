@@ -37,7 +37,7 @@ class VocabularyPanelTest {
             }) { VoiceDictationTheme {
                 ui = rememberHistoryUiState()
                 Box(Modifier.requiredSize(width.value, 600.dp)) {
-                    AdaptiveHistoryLayout(main = {}, history = { _, _, _, _ -> Surface(Modifier.fillMaxSize()) {
+                    AdaptiveHistoryLayout(drawerOpen = true, main = {}, history = { _, _, _, _ -> Surface(Modifier.fillMaxSize()) {
                         HistoryPanel(ui, { historyStops++ }, Modifier.fillMaxSize(), words = { modifier ->
                             VocabularyContent(state.value, false, null, ui,
                                 onSave = { original, text, success -> state.value = state.value.copy(words = if (original == null)
@@ -106,5 +106,16 @@ class VocabularyPanelTest {
         compose.onNodeWithTag("words_edit_input").performTextReplacement("notice")
         compose.onNodeWithTag("words_save").performClick()
         compose.onNodeWithTag("word_menu_notice").assertExists()
+    }
+    @Test fun shortKeyboardViewportKeepsLargeFontAddReachableByScrolling() {
+        compose.setContent { CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) { VoiceDictationTheme {
+            val ui = rememberHistoryUiState()
+            Box(Modifier.requiredSize(320.dp, 160.dp)) {
+                VocabularyContent(VocabularyState(listOf("Neovim"), true), false, null, ui, { _, _, _ -> }, {}, {})
+            }
+        } } }
+        compose.onNodeWithTag("words_add_input").performTextInput("new word")
+        compose.onNodeWithTag("words_add").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("words_add_input").assertTextContains("new word")
     }
 }

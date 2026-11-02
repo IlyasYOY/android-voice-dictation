@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="history_drawer_expanded">Expanded</string>
+  <string name="history_drawer_collapsed">Collapsed</string>
   <string name="words_title">Words</string>
   <string name="words_new">New word</string>
   <string name="words_add">Add</string>

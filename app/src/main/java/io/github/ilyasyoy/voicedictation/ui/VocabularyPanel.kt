@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,7 +47,7 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
         val submitted = ui.wordInput.text
         onSave(null, submitted) { if (ui.wordInput.text == submitted) ui.wordInput = TextFieldValue() }
     }
-    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag("words_content")) {
+    val entry: @Composable () -> Unit = {
         WordEntry(ui.wordInput, { ui.wordInput = it; onClearIssue() }, submit,
             stringResource(R.string.words_new), stringResource(R.string.words_add), "words_add_input", "words_add",
             enabled = state.readable, restoreFocus = ui.wordFocus == "add", onFocus = { ui.wordFocus = "add" }, canSubmit = !busy)
@@ -62,7 +63,9 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
             modifier = Modifier.padding(vertical = 4.dp).testTag("words_error").semantics { liveRegion = LiveRegionMode.Polite })
         if (!state.readable || issue == VocabularyIssue.STORAGE) TextButton(onReload,
             enabled = !busy, modifier = Modifier.testTag("words_reload")) { Text(stringResource(R.string.words_reload)) }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("words_list"), state = ui.wordList,
+    }
+    val rows: @Composable (Modifier) -> Unit = { listModifier ->
+        LazyColumn(listModifier.fillMaxWidth().testTag("words_list"), state = ui.wordList,
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.readable && state.words.isEmpty()) item("header:empty") {
                 Text(stringResource(R.string.words_empty), Modifier.padding(8.dp), style = MaterialTheme.typography.titleMedium)
@@ -112,6 +115,15 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
                 }
             }
         }
+    }
+    BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag("words_content")) {
+        val editorHeight = if (LocalDensity.current.fontScale > 1.3f) 180.dp else 104.dp
+        val listHeight = maxOf(120.dp, maxHeight)
+        if (maxHeight < editorHeight) Column(Modifier.fillMaxSize().verticalScroll(ui.wordFormScroll)) {
+            // An exceptionally short IME/multiwindow viewport cannot fit a fixed editor plus list.
+            // Keep the inline form reachable by scrolling, without clipping Add behind the keyboard.
+            entry(); rows(Modifier.height(listHeight))
+        } else Column(Modifier.fillMaxSize()) { entry(); rows(Modifier.weight(1f)) }
     }
 }
 

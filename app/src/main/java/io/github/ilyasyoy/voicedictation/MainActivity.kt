@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VoiceDictationTheme {
                 var historyOpen by rememberSaveable { mutableStateOf(false) }
+                var settingsOpen by rememberSaveable { mutableStateOf(false) }
                 val historyUi = rememberHistoryUiState()
                 val historyController: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
                 HistoryPlaybackLifecycle(historyController)
@@ -90,7 +91,12 @@ class MainActivity : ComponentActivity() {
                 val showSetup = setupUi.step != null && !state.audioBusy && !historyOpen
                 BackHandler(showSetup) { deferSetup() }
                 LaunchedEffect(showSetup) { if (showSetup) historyController.background() }
-                AdaptiveHistoryLayout(separatingHinge, historyEnabled = !showSetup, main = { wide ->
+                AdaptiveHistoryLayout(separatingHinge, historyEnabled = !showSetup,
+                    drawerOpen = historyOpen, drawerEnabled = !state.audioBusy, drawerVisible = !settingsOpen,
+                    drawerCount = recovery.savedCount, onDrawerReveal = ::retainRetryRecording,
+                    onDrawerExpanded = { historyOpen = true }, onDrawerCollapsed = {
+                        historyOpen = false; historyUi.closeTransient(); historyController.background(); model.refreshDraft()
+                    }, main = { _ ->
                 if (showSetup) SetupScreen(setupUi, state, draft, setupGrants, pasteProblem, navigationProblem,
                     microphoneSettings(), notificationSettings(), recovery.savedCount,
                     onKey = { pasteProblem = false; model.editSetupKey(it) }, onPaste = { pasteSetupKey(false) },
@@ -106,19 +112,19 @@ class MainActivity : ComponentActivity() {
                     onFloatingSetup = {
                         if (setupFlow == null || setupFlow?.beginNavigation() == true) startActivity(Intent(this, FloatingSetupActivity::class.java))
                     }, evidenceNotice = testNotice,
-                    savedRecordings = recovery.savedCount, historyCapacity = recovery.capacity,
+                    historyCapacity = recovery.capacity,
                     onHistoryLimit = { limit -> runCatching {
                         io.github.ilyasyoy.voicedictation.data.AndroidRecordingStorage.repository(applicationContext).setHistoryLimit(limit)
                     }.isSuccess },
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true },
                     onSetup = if (setupUi.missing != 0) ({ historyOpen = false; model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
                     onPasteKey = if (setupFlow != null) ({ historyOpen = false; pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
-                    showHistoryEntrance = !wide)
+                    onSettingsVisibilityChanged = { settingsOpen = it })
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },
                     onOpenForDialog = { historyOpen = true },
-                    recovery = recovery, controller = historyController, ui = historyUi,
+                    recovery = recovery, controller = historyController, ui = historyUi, embedded = true,
                     sheetRegion = region, windowWidth = windowWidth, windowHeight = windowHeight,
                     onRecordsChanged = model::refreshDraft,
                     draft = HistoryDraft(state.text, model.draftSourceId(), state.text.isNotBlank() || model.draftSourceId() != null || state.phase == io.github.ilyasyoy.voicedictation.session.Phase.RESULT),

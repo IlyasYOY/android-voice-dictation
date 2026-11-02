@@ -8,6 +8,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.DictationScreen
+import io.github.ilyasyoy.voicedictation.ui.AdaptiveHistoryLayout
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
 import org.junit.Assert.*
 import org.junit.Rule
@@ -23,8 +24,10 @@ class MainErrorScreenTest {
         var retries=0;var discards=0;var saved=0
         ActivityScenario.launch(MainActivity::class.java).use {scenario ->
             scenario.onActivity {activity -> activity.setContent {VoiceDictationTheme {
-                DictationScreen(state,onKey={},onRecord={},onStop={},onCancel={discards++},onRetry={retries++},
-                    onEdit={},onCopy={},onClear={},onForget={},onSave={},savedRecordings=2,onSavedRecordings={saved++})
+                AdaptiveHistoryLayout(drawerCount=2,onDrawerReveal={saved++},main={
+                    DictationScreen(state,onKey={},onRecord={},onStop={},onCancel={discards++},onRetry={retries++},
+                        onEdit={},onCopy={},onClear={},onForget={},onSave={})
+                },history={_,_,_,_->})
             }}}
             for(problem in Problem.entries) {
                 compose.runOnIdle {state=state.copy(problem=problem,key=if(problem==Problem.KEY)"" else "synthetic-key")}
@@ -41,6 +44,7 @@ class MainErrorScreenTest {
             compose.runOnIdle {state=state.copy(problem=Problem.AUTH)}
             compose.onNodeWithTag("retry").performScrollTo().performClick();assertEquals(1,retries)
             compose.onNodeWithTag("saved_recordings").performClick();assertEquals(1,saved)
+            compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("open_settings").performScrollTo().assertIsEnabled().performClick()
             compose.onNodeWithTag("api_key").assertExists();assertEquals(0,discards)
         }

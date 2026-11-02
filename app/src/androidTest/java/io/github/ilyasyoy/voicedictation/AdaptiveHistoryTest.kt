@@ -45,7 +45,7 @@ class AdaptiveHistoryTest {
             val ui = rememberHistoryUiState()
             var open by rememberSaveable { mutableStateOf(true) }
             Box(Modifier.requiredSize(width.value, 600.dp)) {
-                AdaptiveHistoryLayout(main = { wide ->
+                AdaptiveHistoryLayout(drawerOpen = open, onDrawerExpanded = { open = true }, onDrawerCollapsed = { open = false }, main = { wide ->
                     var settings by rememberSaveable { mutableStateOf(false) }
                     Column {
                         TextButton({ settings = !settings }, Modifier.testTag("test_settings")) { Text("Settings") }
@@ -54,7 +54,7 @@ class AdaptiveHistoryTest {
                     }
                 }, history = { wide, _, _, _ ->
                     HistoryPresentation(wide, open, { open = false }, RecordingRecoveryState(records = listOf(row)), controller, ui,
-                        draft = HistoryDraft("Synthetic edited draft", row.id), onOpenForDialog = { open = true })
+                        draft = HistoryDraft("Synthetic edited draft", row.id), onOpenForDialog = { open = true }, embedded = true)
                 })
             }
         } } }
@@ -71,7 +71,7 @@ class AdaptiveHistoryTest {
         restore.emulateSavedInstanceStateRestore()
         compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
         pressBack()
-        compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+        compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
         compose.onNodeWithTag("test_settings_form").assertExists()
         compose.runOnIdle { width.value = 700.dp }
         compose.onNodeWithTag("history_pane").assertExists()
@@ -88,7 +88,7 @@ class AdaptiveHistoryTest {
         compose.runOnIdle { font.floatValue = 2f }
         compose.onNodeWithTag("history_pane").assertDoesNotExist()
         // The compact presentation was deliberately dismissed earlier; it stays closed.
-        compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+        compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
         compose.onNodeWithTag("test_open").performClick()
         compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
     }
@@ -169,9 +169,9 @@ class AdaptiveHistoryTest {
                                 onPrimary = {}, onEnableFloating = {}, onAppSettings = {},
                                 onDefer = { onboarding.value = false }, onHistory = {})
                             else DictationScreen(io.github.ilyasyoy.voicedictation.session.DictationState(),
-                                {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, showHistoryEntrance = !wide)
+                                {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
                         }, history = { wide, _, _, _ -> HistoryPresentation(wide, false, {},
-                            RecordingRecoveryState(), controller, ui) })
+                            RecordingRecoveryState(), controller, ui, embedded = true) })
                     }
                 }
             }

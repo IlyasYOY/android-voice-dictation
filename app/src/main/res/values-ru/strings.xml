@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="history_drawer_expanded">Развёрнуто</string>
+  <string name="history_drawer_collapsed">Свёрнуто</string>
   <string name="words_title">Слова</string>
   <string name="words_new">Новое слово</string>
   <string name="words_add">Добавить</string>
