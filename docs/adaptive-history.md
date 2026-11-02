@@ -1,6 +1,6 @@
 # Adaptive main and history
 
-Layout uses the **current inset-safe app window**, including resize/multi-window, not a phone model, screen size or folded flag. When both panes fit (**616 dp** available width at ordinary font scale), dictation stays left and the existing message history is persistent on the right. Below that boundary the saved-count entrance/swipe opens the same bottom sheet. No second repository, upload flow or history design is introduced. Settings and onboarding occupy the main slot; history remains available beside them.
+Layout uses the **current inset-safe app window**, including resize/multi-window, not a phone model, screen size or folded flag. When both panes fit (**616 dp** available width at ordinary font scale), dictation stays left and the existing message history is persistent on the right. Below that boundary the saved-count entrance/swipe opens the same bottom sheet. No second repository, upload flow or history design is introduced. Settings remains in the main workspace slot. Onboarding is a separate cohesive presentation: it uses the full safe area with centered readable-width content and never composes a history pane or sheet. A reported separating hinge still limits setup to one unobstructed region.
 
 The threshold is content-based: `280 × max(1, fontScale)` dp for dictation and `320 × max(1, fontScale)` dp for history, plus 16 dp spacing. The earlier 840 dp expanded-class cutoff incorrectly excluded usable medium windows, including unfolded portrait inner displays; it is removed. Thus large fonts can deliberately select the compact layout even in a broad window. Without a separating fold, history receives about 46% of the width, bounded by those minima. Both panes scroll independently and respond to height/IME/insets; orientation alone selects nothing.
 
@@ -8,7 +8,7 @@ One focused `androidx.window:window:1.5.1` dependency supplies real `FoldingFeat
 
 ## State and lifecycle
 
-The main composition slot stays in place through width changes, preserving Settings and scroll. History shares one `HistoryUiState`: list position, expanded message IDs, current-text expansion, menu/confirmation identity and limit dialog. Only identifiers and positions enter saved UI state; transcript and credentials remain in existing session/storage owners. Message content and actions are the same implementation in both presentations.
+The main composition slot stays in place through width changes, preserving Settings, onboarding draft/flow and scroll. The root Surface paints the full window before insets are applied, so pane spacing, margins and system-bar underlays follow the active Material theme. Day/night Activity resources supply matching window backgrounds and system icon attributes before Compose draws. No global dark-theme override is introduced. History shares one `HistoryUiState`: list position, expanded message IDs, current-text expansion, menu/confirmation identity and limit dialog. Only identifiers and positions enter saved UI state; transcript and credentials remain in existing session/storage owners. Message content and actions are the same implementation in both presentations.
 
 An Activity-retained `HistoryViewModel` owns the single player and explicit retry jobs. Moving sheet ↔ pane does not restart playback, duplicate HTTP or cancel a submitted retry. Configuration recreation retains this owner and the dictation ViewModel; `MainActivity.onStop` only backgrounds the recording session when actually leaving, not during configuration changes. Actual background, explicit sheet dismissal, deletion/retry, focus loss or microphone start release playback as before. No process-death playback/recording continuation is promised: durable recovery remains the existing explicit workflow.
 
@@ -22,6 +22,12 @@ Current environment: no connected Android device or KVM; repeated earlier System
 
 References: [window size classes](https://developer.android.com/develop/adaptive-apps/guides/use-window-size-classes), [canonical layouts](https://developer.android.com/develop/adaptive-apps/guides/canonical-layouts), [fold-aware Compose](https://developer.android.com/develop/ui/compose/layouts/adaptive/foldables/make-your-app-fold-aware), [WindowManager stable release](https://developer.android.com/jetpack/androidx/releases/window).
 
+## Onboarding/theme regression
+
+Only the normal dictation/history workspace uses two panes. First-run and manually opened setup stay centered as one screen at any usable width, with no history beside them. Deferring setup restores the appropriate workspace presentation. Opening the guide releases hidden playback; explicit retry ownership remains retained. The disclosure dialog uses the same hinge-safe themed dialog host.
+
+Android regression tests compile cohesive setup/resize/draft/defer transitions, dark/light root corner pixels, and day/night XML window/bar attributes. Headless rendering must use the real app theme and the actual adaptive root without an extra outer Surface that would conceal missing background paint. Neither rendered components nor compiled tests establish a physical-device runtime pass.
+
 ## Ручная приёмка
 
 1. Установить обновление поверх существующего приложения: история, ключ, лимит и положение floating button сохраняются. Открыть маленькое окно: снизу только количество записей; tap/swipe открывает историю, Back/drag закрывает.
@@ -32,3 +38,5 @@ References: [window size classes](https://developer.android.com/develop/adaptive
 6. Начать офлайн Record, изменить ширину/повернуть экран, затем Stop: одна сохранённая запись. Без ключа нет HTTP. При synthetic/local fixture или собственной готовой конфигурации повторить во время transcription: один запрос, без повторной вставки/автоповтора.
 7. На устройстве с разделяющим шарниром проверить обычную/книжную/tabletop позиции: кнопки не пересекают шарнир; при тесных половинах одна безопасная область и sheet. Нет обещания проверки конкретной OEM-модели без её фактического запуска.
 8. Проверить Play/Pause, раскрытие/Copy, явный Retry, подтверждаемое Delete, заполненный лимит и старые текстовые записи. Нет Live-переключателя, автоудаления или автозагрузки.
+
+9. Включить системную тёмную тему: onboarding на раскрытом экране один, по центру, без истории. Фон, поля вокруг карточек, зазор и область статус-бара тёмные. Изменить ширину и повернуть экран: шаг/введённый staged-текст не сбрасываются. **Not now** открывает main с историей справа при достаточной ширине. Проверить пустую/заполненную историю, затем светлую тему и повторное открытие guide из Settings.

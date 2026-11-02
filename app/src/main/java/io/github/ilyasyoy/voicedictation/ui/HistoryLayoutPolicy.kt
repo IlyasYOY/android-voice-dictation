@@ -7,7 +7,7 @@ internal data class HistoryLayout(val region: HistoryRegion, val mainWidth: Floa
     val wide get() = historyWidth > 0f
 }
 internal object HistoryLayoutPolicy {
-    fun calculate(width: Float, height: Float, fontScale: Float, hinge: HistoryHinge? = null): HistoryLayout {
+    fun calculate(width: Float, height: Float, fontScale: Float, hinge: HistoryHinge? = null, allowHistoryPane: Boolean = true): HistoryLayout {
         val w = width.coerceAtLeast(0f); val h = height.coerceAtLeast(0f)
         val scale = fontScale.takeIf { it.isFinite() && it > 0f }?.coerceAtLeast(1f) ?: 1f
         val mainMin = 280f * scale; val historyMin = 320f * scale
@@ -16,7 +16,7 @@ internal object HistoryLayoutPolicy {
         val full = HistoryRegion(0f, 0f, w, h)
         fun single(region: HistoryRegion) = HistoryLayout(region, region.width, 0f, 0f)
         fun split(region: HistoryRegion): HistoryLayout {
-            if (region.width < threshold) return single(region)
+            if (!allowHistoryPane || region.width < threshold) return single(region)
             val history = (region.width * .46f).coerceIn(historyMin, region.width - mainMin - spacing)
             return HistoryLayout(region, region.width - history - spacing, spacing, history)
         }
@@ -25,7 +25,7 @@ internal object HistoryLayoutPolicy {
         if (fold.vertical) {
             if (fold.right <= 0 || fold.left >= w || fold.bottom <= 0 || fold.top >= h) return split(full)
             val left = fold.left.coerceIn(0f, w); val right = fold.right.coerceIn(left, w)
-            if (left >= mainMin && w - right >= historyMin)
+            if (allowHistoryPane && left >= mainMin && w - right >= historyMin)
                 return HistoryLayout(full, left, right - left, w - right)
             return single(if (left >= w - right) HistoryRegion(0f, 0f, left, h) else HistoryRegion(right, 0f, w - right, h))
         }

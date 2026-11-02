@@ -87,9 +87,10 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(state.audioBusy) { if (state.audioBusy) historyOpen = false }
                 val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
-                AdaptiveHistoryLayout(separatingHinge, main = { wide ->
-                val showSetup = setupUi.step != null && !state.audioBusy && (!historyOpen || wide)
+                val showSetup = setupUi.step != null && !state.audioBusy && !historyOpen
                 BackHandler(showSetup) { deferSetup() }
+                LaunchedEffect(showSetup) { if (showSetup) historyController.background() }
+                AdaptiveHistoryLayout(separatingHinge, historyEnabled = !showSetup, main = { wide ->
                 if (showSetup) SetupScreen(setupUi, state, draft, setupGrants, pasteProblem, navigationProblem,
                     microphoneSettings(), notificationSettings(), recovery.savedCount,
                     onKey = { pasteProblem = false; model.editSetupKey(it) }, onPaste = { pasteSetupKey(false) },
@@ -110,7 +111,7 @@ class MainActivity : ComponentActivity() {
                         io.github.ilyasyoy.voicedictation.data.AndroidRecordingStorage.repository(applicationContext).setHistoryLimit(limit)
                     }.isSuccess },
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true },
-                    onSetup = if (setupUi.missing != 0) ({ model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
+                    onSetup = if (setupUi.missing != 0) ({ historyOpen = false; model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
                     onPasteKey = if (setupFlow != null) ({ pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
                     showHistoryEntrance = !wide)
                 }, history = { wide, region, windowWidth, windowHeight ->

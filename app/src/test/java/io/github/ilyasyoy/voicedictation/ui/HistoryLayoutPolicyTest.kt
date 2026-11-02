@@ -46,6 +46,18 @@ class HistoryLayoutPolicyTest {
         val p = plan(1000f, hinge = HistoryHinge(0f, 300f, 1000f, 340f, false))
         assertTrue(p.wide); assertEquals(HistoryRegion(0f, 340f, 1000f, 360f), p.region)
     }
+    @Test fun `onboarding never allocates a history pane and still avoids hinges`() {
+        for (width in listOf(360f, 700f, 1400f)) {
+            val p = HistoryLayoutPolicy.calculate(width, 800f, 1f, allowHistoryPane = false)
+            assertFalse(p.wide); assertEquals(width, p.mainWidth, .01f)
+        }
+        val folded = HistoryLayoutPolicy.calculate(1000f, 700f, 1f,
+            HistoryHinge(480f, 0f, 520f, 700f, true), allowHistoryPane = false)
+        assertFalse(folded.wide); assertEquals(HistoryRegion(0f, 0f, 480f, 700f), folded.region)
+        val tabletop = HistoryLayoutPolicy.calculate(1000f, 700f, 1f,
+            HistoryHinge(0f, 300f, 1000f, 340f, false), allowHistoryPane = false)
+        assertFalse(tabletop.wide); assertEquals(HistoryRegion(0f, 340f, 1000f, 360f), tabletop.region)
+    }
     @Test fun `off-window hinge and zero-sized resize are harmless`() {
         assertEquals(plan(1000f), plan(1000f, hinge = HistoryHinge(1100f, 0f, 1120f, 700f, true)))
         val empty = HistoryLayoutPolicy.calculate(0f, 0f, 1f)
