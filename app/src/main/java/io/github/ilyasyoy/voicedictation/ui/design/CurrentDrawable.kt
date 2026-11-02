@@ -6,20 +6,26 @@ import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
 import kotlin.math.*
+import io.github.ilyasyoy.voicedictation.audio.*
 
 internal enum class CurrentVisual { IDLE, CONNECTING, RECORDING, PROCESSING, ATTENTION, ERROR }
 
-/** Shared continuous vector motion. It indicates state, never claims to measure voice amplitude. */
+/** Shared state palette and PCM-reactive shape. No microphone, network, or PCM ownership here. */
 internal class CurrentDrawable : Drawable(), Animatable {
     var visual = CurrentVisual.IDLE
         set(value) { if (field != value) {
             field = value
+            if (value != CurrentVisual.RECORDING) { voice = VoiceLevels.Silence; freshness = 0f }
             if (!ValueAnimator.areAnimatorsEnabled()) {
                 tint=if(value==CurrentVisual.RECORDING)1f else if(value==CurrentVisual.PROCESSING).65f else 0f
                 attention=if(value==CurrentVisual.ERROR)1f else 0f
             }
             invalidateSelf()
         } }
+    var levels: VoiceLevelSource = VoiceLevelSource.Silent
+    private var voice = VoiceLevels.Silence
+    private var freshness = 0f
+    private var voicePhase = 0.0
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
     private var opacity = 255
@@ -38,40 +44,49 @@ internal class CurrentDrawable : Drawable(), Animatable {
             val dt = ((now - lastFrame).coerceIn(0, 64) / 1000f)
             lastFrame = now
             val enabled = ValueAnimator.areAnimatorsEnabled()
-            if (enabled) {
-                val target = when (visual) {
-                    CurrentVisual.RECORDING -> 1f
-                    CurrentVisual.PROCESSING -> .48f
-                    CurrentVisual.CONNECTING -> .28f
-                    else -> .12f
-                }
-                // Blend velocity and pigment as well as the outline: state changes never jump to a new frame.
-                energy += (target - energy) * (1 - exp(-dt * 4))
-                val pigment = when (visual) { CurrentVisual.RECORDING -> 1f; CurrentVisual.PROCESSING -> .65f; else -> 0f }
-                tint += (pigment - tint) * (1 - exp(-dt * 4))
-                val warm = if (visual == CurrentVisual.ERROR) 1f else 0f
-                attention += (warm - attention) * (1 - exp(-dt * 4))
-                phase += dt * (.28 + energy * 3.4)
-            } else {
-                // Reduced motion still communicates the actual state through a static, distinct palette.
-                tint = if (visual == CurrentVisual.RECORDING) 1f else if (visual == CurrentVisual.PROCESSING) .65f else 0f
-                attention = if (visual == CurrentVisual.ERROR) 1f else 0f
-            }
+            advanceFrame(dt, System.nanoTime(), enabled)
             invalidateSelf()
-            if (enabled) scheduleSelf(this, now + 16) else stop()
+            if (enabled) scheduleSelf(this, now + 33) else stop()
+        }
+    }
+    /** Explicit clock keeps normalized motion identical and independently verifiable in both hosts. */
+    internal fun advanceFrame(dt: Float, nowNanos: Long, motionEnabled: Boolean) {
+        if (motionEnabled) {
+            val target = when (visual) {
+                CurrentVisual.RECORDING -> .12f
+                CurrentVisual.PROCESSING -> .48f
+                CurrentVisual.CONNECTING -> .28f
+                else -> .12f
+            }
+            // Blend velocity and pigment as well as the outline: state changes never jump to a new frame.
+            energy += (target - energy) * (1 - exp(-dt * 4))
+            val pigment = when (visual) { CurrentVisual.RECORDING -> 1f; CurrentVisual.PROCESSING -> .65f; else -> 0f }
+            tint += (pigment - tint) * (1 - exp(-dt * 4))
+            val warm = if (visual == CurrentVisual.ERROR) 1f else 0f
+            attention += (warm - attention) * (1 - exp(-dt * 4))
+            voice = if (visual == CurrentVisual.RECORDING) levels.current() else VoiceLevels.Silence
+            freshness = voice.freshness(nowNanos)
+            voicePhase += dt * (voice.loudness.safeUnit() * freshness * 7.0)
+            phase += dt * (.28 + energy * 3.4)
+        } else {
+            voice = VoiceLevels.Silence; freshness = 0f
+            // Reduced motion still communicates the actual state through a static, distinct palette.
+            tint = if (visual == CurrentVisual.RECORDING) 1f else if (visual == CurrentVisual.PROCESSING) .65f else 0f
+            attention = if (visual == CurrentVisual.ERROR) 1f else 0f
         }
     }
     override fun start() {
         if (running || !ValueAnimator.areAnimatorsEnabled()) return
         running = true; lastFrame = SystemClock.uptimeMillis(); scheduleSelf(frame, lastFrame)
     }
-    override fun stop() { running = false; unscheduleSelf(frame) }
+    override fun stop() { running = false; voice = VoiceLevels.Silence; freshness = 0f; unscheduleSelf(frame) }
     override fun isRunning() = running
     private fun blend(a: Int, b: Int, amount: Float): Int {
         fun channel(shift: Int) = (((a ushr shift) and 255) * (1-amount) + ((b ushr shift) and 255) * amount).toInt()
         return Color.argb(channel(24),channel(16),channel(8),channel(0))
     }
     override fun draw(canvas: Canvas) {
+        if (!ValueAnimator.areAnimatorsEnabled()) { voice = VoiceLevels.Silence; freshness = 0f }
         val w = min(bounds.width(), bounds.height()).toFloat()
         val x = bounds.exactCenterX(); val y = bounds.exactCenterY()
         paint.style = Paint.Style.FILL
@@ -80,7 +95,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             val radius = w * (.40f - layer * .019f)
             for (i in 0 until 72) {
                 val angle = i * 2.0 * PI / 72
-                val r = radius * (1 + (.07 + energy*.08) * sin(3*angle + phase*.75 + layer*.18) + .06*cos(2*angle - phase*.48))
+                val r = radius * CurrentGeometry.radius(angle, layer, phase, voicePhase, voice, freshness)
                 xs[i]=(x+r*cos(angle)+sin(phase+layer*.7)*w*.007).toFloat()
                 ys[i]=(y+r*.97*sin(angle)+cos(phase*.65+layer*.5)*w*.007).toFloat()
             }
@@ -108,7 +123,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             for (i in 0..64) {
                 val t=i/64f
                 val px=x+(t-.5f)*w*.48f
-                val py=y+sin(t*PI*2+line*.48+phase*.45)*sin(t*PI)*w*(.075f+energy*.035f)
+                val py=y+sin(t*PI*2+line*.48+phase*.45)*sin(t*PI)*w*(.075f+energy*.035f+voice.loudness.safeUnit()*freshness*.02f)
                 if (i==0) path.moveTo(px,py.toFloat()) else path.lineTo(px,py.toFloat())
             }
             canvas.drawPath(path,paint)

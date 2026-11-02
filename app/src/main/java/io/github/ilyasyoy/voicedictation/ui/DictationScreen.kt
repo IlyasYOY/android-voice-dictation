@@ -142,7 +142,7 @@ fun DictationScreen(
                     if (recording) "stop" else if (processing) "processing" else "record",
                     when { recording -> CurrentVisual.RECORDING; state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; capacityFull -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE },
                     if (recording) true else !capacityFull && !processing,
-                    if (recording) onStop else onRecord, controlSize)
+                    if (recording) onStop else onRecord, controlSize, levels = state.voiceLevels)
                 Column(Modifier.fillMaxWidth().heightIn(min = if (capacityFull) 0.dp else 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.problem != null) {

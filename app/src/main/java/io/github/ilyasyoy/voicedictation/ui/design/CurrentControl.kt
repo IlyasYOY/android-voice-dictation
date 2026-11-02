@@ -30,12 +30,12 @@ internal class CurrentMarkView(context: Context) : ImageView(context) {
 }
 
 @Composable
-internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit, size: Dp = 228.dp) {
+internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit, size: Dp = 228.dp, levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) {
     Box(Modifier.size(size)
         .testTag(tag).semantics { contentDescription = label }
         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
             enabled = enabled, role = Role.Button, onClick = onClick)) {
-        AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
+        AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; it.mark.levels=levels; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
     }
 }
 

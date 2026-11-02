@@ -4,6 +4,7 @@ enum class Phase { IDLE, RECORDING, TRANSCRIBING, RESULT, ERROR }
 enum class Problem { KEY, STORAGE, LOCAL_STORAGE, PERMISSION, RECORDING, NETWORK, AUTH, QUOTA, SERVER, RESPONSE }
 data class DictationState(
     val phase: Phase = Phase.IDLE,
+    val voiceLevels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent,
     val key: String = "",
     val keySaved: Boolean = false,
     val keyBusy: Boolean = false,

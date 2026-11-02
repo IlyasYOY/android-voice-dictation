@@ -30,6 +30,7 @@ class RecordingOwnershipTest {
     @Test fun `idle cancellation never instantiates file recorder`() {
         var allocations=0
         val recorder=DeferredAudioRecorder {allocations++;error("file recorder must stay unallocated")}
+        repeat(100) { assertSame(io.github.ilyasyoy.voicedictation.audio.VoiceLevels.Silence, recorder.levels.current()) }
         repeat(3) {recorder.cancel()};assertEquals(0,allocations)
     }
 }

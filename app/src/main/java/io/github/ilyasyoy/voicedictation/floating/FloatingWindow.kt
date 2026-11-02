@@ -154,7 +154,7 @@ internal class FloatingWindow(
             insets
         }
     }
-    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false) {
+    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false, levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) {
         this.imeTop = imeTop; active = recording; hasRecovery = canCopy || historyFull; requiresSetup = needsSetup
         // The service survives configuration changes; every reused view must follow the current palette.
         for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
@@ -168,6 +168,7 @@ internal class FloatingWindow(
         layoutControls()
         val recoverable = !active && (canCopy || needsSetup || error || message != context.getString(R.string.floating_start))
         mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; historyFull -> CurrentVisual.ATTENTION; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
+        mark.levels = levels
         icon.isLongClickable = active || canCopy || needsSetup || historyFull
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
         icon.contentDescription = context.getString(if (historyFull && !active) R.string.history_full_bubble else if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
