@@ -1,16 +1,13 @@
 package io.github.ilyasyoy.voicedictation.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -19,6 +16,7 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import io.github.ilyasyoy.voicedictation.R
 import io.github.ilyasyoy.voicedictation.onboarding.*
+import io.github.ilyasyoy.voicedictation.ui.design.FloatingButtonPreview
 
 @Composable
 internal fun FloatingSetupScreen(grants: SetupGrants, progress: SetupProgress, blocked: Boolean,
@@ -36,16 +34,7 @@ internal fun FloatingSetupScreen(grants: SetupGrants, progress: SetupProgress, b
         Modifier.semantics { testTagsAsResourceId = true }.then(tag("floating_setup")),
         titleTag = "$packageName:id/floating_setup_title", onBack = onBack) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            val ink = MaterialTheme.colorScheme.primary
-            Surface(shape = RoundedCornerShape(28.dp, 36.dp, 30.dp, 40.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                Canvas(Modifier.size(72.dp).padding(22.dp)) {
-                    val x = size.width / 2
-                    drawRoundRect(ink, Offset(x - size.width * .18f, 0f), androidx.compose.ui.geometry.Size(size.width * .36f, size.height * .6f),
-                        androidx.compose.ui.geometry.CornerRadius(size.width * .2f))
-                    drawLine(ink, Offset(x, size.height * .5f), Offset(x, size.height), 2.dp.toPx())
-                    drawLine(ink, Offset(size.width * .25f, size.height), Offset(size.width * .75f, size.height), 2.dp.toPx())
-                }
-            }
+            FloatingButtonPreview(tag("floating_button_preview"))
             Text(stringResource(if (grants.floatingWanted) R.string.floating_on else R.string.floating_off),
                 style = MaterialTheme.typography.titleMedium, modifier = tag("floating_setup_status"))
         }
