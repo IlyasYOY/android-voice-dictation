@@ -23,3 +23,7 @@ bash scripts/check.sh
 Скрипт собирает приложение/fixture, запускает lint и JVM-тесты, компилирует Android-тесты. Исполнение Android-сценариев требует работающего устройства и сообщается отдельно; compile-only не является runtime-pass. Реальные ключи, аудио, signing material и `local.properties` не коммитятся. Облачные тесты используют synthetic fixtures, без платных API-запросов.
 
 Контракты: [Record](docs/immediate-record.md), [хранение](docs/durable-recordings.md), [история](docs/recording-history.md), [лимит](docs/history-count-limit.md), [floating](docs/floating-contract.md), [Soft Current](docs/soft-current.md).
+
+[Реакция Soft Current на голос: единый захват, ограничения и проверка на телефоне](docs/audio-reactive-current.md).
+
+Сборка **0.12.2 (25)** объединяет адаптивную историю и реакцию Soft Current на реальный звук. На широком окне диктовка слева, история справа; на узком — история снизу. Мастер настройки остаётся единым экраном с корректной светлой/тёмной подложкой. Это один APK из основной ветки после обоих PR.

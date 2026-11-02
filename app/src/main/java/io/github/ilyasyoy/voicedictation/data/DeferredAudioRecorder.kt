@@ -2,9 +2,12 @@ package io.github.ilyasyoy.voicedictation.data
 
 import java.io.File
 
-/** Live-only owners never allocate file recording resources, including on Cancel/close. */
+/** Idle owners never allocate recording resources, including visual previews and Cancel/close. */
 internal class DeferredAudioRecorder(private val create: () -> AudioRecorder) : AudioRecorder {
     private var recorder: AudioRecorder? = null
+    override val levels = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource {
+        recorder?.levels?.current() ?: io.github.ilyasyoy.voicedictation.audio.VoiceLevels.Silence
+    }
     override fun start(onLimit: () -> Unit) {
         val active = recorder ?: create().also { recorder = it }
         active.start(onLimit)

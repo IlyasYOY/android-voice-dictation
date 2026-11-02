@@ -1,73 +1,77 @@
 package io.github.ilyasyoy.voicedictation.data
 
 import android.content.Context
-import android.media.MediaRecorder
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import io.github.ilyasyoy.voicedictation.audio.*
 import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 import io.github.ilyasyoy.voicedictation.session.RecordingStorageFailure
 
 interface AudioRecorder {
+    val levels: VoiceLevelSource get() = VoiceLevelSource.Silent
     fun start(onLimit: () -> Unit)
     fun stop(): File
     fun cancel()
 }
 
-/** Caller owns an explicit user-started Activity or microphone foreground-service lifecycle. */
+/** Explicit Activity/foreground-service capture. One process-wide microphone owner, no idle resource. */
 class AndroidAudioRecorder(context: Context) : AudioRecorder {
-    private val context=context.applicationContext
+    private val context = context.applicationContext
     private val files get() = AndroidRecordingStorage.repository(context)
-    private var recorder: MediaRecorder? = null
+    @Volatile private var run: PcmRecordingRun? = null
     private var file: File? = null
-
-    @Suppress("DEPRECATION")
+    private var recovery: StoppedRecordingRecovery? = null
+    override val levels = VoiceLevelSource { run?.current() ?: VoiceLevels.Silence }
     override fun start(onLimit: () -> Unit) {
-        check(recorder == null)
-        val target = try { files.allocate() } catch(e:HistoryCapacityReached) {throw e}
-            catch(e:Exception) {throw RecordingStorageFailure(e)}
-        io.github.ilyasyoy.voicedictation.playback.AndroidRecordingPlayback.interrupt()
-        file = target
-        val capture = MediaRecorder()
-        recorder = capture
+        check(run == null || run?.done == true)
+        check(microphoneOwned.compareAndSet(false, true)) { "Microphone already owned" }
+        var driver: AndroidPcmRecordingDriver? = null
         try {
-            capture.setAudioSource(MediaRecorder.AudioSource.MIC)
-            capture.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            capture.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            capture.setAudioSamplingRate(AudioPolicy.SAMPLE_RATE)
-            capture.setAudioChannels(1)
-            capture.setAudioEncodingBitRate(AudioPolicy.BIT_RATE)
-            capture.setMaxDuration(AudioPolicy.MAX_SECONDS * 1000)
-            capture.setMaxFileSize(AudioPolicy.FILE_BYTES)
-            capture.setOutputFile(target.absolutePath)
-            capture.setOnInfoListener { _, what, _ ->
-                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED ||
-                    what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED) onLimit()
-            }
-            capture.setOnErrorListener { _, _, _ -> onLimit() }
-            capture.prepare()
-            capture.start()
-        } catch (e: Exception) { cancel(); throw e }
+            val target = try { files.allocate() } catch (e: HistoryCapacityReached) { throw e }
+                catch (e: Exception) { throw RecordingStorageFailure(e) }
+            file = target
+            io.github.ilyasyoy.voicedictation.playback.AndroidRecordingPlayback.interrupt()
+            val completion = StoppedRecordingRecovery { files.retain(target, SavedRecordingFailure.STORAGE) }
+            recovery = completion
+            driver = AndroidPcmRecordingDriver().also { it.start(target) }
+            run = PcmRecordingRun(driver, AudioPolicy.MAX_SECONDS.toLong() * AudioPolicy.SAMPLE_RATE,
+                // Leave ample room for MP4 headers/indexes, below the unchanged file/upload limits.
+                AudioPolicy.FILE_BYTES - 131_072, onLimit, discard = { files.discardOwned(target) },
+                released = { try { completion.afterRelease() } finally { microphoneOwned.set(false) } }).also { it.start() }
+        } catch (e: Exception) {
+            runCatching { driver?.close() }
+            microphoneOwned.set(false); run = null
+            file?.let { runCatching { files.discardOwned(it) } }; file = null
+            throw e
+        }
     }
-
     override fun stop(): File {
-        val active = checkNotNull(recorder)
+        val active = checkNotNull(run)
         val target = checkNotNull(file)
         try {
             active.stop()
             require(target.length() > 0)
-            try {files.finalized(target)} catch(e:Exception) {throw RecordingStorageFailure(e)}
+            try { files.finalized(target) } catch (e: Exception) { throw RecordingStorageFailure(e) }
             return target
         } catch (e: Exception) {
-            // A failed finalization may still contain audio. Preserve it for explicit recovery.
-            runCatching { files.retain(target,SavedRecordingFailure.STORAGE) }
+            // Keep the file even if MP4 finalization or a device driver fails. Never delete a live writer.
+            runCatching { recovery?.request() }
+            // Preserve capture/permission failures as such; actual storage commits already wrap them.
+            // Finally detaches this run, so caller cleanup cannot cancel a recovery writer.
             throw e
+        } finally {
+            // Subsequent lifecycle cancel must not turn a failed Stop into destructive Cancel.
+            // The worker keeps its lease/reservation until cleanup, then transfers recovery itself.
+            run = null; recovery = null; file = null
         }
-        finally { active.release(); recorder = null; file = null }
     }
-
     override fun cancel() {
-        recorder?.let { runCatching { it.stop() }; it.release() }
-        recorder = null
-        file?.let { target -> files.discardOwned(target) }
-        file = null
+        val active = run
+        try { active?.cancel() }
+        finally {
+            if (active == null || active.done) run = null
+            file = null // The worker discards only its own file, after releasing all platform resources.
+        }
     }
+    private companion object { val microphoneOwned = AtomicBoolean() }
 }
