@@ -87,9 +87,9 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(state.audioBusy) { if (state.audioBusy) historyOpen = false }
                 val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
                 BackHandler(state.audioBusy || state.canRetry) { model.cancel() }
-                val showSetup = setupUi.step != null && !state.audioBusy && !historyOpen
-                BackHandler(showSetup) { deferSetup() }
                 AdaptiveHistoryLayout(separatingHinge, main = { wide ->
+                val showSetup = setupUi.step != null && !state.audioBusy && (!historyOpen || wide)
+                BackHandler(showSetup) { deferSetup() }
                 if (showSetup) SetupScreen(setupUi, state, draft, setupGrants, pasteProblem, navigationProblem,
                     microphoneSettings(), notificationSettings(), recovery.savedCount,
                     onKey = { pasteProblem = false; model.editSetupKey(it) }, onPaste = { pasteSetupKey(false) },
