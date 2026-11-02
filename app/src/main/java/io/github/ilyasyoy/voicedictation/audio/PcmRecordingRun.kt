@@ -12,6 +12,7 @@ internal interface PcmRecordingDriver : AutoCloseable {
     fun write(buffer: ShortArray, size: Int)
     fun stopInput()
     fun finish()
+    val cadence: CaptureReadCadence? get() = null
     val bytesWritten: Long
 }
 
@@ -39,6 +40,7 @@ internal class PcmRecordingRun(
     private fun capture() {
         val pcm = ShortArray(1024)
         val spectrum = VoiceSpectrum()
+        val cadence = driver.cadence
         var samples = 0L
         var limit = false
         var lastAudio = nanoTime()
@@ -47,6 +49,7 @@ internal class PcmRecordingRun(
                 val read = driver.read(pcm)
                 if (read < 0) throw IOException("Microphone read failed")
                 require(read <= pcm.size)
+                cadence?.read(read, nanoTime())
                 if (read == 0) {
                     if (nanoTime() - lastAudio > 2_000_000_000L) throw IOException("Microphone stalled")
                     Thread.sleep(8)
@@ -56,10 +59,13 @@ internal class PcmRecordingRun(
                 val accepted = minOf(read.toLong(), maxSamples - samples).toInt()
                 driver.write(pcm, accepted) // Capture reliability takes priority over visual analysis.
                 samples += accepted
-                // A broken visualizer cannot terminate the recording.
-                runCatching { spectrum.accept(pcm, accepted, nanoTime()) { frame ->
-                    synchronized(publicationLock) { if (!stopping.get()) level.set(frame) }
-                } }.onFailure { silence() }
+                // Native capture headroom wins over optional FFT. No extra PCM queue is added.
+                if (cadence?.mayAnalyze(nanoTime()) != false) {
+                    // A broken visualizer cannot terminate the recording.
+                    runCatching { spectrum.accept(pcm, accepted, nanoTime()) { frame ->
+                        synchronized(publicationLock) { if (!stopping.get()) level.set(frame) }
+                    } }.onFailure { silence() }
+                } else { spectrum.reset(); silence() }
                 if (samples >= maxSamples || driver.bytesWritten >= maxBytes) { limit = true; break }
             }
             driver.stopInput() // End actual microphone capture before EOS/MP4 finalization.

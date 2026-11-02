@@ -56,7 +56,9 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
         } catch (e: Exception) {
             // Keep the file even if MP4 finalization or a device driver fails. Never delete a live writer.
             runCatching { recovery?.request() }
-            throw RecordingStorageFailure(e)
+            // Preserve capture/permission failures as such; actual storage commits already wrap them.
+            // Finally detaches this run, so caller cleanup cannot cancel a recovery writer.
+            throw e
         } finally {
             // Subsequent lifecycle cancel must not turn a failed Stop into destructive Cancel.
             // The worker keeps its lease/reservation until cleanup, then transfers recovery itself.

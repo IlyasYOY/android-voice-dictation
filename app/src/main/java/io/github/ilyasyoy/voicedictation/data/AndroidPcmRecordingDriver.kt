@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.media.*
 import android.os.SystemClock
 import io.github.ilyasyoy.voicedictation.audio.PcmRecordingDriver
+import io.github.ilyasyoy.voicedictation.audio.CaptureReadCadence
 import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 import java.io.File
 import java.io.IOException
@@ -21,6 +22,8 @@ internal class AndroidPcmRecordingDriver : PcmRecordingDriver {
     private var encodedSamples = 0
     private var eos = false
     private val info = MediaCodec.BufferInfo()
+    override var cadence: CaptureReadCadence? = null
+        private set
     override var bytesWritten = 0L
         private set
 
@@ -33,10 +36,13 @@ internal class AndroidPcmRecordingDriver : PcmRecordingDriver {
             input = AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.MIC)
                 .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setSampleRate(AudioPolicy.SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build())
-                .setBufferSizeInBytes(maxOf(minimum * 2, 16384)).build()
+                // Two seconds of native PCM headroom (96 KiB at 24k mono16), still read nonblocking.
+                // Covers the 500ms input poll budget without opening an unbounded application queue.
+                .setBufferSizeInBytes(maxOf(minimum * 2, AudioPolicy.SAMPLE_RATE * 2 * 2)).build()
             checkNotNull(input).let {
                 check(it.state == AudioRecord.STATE_INITIALIZED)
                 it.startRecording(); check(it.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                cadence = CaptureReadCadence(it.bufferSizeInFrames, AudioPolicy.SAMPLE_RATE, System.nanoTime())
             }
         } catch (e: Exception) { runCatching { close() }; throw e }
     }
