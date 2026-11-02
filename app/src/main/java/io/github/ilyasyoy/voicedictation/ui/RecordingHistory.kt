@@ -1,9 +1,5 @@
 package io.github.ilyasyoy.voicedictation.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.os.Build
-import android.os.PersistableBundle
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -15,7 +11,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -24,7 +19,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -36,11 +31,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.R
 import io.github.ilyasyoy.voicedictation.data.*
-import io.github.ilyasyoy.voicedictation.floating.DebugFloatingConfiguration
-import io.github.ilyasyoy.voicedictation.floating.FloatingFeedback
 import io.github.ilyasyoy.voicedictation.playback.*
 import io.github.ilyasyoy.voicedictation.session.*
-import kotlinx.coroutines.*
 import java.text.DateFormat
 import java.util.Date
 import java.io.File
@@ -49,67 +41,73 @@ internal data class HistoryDraft(val text: String, val sourceId: String?, val vi
     override fun toString() = "HistoryDraft(textLength=${text.length}, sourceId=$sourceId, visible=$visible)"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Standalone floating recovery still uses the same host and message content. */
 @Composable
 internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -> Unit = {},
     draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null) {
-    val context = LocalContext.current
+    val controller: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val recovery by RecordingRecovery.processOwned.state.collectAsStateWithLifecycle()
+    HistoryPlaybackLifecycle(controller)
+    HistoryPresentation(false, true, onDismiss, recovery, controller, rememberHistoryUiState(),
+        onRecordsChanged, draft, draftProblem, onDraftEdit, onDraftClear)
+}
+
+@Composable
+internal fun HistoryPlaybackLifecycle(controller: HistoryViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val scope = rememberCoroutineScope()
-    val owner = RecordingRecovery.processOwned
-    val recovery by owner.state.collectAsStateWithLifecycle()
-    val playback = remember { AndroidRecordingPlayback.create(context) }
-    val playing by playback.state.collectAsStateWithLifecycle()
-    val repository = remember { runCatching { AndroidRecordingStorage.repository(context) }.getOrNull() }
-    var limitOpen by rememberSaveable { mutableStateOf(false) }
-    if (limitOpen) HistoryLimitDialog(recovery.capacity, onSave = { limit ->
-        runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess
-    }, onDismiss = { limitOpen = false })
+    val activity = LocalActivity.current
+    DisposableEffect(lifecycle, controller, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && activity?.isChangingConfigurations != true) controller.background()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> Unit,
+    recovery: RecordingRecoveryState, controller: HistoryViewModel, ui: HistoryUiState,
+    onRecordsChanged: () -> Unit = {}, draft: HistoryDraft? = null, draftProblem: Boolean = false,
+    onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
+    sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
+    onOpenForDialog: () -> Unit = {}) {
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
+    val playing by controller.playback.state.collectAsStateWithLifecycle()
+    val repository = controller.repository
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
-    LaunchedEffect(recovery.records) {
+    LaunchedEffect(recovery.records, draft == null) {
         if (draft == null) storedDraft = runCatching {
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val currentDraft = draft ?: storedDraft
-    DisposableEffect(lifecycle, playback) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) AndroidRecordingPlayback.release(playback)
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); AndroidRecordingPlayback.release(playback) }
-    }
-    LaunchedEffect(playing.playing) { while (playing.playing) { delay(250); playback.tick() } }
-    LaunchedEffect(recovery.records, recovery.ownedIds) {
-        if (recovery.records.any { it.status == SavedRecordingStatus.CAPTURING } ||
-            playing.id?.let { id -> recovery.records.none { it.id == id } } == true) playback.stop()
-    }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.background,
-        modifier = Modifier.testTag("history_sheet")) {
-        RecordingHistory(recovery, playing, audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
-            onPlay = { id -> repository?.audio(id)?.let { AndroidRecordingPlayback.claim(playback); playback.toggle(id,it) } },
-            onRetry = { id ->
-                playback.stop()
-                scope.launch {
-                    try {
-                        owner.retry(id) { audio -> DebugFloatingConfiguration.transcribeRetained(context,audio)
-                            ?: DictationSessions.transcribeRetained(context,audio) }?.let {
-                            FloatingFeedback.processOwned.retain(it); FloatingFeedback.processOwned.resetSignal()
-                        }
-                    } catch (e: CancellationException) { throw e }
-                    catch (_: Exception) { /* Typed ledger state is rendered below; no content or diagnostics logged. */ }
-                }
-            }, onDelete = { id -> playback.stop(); owner.discard(id); onRecordsChanged() }, onCopy = { text ->
-                val clip = ClipData.newPlainText(context.getString(R.string.transcript),text)
-                if (Build.VERSION.SDK_INT >= 33) clip.description.extras = PersistableBundle().apply {
-                    putBoolean("android.content.extra.IS_SENSITIVE",true)
-                }
-                context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
-            }, onClose = onDismiss, draft = currentDraft, draftProblem = draftProblem, onDraftEdit = onDraftEdit, onDraftClear = onDraftClear,
-            onHistoryLimit = { limitOpen = true },
+    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; onDismiss() }
+    val content: @Composable () -> Unit = {
+        RecordingHistory(recovery, playing,
+            audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
+            onPlay = controller::play, onRetry = controller::retry,
+            onDelete = { id -> controller.delete(id); onRecordsChanged() }, onCopy = controller::copy,
+            onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
+            onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
+            ui = ui, dismissible = !wide,
             waveform = { id, position, modifier -> LoadedAudioTrack(id, repository?.audio(id), position, modifier) })
     }
+    if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(28.dp)) { content() }
+    else if (open || pendingDialog) ModalBottomSheet(onDismissRequest = dismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.background,
+        sheetMaxWidth = minOf(640.dp, sheetRegion?.width?.dp ?: 640.dp),
+        contentWindowInsets = { if (sheetRegion != null) WindowInsets(0) else BottomSheetDefaults.windowInsets },
+        modifier = (if (sheetRegion != null) Modifier
+            .absoluteOffset(x = (sheetRegion.left - (windowWidth - sheetRegion.width) / 2f).dp,
+                y = -(windowHeight - sheetRegion.top - sheetRegion.height).dp)
+            .heightIn(max = sheetRegion.height.dp) else Modifier).testTag("history_sheet")) { content() }
+    if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
+        onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
+        onDismiss = { ui.limitOpen = false })
 }
 
 @Composable
@@ -118,26 +116,28 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     onDelete: (String) -> Unit, onCopy: (String) -> Unit, onClose: () -> Unit,
     draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     onHistoryLimit: () -> Unit = {},
+    ui: HistoryUiState = rememberHistoryUiState(), dismissible: Boolean = true,
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
     }) {
-    var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
-    if (deleteRecord != null) AlertDialog(onDismissRequest = { deleteId = null },
-        text = { Text(stringResource(R.string.saved_delete_confirm)) },
-        confirmButton = { TextButton({ onDelete(deleteRecord.id); deleteId = null },
-            enabled = !state.retrying && deleteRecord.id !in state.ownedIds, modifier = Modifier.testTag("history_confirm_delete")) {
-            Text(stringResource(R.string.saved_delete))
-        } }, dismissButton = { TextButton({ deleteId = null }) { Text(stringResource(android.R.string.cancel)) } })
+    if (deleteRecord != null) HistorySafeDialog(onDismiss = { ui.deleteId = null },
+        content = { Text(stringResource(R.string.saved_delete_confirm)) }, buttons = {
+            TextButton({ ui.deleteId = null }) { Text(stringResource(android.R.string.cancel)) }
+            TextButton({ onDelete(deleteRecord.id); ui.deleteId = null },
+                enabled = !state.retrying && deleteRecord.id !in state.ownedIds,
+                modifier = Modifier.testTag("history_confirm_delete")) { Text(stringResource(R.string.saved_delete)) }
+        })
     val currentDraft = draft?.takeIf { it.visible }
     val dismissLabel = stringResource(R.string.history_close)
     val historyLabel = stringResource(R.string.history_title)
     Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp)
         .testTag("history_content").semantics {
             paneTitle = historyLabel
-            dismiss(dismissLabel) { onClose(); true }
+            if (dismissible) dismiss(dismissLabel) { onClose(); true }
         }) {
-        LazyColumn(Modifier.fillMaxWidth().testTag("history_list"),
+        LazyColumn(Modifier.fillMaxWidth().testTag("history_list"), state = ui.list,
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.capacity.full) item("capacity") {
                 HistoryCapacityNotice(state.capacity, onLimit = onHistoryLimit)
@@ -147,7 +147,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     modifier = Modifier.padding(8.dp).testTag("history_problem").semantics { liveRegion = LiveRegionMode.Polite })
             }
             if (currentDraft != null && currentDraft.sourceId == null) item("current-text") {
-                DraftMessage(currentDraft, onDraftEdit, onDraftClear, onCopy)
+                DraftMessage(currentDraft, onDraftEdit, onDraftClear, onCopy, ui)
             }
             if (state.records.isEmpty() && (currentDraft == null || currentDraft.sourceId != null)) item("empty") {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -169,7 +169,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     val available = audioAvailable(record.id)
                     HistoryMessage(record, state, playback, available,
                         rowDraft, if (rowDraft != null) onDraftEdit else null, if (rowDraft != null) onDraftClear else null,
-                        onPlay, onRetry, { deleteId = record.id }, onCopy, waveform)
+                        onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui)
                 }
             }
         }
@@ -180,9 +180,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
 private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState, playback: PlaybackState,
     available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
-    waveform: @Composable (String, Float, Modifier) -> Unit) {
-    var expanded by rememberSaveable(record.id) { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
+    waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState) {
+    val expanded = record.id in ui.expanded
+    val menu = ui.menuId == record.id
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
     val owned = record.id in state.ownedIds
     val active = playback.id == record.id
@@ -233,7 +233,7 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                                 .semantics { contentDescription = busyLabel }) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         }
-                        hasText -> TranscriptToggle(expanded, { expanded = !expanded }, "history_expand_${record.id}")
+                        hasText -> TranscriptToggle(expanded, { ui.toggle(record.id) }, "history_expand_${record.id}")
                         record.kind == SavedRecordingKind.RECORD -> Spacer(Modifier.size(48.dp))
                     }
                 }
@@ -255,15 +255,15 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Box {
-                        IconButton({ menu = true }, Modifier.size(48.dp).testTag("history_menu_${record.id}")
+                        IconButton({ ui.menuId = record.id }, Modifier.size(48.dp).testTag("history_menu_${record.id}")
                             .semantics { contentDescription = timestamp + ", " + moreLabel }) {
                             Text("⋮", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { })
                         }
-                        DropdownMenu(menu, { menu = false }) {
+                        DropdownMenu(menu, { ui.menuId = null }) {
                             if (onClear != null) DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                                onClick = { menu = false; onClear() }, modifier = Modifier.testTag("clear"))
+                                onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
                             DropdownMenuItem(text = { Text(stringResource(R.string.history_delete)) }, enabled = !state.retrying && !owned && !busy,
-                                onClick = { menu = false; onDelete() }, modifier = Modifier.testTag("history_delete_${record.id}"))
+                                onClick = { ui.menuId = null; onDelete() }, modifier = Modifier.testTag("history_delete_${record.id}"))
                         }
                     }
                 }
@@ -273,23 +273,23 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
 }
 
 @Composable
-private fun DraftMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?, onCopy: (String) -> Unit) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
+private fun DraftMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?, onCopy: (String) -> Unit, ui: HistoryUiState) {
+    val expanded = ui.draftExpanded
+    val menu = ui.menuId == "draft"
     val options = stringResource(R.string.history_more)
     Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(.96f).testTag("history_draft").animateContentSize()) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.history_draft), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                TranscriptToggle(expanded, { expanded = !expanded }, "history_expand_draft")
+                TranscriptToggle(expanded, { ui.draftExpanded = !expanded }, "history_expand_draft")
                 if (onClear != null) Box {
-                    IconButton({ menu = true }, Modifier.testTag("history_menu_draft").semantics { contentDescription = options }) {
+                    IconButton({ ui.menuId = "draft" }, Modifier.testTag("history_menu_draft").semantics { contentDescription = options }) {
                         Text("⋮", modifier = Modifier.clearAndSetSemantics { })
                     }
-                    DropdownMenu(menu, { menu = false }) {
+                    DropdownMenu(menu, { ui.menuId = null }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                            onClick = { menu = false; onClear() }, modifier = Modifier.testTag("clear"))
+                            onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
                     }
                 }
             }
