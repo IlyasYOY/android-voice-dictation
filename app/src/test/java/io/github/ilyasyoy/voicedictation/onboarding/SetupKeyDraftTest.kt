@@ -106,4 +106,57 @@ class SetupKeyDraftTest {
         assertEquals(0, store.saves); assertEquals(0, transmissions)
     }
 
+    @Test fun failedSaveThenDeferralCannotUploadWithTheAbandonedCandidate() = runTest {
+        val store = Store(failSave = true); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
+        assertEquals(synthetic, m.state.value.key)
+        m.clearSetupKey()
+        assertEquals("", m.state.value.key); assertFalse(m.setupKeyReady())
+        m.start(true); m.stop(); runCurrent()
+        assertEquals(0, transmissions); assertNull(store.saved); assertTrue(file.exists())
+        assertTrue(m.state.value.canRetry); assertEquals(Problem.STORAGE, m.state.value.problem)
+    }
+    private class PendingStore(private val fail: Boolean) : ApiKeyStore {
+        val finish = CompletableDeferred<Unit>()
+        var saved: String? = null
+        override suspend fun load(): String? = null
+        override suspend fun save(key: String) {
+            finish.await(); if (fail) throw IOException("fixture")
+            saved = key
+        }
+        override suspend fun forget() { saved = null }
+    }
+    @Test fun deferralDuringPendingSaveClearsCandidateBeforeRecordStopAndLateFailure() = runTest {
+        val store = PendingStore(fail = true); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
+        assertTrue(m.state.value.keyBusy)
+        m.clearSetupKey(); assertEquals("", m.state.value.key)
+        m.start(true); m.stop(); runCurrent()
+        assertEquals(0, transmissions)
+        store.finish.complete(Unit); runCurrent()
+        assertEquals("", m.state.value.key); assertFalse(m.setupKeyReady()); assertNull(store.saved)
+        assertEquals(0, transmissions); assertTrue(m.state.value.canRetry); assertTrue(file.exists())
+    }
+    @Test fun successfulExplicitSaveFinishingAfterDeferralPreservesTheSavedCredential() = runTest {
+        val store = PendingStore(fail = false); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent(); m.clearSetupKey()
+        assertEquals("", m.state.value.key)
+        store.finish.complete(Unit); runCurrent()
+        assertEquals(synthetic, store.saved); assertEquals(synthetic, m.state.value.key)
+        assertTrue(m.state.value.keySaved); assertTrue(m.setupKeyReady()); assertEquals(0, transmissions)
+    }
+    @Test fun deferralDoesNotEraseASuccessfullySavedCandidate() = runTest {
+        val store = Store(); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent(); m.clearSetupKey()
+        assertEquals(synthetic, store.saved); assertEquals(synthetic, m.state.value.key)
+        assertTrue(m.setupKeyReady()); assertEquals(0, store.forgets); assertEquals(0, transmissions)
+    }
+    @Test fun abandoningAnOldFailedCandidateDoesNotClearAnIndependentlyEditedKey() = runTest {
+        val store = Store(failSave = true); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
+        m.setKey("synthetic-different-manual-key"); m.clearSetupKey()
+        assertEquals("synthetic-different-manual-key", m.state.value.key)
+        assertEquals(0, transmissions); assertEquals(0, store.forgets)
+    }
+
 }

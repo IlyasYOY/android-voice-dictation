@@ -38,7 +38,11 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
         mutableSetupKey.value = draft.copy(confirmed = true)
         session.setKey(draft.text); session.saveKey()
     }
-    internal fun clearSetupKey() { mutableSetupKey.value = SetupKeyDraft() }
+    internal fun clearSetupKey() {
+        val draft = mutableSetupKey.value
+        if (draft.active && draft.confirmed) session.discardUnsavedKey(draft.text)
+        mutableSetupKey.value = SetupKeyDraft()
+    }
     internal fun setupKeyReady(): Boolean {
         val draft = mutableSetupKey.value
         if (draft.active) {
