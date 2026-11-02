@@ -5,20 +5,34 @@ import org.junit.Test
 
 class HistoryLayoutPolicyTest {
     private fun plan(width: Float, font: Float = 1f, hinge: HistoryHinge? = null) = HistoryLayoutPolicy.calculate(width, 700f, font, hinge)
-    @Test fun `expanded boundary uses current available width`() {
-        for (width in listOf(280f, 600f, 839.99f)) assertFalse(plan(width).wide)
-        for (width in listOf(840f, 1000f, 1800f)) {
+    @Test fun `usable pane minima use current available width without a tablet cutoff`() {
+        for (width in listOf(280f, 360f, 600f, 615.99f)) assertFalse(plan(width).wide)
+        for (width in listOf(616f, 640f, 673f, 700f, 704f, 839f, 839.99f, 840f, 1000f, 1800f)) {
             val p = plan(width); assertTrue(p.wide)
-            assertTrue(p.mainWidth >= 320f); assertTrue(p.historyWidth >= 360f)
+            assertTrue(p.mainWidth >= 280f); assertTrue(p.historyWidth >= 320f)
             assertEquals(width, p.mainWidth + p.gap + p.historyWidth, .01f)
         }
-        assertFalse(plan(700f).wide) // Even on an unfolded device, a small multi-window stays compact.
+        assertFalse(plan(600f).wide) // A small multi-window stays compact, regardless of device.
     }
     @Test fun `large font retains usable pane minima and can fall back`() {
         assertFalse(plan(1000f, 2f).wide)
         val p = plan(1400f, 2f); assertTrue(p.wide)
-        assertTrue(p.mainWidth >= 640f); assertTrue(p.historyWidth >= 720f)
+        assertTrue(p.mainWidth >= 560f); assertTrue(p.historyWidth >= 640f)
         assertTrue(plan(840f, Float.NaN).wide)
+    }
+    @Test fun `scaled minima keep the exact boundary and medium windows safe`() {
+        assertFalse(plan(700f, 1.2f).wide)
+        assertFalse(plan(1215.99f, 2f).wide)
+        val p = plan(1216f, 2f)
+        assertTrue(p.wide); assertEquals(560f, p.mainWidth, .01f); assertEquals(640f, p.historyWidth, .01f)
+    }
+    @Test fun `medium window hinge uses each side rather than the old cutoff`() {
+        val p = plan(700f, hinge = HistoryHinge(330f, 0f, 350f, 700f, true))
+        assertTrue(p.wide); assertEquals(330f, p.mainWidth, .01f); assertEquals(350f, p.historyWidth, .01f)
+        val narrowSide = plan(700f, hinge = HistoryHinge(380f, 0f, 400f, 700f, true))
+        assertFalse(narrowSide.wide)
+        val crease = plan(600f, hinge = HistoryHinge(280f, 0f, 280f, 700f, true))
+        assertTrue(crease.wide) // The physical separating feature replaces ordinary spacing.
     }
     @Test fun `vertical separating hinge becomes the gap`() {
         val p = plan(1000f, hinge = HistoryHinge(480f, 0f, 520f, 700f, true))

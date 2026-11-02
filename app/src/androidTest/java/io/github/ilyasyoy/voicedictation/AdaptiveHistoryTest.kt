@@ -30,7 +30,7 @@ class AdaptiveHistoryTest {
         SavedRecordingStatus.COMPLETE, 12, "Synthetic retained transcript")
 
     @Test fun sheetPaneResizePreservesExpansionDraftAndMainSettingsWithoutDuplicateContent() {
-        val width = mutableStateOf(1000.dp)
+        val width = mutableStateOf(700.dp)
         val font = mutableFloatStateOf(1f)
         val restore = StateRestorationTester(compose)
         restore.setContent { CompositionLocalProvider(LocalDensity provides Density(.3f, font.floatValue)) { VoiceDictationTheme {
@@ -66,7 +66,7 @@ class AdaptiveHistoryTest {
         pressBack()
         compose.onNodeWithTag("history_sheet").assertDoesNotExist()
         compose.onNodeWithTag("test_settings_form").assertExists()
-        compose.runOnIdle { width.value = 1000.dp }
+        compose.runOnIdle { width.value = 700.dp }
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("test_settings_form").assertExists()
         compose.onAllNodesWithTag("history_content").assertCountEquals(1)
@@ -77,7 +77,7 @@ class AdaptiveHistoryTest {
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
         pressBack() // Cancel confirmation, then dismiss the transferred sheet.
         pressBack()
-        compose.runOnIdle { width.value = 1000.dp }
+        compose.runOnIdle { width.value = 700.dp }
         compose.runOnIdle { font.floatValue = 2f }
         compose.onNodeWithTag("history_pane").assertDoesNotExist()
         // The compact presentation was deliberately dismissed earlier; it stays closed.
@@ -87,7 +87,7 @@ class AdaptiveHistoryTest {
     }
 
     @Test fun deleteConfirmationTransfersOnceAndScrollStateIsShared() {
-        val width = mutableStateOf(1000.dp)
+        val width = mutableStateOf(700.dp)
         lateinit var ui: HistoryUiState
         val records = (0..39).map { row.copy(id = "row-$it") }
         var deletes = 0
@@ -110,7 +110,7 @@ class AdaptiveHistoryTest {
         compose.runOnIdle { width.value = 400.dp }
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
         compose.runOnIdle { assertEquals(index, ui.list.firstVisibleItemIndex); assertTrue("row-20" in ui.expanded) }
-        compose.runOnIdle { width.value = 1000.dp }
+        compose.runOnIdle { width.value = 700.dp }
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
         compose.onNodeWithTag("history_confirm_delete").performClick()
         compose.runOnIdle { assertEquals(1, deletes); assertNull(ui.deleteId) }
