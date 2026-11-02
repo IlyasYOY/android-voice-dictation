@@ -46,6 +46,22 @@ class FloatingPositionTest {
         state.dragged(FloatingPoint(100, 300), area())
         assertEquals(FloatingPoint(200, 600), state.place(area(720, 1600, 1200, 2f)))
     }
+    @Test fun horizontalDragWhileVerticallyClampedKeepsThePreferredKeyboardGap() {
+        val state = FloatingPositionState(Store())
+        state.dragged(FloatingPoint(288, 300), area())
+        val cramped = area(ime = 150)
+        assertEquals(24, state.place(cramped).y)
+        state.dragged(FloatingPoint(100, 24), cramped, horizontalMoved = true, verticalMoved = false)
+        assertEquals(FloatingPoint(100, 300), state.place(area()))
+    }
+    @Test fun verticalDragInNarrowGeometryKeepsThePreferredHorizontalSide() {
+        val store = Store(); val state = FloatingPositionState(store)
+        state.dragged(FloatingPoint(288, 300), area())
+        val narrow = area(width = 80)
+        assertEquals(8, state.place(narrow).x)
+        state.dragged(FloatingPoint(8, 200), narrow, horizontalMoved = false, verticalMoved = true)
+        assertEquals(FloatingPoint(288, 200), FloatingPositionState(Store(store.encoded)).place(area()))
+    }
     @Test fun changedScreenWidthMapsHorizontalIntentProportionally() {
         val state = FloatingPositionState(Store())
         state.dragged(FloatingPoint(148, 300), area()) // Halfway along 280px travel.

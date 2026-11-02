@@ -58,8 +58,12 @@ internal interface FloatingPositionStore {
 internal class FloatingPositionState(private val store: FloatingPositionStore) {
     private var preferred = FloatingPosition.decode(store.load()) ?: FloatingPosition.DEFAULT
     fun place(area: FloatingArea) = area.place(preferred)
-    fun dragged(point: FloatingPoint, area: FloatingArea): Boolean {
-        preferred = area.remember(point)
+    fun dragged(point: FloatingPoint, area: FloatingArea, horizontalMoved: Boolean = true, verticalMoved: Boolean = true): Boolean {
+        if (!horizontalMoved && !verticalMoved) return true
+        val actual = area.remember(point)
+        preferred = FloatingPosition(
+            if (horizontalMoved) actual.horizontalFraction else preferred.horizontalFraction,
+            if (verticalMoved) actual.keyboardGapDp else preferred.keyboardGapDp)
         return store.save(preferred.encode())
     }
 }

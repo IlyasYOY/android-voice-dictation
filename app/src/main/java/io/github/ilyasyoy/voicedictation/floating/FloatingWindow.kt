@@ -122,7 +122,11 @@ internal class FloatingWindow(
                 MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(hold)
                     if (dragging && dragged && !held && attached) safeArea()?.let { area ->
-                        position.dragged(FloatingPoint(params.x + (params.width - dp(64)) / 2, params.y + root.paddingTop), area)
+                        val movedX = abs(event.rawX - downX) > slop
+                        val movedY = abs(event.rawY - downY) > slop
+                        val diagonal = !movedX && !movedY && abs(event.rawX-downX)+abs(event.rawY-downY)>slop
+                        position.dragged(FloatingPoint(params.x + (params.width - dp(64)) / 2, params.y + root.paddingTop), area,
+                            horizontalMoved = movedX || diagonal, verticalMoved = movedY || diagonal)
                     }
                     dragging = false
                     if (!dragged && !held && attached) view.performClick()
@@ -206,12 +210,15 @@ internal class FloatingWindow(
     private fun clamp(applyPreference: Boolean = !dragging): Boolean {
         val area = safeArea() ?: return false
         val available = area.height
-        params.width = params.width.coerceIn(area.diameter, area.width)
+        val minimumWidth = area.diameter + root.paddingLeft + root.paddingRight
+        if (area.width < minimumWidth) return false
+        params.width = params.width.coerceIn(minimumWidth, area.width)
         // Measure real wrapped text/buttons, then give WM an exact bounded height. The ScrollView
         // exposes overflow intentionally; no fixed panel estimate can push actions under the IME.
         root.measure(View.MeasureSpec.makeMeasureSpec(params.width,View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.AT_MOST))
         params.height = root.measuredHeight.coerceAtMost(available)
+        if (params.height < area.diameter + root.paddingTop + root.paddingBottom) return false
         if (applyPreference) {
             val anchor = position.place(area)
             params.x = anchor.x - (params.width - dp(64)) / 2

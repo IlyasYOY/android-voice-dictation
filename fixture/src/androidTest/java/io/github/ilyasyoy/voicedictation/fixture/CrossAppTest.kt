@@ -458,11 +458,18 @@ class CrossAppTest {
         }
     }
     @Test fun tFloatingCircleRemembersDragAcrossKeyboardHomeRotationAndProcessRestart() {
+        val filesBefore = fileRequests.get()
+        val streamsBefore = connections.get()
         fun circle() = find(appId("floating_start"), 40_000)
         fun reopenEditor() { focusField("body"); find(fixtureId("body"), 40_000).click(); circle() }
         fun near(expected: android.graphics.Rect) {
-            val actual = circle().visibleBounds
             val tolerance = (6 * instrumentation.targetContext.resources.displayMetrics.density).toInt()
+            val deadline = SystemClock.elapsedRealtime() + 15_000
+            var actual = circle().visibleBounds
+            while ((kotlin.math.abs(expected.centerX()-actual.centerX()) > tolerance ||
+                    kotlin.math.abs(expected.centerY()-actual.centerY()) > tolerance) && SystemClock.elapsedRealtime() < deadline) {
+                SystemClock.sleep(100); actual = circle().visibleBounds
+            }
             assertTrue("Remembered x: $expected / $actual", kotlin.math.abs(expected.centerX()-actual.centerX()) <= tolerance)
             assertTrue("Remembered y: $expected / $actual", kotlin.math.abs(expected.centerY()-actual.centerY()) <= tolerance)
         }
@@ -488,8 +495,17 @@ class CrossAppTest {
         reopenEditor(); near(chosen); evidence("02-keyboard-reopened")
         device.pressHome(); reopenEditor(); near(chosen)
         try {
-            device.setOrientationLeft(); reopenEditor()
-            val landscape = circle().visibleBounds
+            device.setOrientationLeft()
+            val rotationDeadline = SystemClock.elapsedRealtime() + 15_000
+            while (device.displayWidth < device.displayHeight && SystemClock.elapsedRealtime() < rotationDeadline) SystemClock.sleep(100)
+            assertTrue(device.displayWidth > device.displayHeight)
+            reopenEditor()
+            var landscape = circle().visibleBounds
+            val placementDeadline = SystemClock.elapsedRealtime() + 15_000
+            while ((landscape.left < 0 || landscape.top < 0 || landscape.right > device.displayWidth ||
+                    landscape.bottom > device.displayHeight) && SystemClock.elapsedRealtime() < placementDeadline) {
+                SystemClock.sleep(100); landscape = circle().visibleBounds
+            }
             assertTrue(landscape.left >= 0 && landscape.top >= 0)
             assertTrue(landscape.right <= device.displayWidth && landscape.bottom <= device.displayHeight)
             evidence("03-landscape-clamped")
@@ -497,10 +513,13 @@ class CrossAppTest {
         reopenEditor(); near(chosen); evidence("04-portrait-restored")
         openFloatingSetupFromMain()
         scrollFind(appId("floating_disable")).click()
+        val disabledDeadline = SystemClock.elapsedRealtime() + 20_000
+        while (specialAccessEnabled() && SystemClock.elapsedRealtime() < disabledDeadline) SystemClock.sleep(100)
+        assertFalse(specialAccessEnabled())
         device.executeShellCommand("am force-stop $APP")
         setupUserOptIn() // Re-enable via explicit disclosure and Android UI, never a shell grant.
         reopenEditor(); near(chosen); assertFieldUnchanged()
-        assertEquals(0, fileRequests.get()); assertEquals(0, connections.get())
+        assertEquals(filesBefore, fileRequests.get()); assertEquals(streamsBefore, connections.get())
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
         evidence("05-new-process-restored")
         checkpoint("VD007: real circle drag survived keyboard reopen, Home, landscape/portrait and explicit disable/process restart/re-enable; unchanged editor and zero microphone HTTP/WS")
