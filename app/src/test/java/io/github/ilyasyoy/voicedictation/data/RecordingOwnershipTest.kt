@@ -15,19 +15,19 @@ class RecordingOwnershipTest {
             assertEquals("pending retry",first.readText())
         } finally {directory.deleteRecursively()}
     }
-    @Test fun `live-only startup imports old cache instead of sweeping its audio`() {
-        val directory=Files.createTempDirectory("live-only-startup").toFile()
+    @Test fun `startup imports old cache before any new capture`() {
+        val directory=Files.createTempDirectory("startup-preservation").toFile()
         try {
             val cache=File(directory,"cache").apply {mkdir()}
             val orphan=File(cache,"crash-orphan.m4a").apply {writeText("synthetic")}
             val store=RecordingRepository(File(directory,"durable"));store.migrateLegacy(cache)
             var allocations=0
-            val deferred=DeferredAudioRecorder {allocations++;error("no file recording in live-only launch")}
+            val deferred=DeferredAudioRecorder {allocations++;error("no capture requested")}
             deferred.cancel();assertEquals(0,allocations)
             assertFalse(orphan.exists());assertEquals("synthetic",store.audio(store.records().single().id).readText())
         } finally {directory.deleteRecursively()}
     }
-    @Test fun `live-only cancel never instantiates file recorder`() {
+    @Test fun `idle cancellation never instantiates file recorder`() {
         var allocations=0
         val recorder=DeferredAudioRecorder {allocations++;error("file recorder must stay unallocated")}
         repeat(3) {recorder.cancel()};assertEquals(0,allocations)

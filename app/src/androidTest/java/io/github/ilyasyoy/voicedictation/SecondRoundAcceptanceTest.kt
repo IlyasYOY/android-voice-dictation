@@ -23,19 +23,14 @@ class SecondRoundAcceptanceTest {
     @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose=createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
-    @Test fun cloudSelectorAndSettingsStayInTheSamePositionAcrossSessionStatesWithoutSquareRipple() {
+    @Test fun cloudAndSettingsStayInTheSamePositionAcrossSessionStatesWithoutSquareRipple() {
         var state by mutableStateOf(DictationState(key="synthetic-key"))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { it.setContent { VoiceDictationTheme {
-                DictationScreen(state,{}, {}, {}, {}, {}, {}, {}, {}, {}, {state=state.copy(mode=it)}, {})
+                DictationScreen(state,{}, {}, {}, {}, {}, {}, {}, {}, {}, {})
             } } }
             val gear=compose.onNodeWithTag("open_settings").getUnclippedBoundsInRoot()
             val cloud=compose.onNodeWithTag("record").getUnclippedBoundsInRoot()
-            val live=compose.onNodeWithTag("mode_live").getUnclippedBoundsInRoot()
-            val record=compose.onNodeWithTag("mode_record").getUnclippedBoundsInRoot()
-            assertTrue(live.top>=cloud.bottom)
-            assertEquals(((cloud.left+cloud.right)/2).value,((live.left+record.right)/2).value,1f)
-            compose.onNodeWithTag("mode_record").assertIsSelected()
             val before=compose.onNodeWithTag("record").captureToImage().toPixelMap()
             compose.onNodeWithTag("record").performTouchInput { down(center) }
             compose.mainClock.advanceTimeBy(400)
@@ -44,10 +39,9 @@ class SecondRoundAcceptanceTest {
                 assertEquals("Organic control must not paint a square press ripple",before[x,y],pressed[x,y])
             }
             compose.onNodeWithTag("record").performTouchInput { up() }
-            for(phase in listOf(Phase.CONNECTING,Phase.RECORDING,Phase.FINALIZING,Phase.RESULT)) {
-                compose.runOnIdle { state=state.copy(mode=Mode.LIVE,phase=phase) }
+            for(phase in listOf(Phase.RECORDING,Phase.TRANSCRIBING,Phase.RESULT)) {
+                compose.runOnIdle { state=state.copy(phase=phase) }
                 assertEquals(gear,compose.onNodeWithTag("open_settings").getUnclippedBoundsInRoot())
-                assertEquals(live,compose.onNodeWithTag("mode_live").getUnclippedBoundsInRoot())
                 compose.onNodeWithTag("open_settings").assertContentDescriptionEquals("Settings")
             }
             compose.onNodeWithTag("open_settings").performClick()
@@ -83,22 +77,6 @@ class SecondRoundAcceptanceTest {
                 view.findViewById<View>(R.id.floating_start).performLongClick(); assertEquals(1,recoveries)
                 assertEquals(2,starts)
             } finally {window.hide()}
-        }
-    }
-    @android.annotation.SuppressLint("UseKtx")
-    @Test fun recordIsDefaultAndAnExplicitLiveChoiceSurvivesReload() {
-        val context=instrumentation.targetContext
-        val prefs=context.getSharedPreferences("dictation_mode",Context.MODE_PRIVATE)
-        val previous=prefs.getString("explicit_mode",null)
-        try {
-            prefs.edit().clear().commit()
-            assertEquals(Mode.RECORD,ModePreferences.load(context))
-            ModePreferences.save(context,Mode.LIVE)
-            assertEquals(Mode.LIVE,ModePreferences.load(context))
-            ModePreferences.save(context,Mode.RECORD)
-            assertEquals(Mode.RECORD,ModePreferences.load(context))
-        } finally {
-            if(previous==null)prefs.edit().clear().commit() else prefs.edit().putString("explicit_mode",previous).commit()
         }
     }
 }

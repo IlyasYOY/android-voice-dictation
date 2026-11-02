@@ -10,8 +10,7 @@ import java.io.IOException
 /** Session file-ownership boundary. Implementations never receive credentials or editor state. */
 interface RecordingRetention {
     fun checkCapacity() = Unit
-    fun beginSession(mode: Mode = Mode.RECORD) = Unit
-    fun endSession() = Unit
+    fun beginSession() = Unit
     fun stopped(audio:File,seconds:Int) = Unit
     fun receivedText(audio:File):String? = null
     fun beforeUpload(audio: File)
@@ -24,7 +23,6 @@ interface RecordingRetention {
     fun clearDraft() = saveDraft("")
     fun draftSourceId():String? = null
     fun draftSourceAvailable():Boolean = true
-    fun liveText(text:String,partial:Boolean,seconds:Int) = Unit
 }
 
 internal object TemporaryRecordingRetention : RecordingRetention {
@@ -43,8 +41,6 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     private val repository get()=open()
     private val attempts = mutableMapOf<File, RecordingUpload>()
     private var sourceId:String?=null
-    private var liveId:String?=null
-    private var liveActive=false
     override fun draftSourceId():String? = sourceId
     override fun draftSourceAvailable():Boolean = stored {
         sourceId?.let { repository.record(it)?.status !in setOf(null, io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING) } ?: true
@@ -55,11 +51,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     }
     private fun <T> stored(action: () -> T): T = try { action() } catch (e: HistoryCapacityReached) { throw e } catch (e: Exception) { throw RecordingStorageFailure(e) }
     override fun checkCapacity() = stored { repository.requireCapacity() }
-    override fun beginSession(mode: Mode) = stored {
-        liveId = if (mode == Mode.LIVE) repository.reserveLive() else { repository.requireCapacity(); null }
-        liveActive = mode == Mode.LIVE
-    }
-    override fun endSession() {liveActive=false;repository.releaseText(liveId)}
+    override fun beginSession() = checkCapacity()
     override fun stopped(audio:File,seconds:Int) = stored {repository.duration(audio,seconds)}
     override fun receivedText(audio:File):String? = stored {repository.record(audio)?.let {repository.receivedText(it.id)}}
     override fun restoreDraft():String? = if(mainDraft)stored {
@@ -73,9 +65,6 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
         val source=sourceId
         if(source!=null && repository.record(source)?.status in setOf(null,io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING))return
         if(mainDraft)stored {repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN,text,sourceId)}
-    }
-    override fun liveText(text:String,partial:Boolean,seconds:Int) = stored {
-        liveId=repository.liveText(liveId,text,partial,seconds,liveActive);sourceId=liveId
     }
     override fun beforeUpload(audio: File) = stored {
         check(audio !in attempts)

@@ -7,6 +7,7 @@ import io.github.ilyasyoy.voicedictation.session.DictationSessions
 class VoiceDictationApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        io.github.ilyasyoy.voicedictation.session.LegacyModeMigration.migrate(this)
         DictationSessions.prepare(this)
     }
 }

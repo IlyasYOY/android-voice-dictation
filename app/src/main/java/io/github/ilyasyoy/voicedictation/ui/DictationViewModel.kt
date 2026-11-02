@@ -15,11 +15,9 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     constructor(
         recorder: AudioRecorder,
         transcriber: Transcriber,
-        pcm: PcmSource? = null,
-        realtime: RealtimeTranscriber? = null,
         keyStore: ApiKeyStore = NoKeyStore,
         recordings:RecordingRetention=TemporaryRecordingRetention,
-    ) : this({ scope -> DictationSession(scope, recorder, transcriber, pcm, realtime, keyStore,recordings=recordings) })
+    ) : this({ scope -> DictationSession(scope, recorder, transcriber, keyStore,recordings=recordings) })
 
     private val session = createSession(viewModelScope)
     val state = session.state
@@ -49,7 +47,6 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
         return state.value.hasSavedKey || state.value.validKey
     }
     fun setKey(key: String) = session.setKey(key)
-    fun setMode(mode: Mode) = session.setMode(mode)
     fun edit(text: String) = session.edit(text)
     fun draftSourceId():String? = session.draftSourceId()
     fun clear() = session.clear()

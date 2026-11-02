@@ -14,7 +14,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 internal enum class SavedRecordingStatus { CAPTURING, PENDING, UPLOADING, FAILED, INTERRUPTED, COMPLETE, DELETING, UNAVAILABLE }
 internal enum class SavedRecordingFailure { KEY, AUTH, NETWORK, SERVICE, STORAGE }
 internal enum class RecordingTextSlot { MAIN, FLOATING }
-internal enum class SavedRecordingKind { RECORD, LIVE }
+/** LEGACY_TEXT is read-only compatibility for already saved text; new capture creates RECORD only. */
+internal enum class SavedRecordingKind(val storedValue: String) { RECORD("RECORD"), LEGACY_TEXT("LIVE");
+    companion object { fun fromStored(value: String) = entries.first { it.storedValue == value } }
+}
 internal data class SavedRecordingDraft(val text:String,val sourceId:String?) {
     override fun toString()="SavedRecordingDraft(textLength=${text.length}, sourceId=$sourceId)"
 }
@@ -70,9 +73,6 @@ internal class RecordingRepository(
 ) {
     private val rows = linkedMapOf<String, SavedRecording>()
     private val reserved = mutableSetOf<String>()
-    // Main and overlay share this repository/process. Empty Live admissions carry no
-    // user data and disappear with that process; checkpointed rows always survive.
-    private val liveAdmissions = mutableSetOf<String>()
     private var countLimit = HistoryCapacity.DEFAULT_LIMIT
     private var limitReadable = true
     private val uploading = mutableSetOf<RecordingUpload>()
@@ -109,8 +109,7 @@ internal class RecordingRepository(
         }
     }
 
-    @Synchronized fun capacity() = HistoryCapacity(countLimit, rows.size,
-        liveAdmissions.count { it !in rows }, limitReadable)
+    @Synchronized fun capacity() = HistoryCapacity(countLimit, rows.size, limitReadable)
     @Synchronized fun requireCapacity() {
         if (!limitReadable) throw IOException("History limit unavailable")
         val state = capacity()
@@ -139,12 +138,6 @@ internal class RecordingRepository(
             countLimit = restored; limitReadable = true
         } catch (_: Exception) { limitReadable = false }
     }
-    @Synchronized fun reserveLive(): String {
-        requireCapacity()
-        val id = UUID.randomUUID().toString()
-        liveAdmissions += id; reserved += id; changed()
-        return id
-    }
     @Synchronized fun records(): List<SavedRecording> = rows.values.sortedByDescending { it.createdAt }
     @Synchronized fun pending(): List<SavedRecording> = rows.values.filter {
         it.id !in reserved && it.kind==SavedRecordingKind.RECORD && audio(it.id).length()>0 &&
@@ -155,12 +148,6 @@ internal class RecordingRepository(
     @Synchronized fun receivedText(id:String):String?=received[id]
     @Synchronized fun receivedTexts():Map<String,String> = received.toMap()
     @Synchronized fun ownedIds():Set<String> = reserved.toSet()
-    @Synchronized fun releaseText(id:String?) {
-        if (id == null) return
-        val admitted = liveAdmissions.remove(id)
-        val owned = reserved.remove(id)
-        if (admitted || owned) changed()
-    }
     @Synchronized fun savedText(slot: RecordingTextSlot): String = savedDraft(slot).text
     @Synchronized fun savedDraft(slot: RecordingTextSlot): SavedRecordingDraft {
         val file = File(root, "${slot.name.lowercase()}-text.properties")
@@ -185,34 +172,6 @@ internal class RecordingRepository(
     }
     @Synchronized fun duration(file:File,seconds:Int) {
         val record=checkNotNull(record(file));save(record.copy(durationSeconds=seconds.coerceAtLeast(0),updatedAt=clock()))
-    }
-    @Synchronized fun liveText(id:String?,text:String,partial:Boolean,seconds:Int,active:Boolean=false):String? {
-        if(text.isBlank())return id
-        val previous=id?.let(rows::get)
-        val now=clock()
-        // Already-received text must be kept even during recovery or after a limit
-        // reduction. Ordinary starts were admitted before transport/microphone use.
-        val record=previous ?: SavedRecording(id?.takeIf(::validId) ?: UUID.randomUUID().toString(),now,now,
-            SavedRecordingStatus.INTERRUPTED,kind=SavedRecordingKind.LIVE)
-        try {
-            if(previous==null) {
-                val folder = directory(record.id)
-                check(folder.mkdir() || folder.isDirectory)
-                if (metadata(record.id).exists()) require(read(folder).kind == SavedRecordingKind.LIVE)
-                AtomicRecordingCommit.syncDirectory(root)
-            } else require(previous.kind == SavedRecordingKind.LIVE)
-            if(active)reserved+=record.id else reserved-=record.id
-            save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
-                failure=null,status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
-        } catch (e: Exception) {
-            // A failed first checkpoint may already have staged bytes. Keep that
-            // directory counted after admission release, just as restart would.
-            if (previous == null && directory(record.id).exists()) rows[record.id] = record.copy(status=SavedRecordingStatus.UNAVAILABLE,
-                failure=SavedRecordingFailure.STORAGE)
-            changed()
-            throw e
-        }
-        return record.id
     }
     fun observe(observer: () -> Unit): () -> Unit { observers += observer; return { observers -= observer } }
     private fun changed() { observers.forEach { runCatching(it) } }
@@ -381,7 +340,7 @@ internal class RecordingRepository(
             setProperty("createdAt", record.createdAt.toString()); setProperty("updatedAt", record.updatedAt.toString())
             setProperty("status", record.status.name); setProperty("seconds", record.durationSeconds.toString())
             setProperty("transcript", record.transcript); setProperty("attempt", record.attempt.toString())
-            setProperty("kind",record.kind.name);setProperty("partial",record.partial.toString())
+            setProperty("kind",record.kind.storedValue);setProperty("partial",record.partial.toString())
             record.failure?.let { setProperty("failure", it.name) }; record.legacyName?.let { setProperty("legacyName", it) }
         }
         commit.write(metadata(record.id), values)
@@ -394,7 +353,7 @@ internal class RecordingRepository(
         return SavedRecording(directory.name, p.getProperty("createdAt").toLong(), p.getProperty("updatedAt").toLong(),
             SavedRecordingStatus.valueOf(p.getProperty("status")), p.getProperty("seconds").toInt(), p.getProperty("transcript"),
             p.getProperty("failure")?.let(SavedRecordingFailure::valueOf), p.getProperty("attempt").toLong(), p.getProperty("legacyName"),
-            SavedRecordingKind.valueOf(p.getProperty("kind","RECORD")),p.getProperty("partial","false").toBooleanStrict())
+            SavedRecordingKind.fromStored(p.getProperty("kind","RECORD")),p.getProperty("partial","false").toBooleanStrict())
     }
     companion object { private fun validId(id: String) = runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) }
 }

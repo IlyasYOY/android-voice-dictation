@@ -134,11 +134,4 @@ class RecordingRepositoryTest {
         assertFalse(store.discard(id));assertTrue(audio.exists());assertTrue(id in store.ownedIds())
         assertTrue(store.discardOwned(audio));assertFalse(audio.exists());assertTrue(store.records().isEmpty())
     }
-    @Test fun liveCheckpointCannotBeDeletedUntilItsSessionReleasesOwnership() {
-        val store=repository()
-        val id=checkNotNull(store.liveText(null,"received words",true,3,active=true))
-        assertFalse(store.discard(id));assertTrue(id in store.ownedIds())
-        store.releaseText(id);assertTrue(store.discard(id));assertTrue(repository().records().isEmpty())
-    }
-
 }

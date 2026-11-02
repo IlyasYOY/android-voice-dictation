@@ -148,7 +148,7 @@ class FloatingSetupActivity : ComponentActivity() {
                             ?: DictationSessions.transcribeRetained(this@FloatingSetupActivity,file) }
                         if(text!=null) { recovery.retain(text); recovery.resetSignal() }
                     } catch(e: CancellationException) { throw e }
-                    catch(_: Exception) { recovery.offer("",getString(R.string.floating_stream_error),error=true) }
+                    catch(_: Exception) { recovery.offer("",getString(R.string.error),error=true) }
                     finally { if(!closing && !isDestroyed)render() }
                 }
                 render()

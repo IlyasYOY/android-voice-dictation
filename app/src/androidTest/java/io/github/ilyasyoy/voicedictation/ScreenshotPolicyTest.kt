@@ -52,7 +52,7 @@ class ScreenshotPolicyTest {
         } finally { MainActivity.testFactory = null; MainActivity.testNotice = null }
     }
 
-    @Test fun floatingBubbleLiveAndResultStayCapturableWithoutTestNotice() {
+    @Test fun floatingBubbleRecordingAndResultStayCapturableWithoutTestNotice() {
         val base = instrumentation.targetContext
         var flags: Int? = null
         var root: View? = null

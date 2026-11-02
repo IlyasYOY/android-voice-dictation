@@ -24,7 +24,7 @@ class MainErrorScreenTest {
         ActivityScenario.launch(MainActivity::class.java).use {scenario ->
             scenario.onActivity {activity -> activity.setContent {VoiceDictationTheme {
                 DictationScreen(state,onKey={},onRecord={},onStop={},onCancel={discards++},onRetry={retries++},
-                    onEdit={},onCopy={},onClear={},onForget={},onMode={},onSave={},savedRecordings=2,onSavedRecordings={saved++})
+                    onEdit={},onCopy={},onClear={},onForget={},onSave={},savedRecordings=2,onSavedRecordings={saved++})
             }}}
             for(problem in Problem.entries) {
                 compose.runOnIdle {state=state.copy(problem=problem,key=if(problem==Problem.KEY)"" else "synthetic-key")}

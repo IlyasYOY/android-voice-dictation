@@ -23,8 +23,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.session.DictationSessions
-import io.github.ilyasyoy.voicedictation.session.ModePreferences
-import io.github.ilyasyoy.voicedictation.session.Mode
 import io.github.ilyasyoy.voicedictation.session.RecordingRecovery
 import io.github.ilyasyoy.voicedictation.session.RecordingRetryFailure
 import io.github.ilyasyoy.voicedictation.floating.FloatingSetupActivity
@@ -54,7 +52,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 (testFactory?.invoke(this@MainActivity) ?: DictationViewModel { scope ->
-                    DictationSessions.create(applicationContext, scope, initialMode = ModePreferences.load(applicationContext),mainDraft=true)
+                    DictationSessions.create(applicationContext, scope,mainDraft=true)
                 }) as T
         })[DictationViewModel::class.java]
         if (!testSkipOnboarding) {
@@ -86,7 +84,7 @@ class MainActivity : ComponentActivity() {
                     onHistory = { deferSetup(); retainRetryRecording(); historyOpen = true })
                 else DictationScreen(state, { pasteProblem = false; model.setKey(it) }, ::record, model::stop, model::cancel,
                     model::retry, model::edit, ::copy, model::clear, { model.forgetKey(); model.clearSetupKey(); setupFlow?.deferKey() },
-                    onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
+                    onSave = model::saveKey,
                     onFloatingSetup = {
                         if (setupFlow == null || setupFlow?.beginNavigation() == true) startActivity(Intent(this, FloatingSetupActivity::class.java))
                     }, evidenceNotice = testNotice,
@@ -177,7 +175,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {super.onStart();if(::model.isInitialized)model.refreshDraft()}
     private fun record() {
         val state=model.state.value
-        if (requestingPermission || state.audioBusy || (state.mode==Mode.LIVE && state.keyBusy)) return
+        if (requestingPermission || state.audioBusy) return
         if (!model.checkHistoryCapacity()) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             startWithPermission()

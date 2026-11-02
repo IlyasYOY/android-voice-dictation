@@ -1,9 +1,9 @@
 package io.github.ilyasyoy.voicedictation.data
 
-/** A place is a ledger item or an active Live admission not yet checkpointed as an item. */
+/** Every retained ledger row counts, including active Record capture and legacy text-only rows. */
 data class HistoryCapacity(val limit: Int = DEFAULT_LIMIT, val stored: Int = 0,
-    val reservedLive: Int = 0, val readable: Boolean = true) {
-    val used get() = stored + reservedLive
+    val readable: Boolean = true) {
+    val used get() = stored
     val full get() = readable && used >= limit
     val canStart get() = readable && used < limit
     companion object {

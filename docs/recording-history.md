@@ -12,7 +12,7 @@ Waveforms are read-only local thumbnails, sampled at 40 evenly spaced positions.
 
 Holding the idle keyboard bubble opens the same sheet in its own activity. No editor identity travels to history. Explicit retry returns a passive result and never inserts into an old field. Cards read the durable RecordingRepository, newest first, with date separators. No startup/reconnect upload, automatic retry, retention policy or eviction is added. Successful audio and text remain until explicit Delete. Interrupted audio may be incomplete; decoder failure preserves its original bytes.
 
-Playback retains its separate generation-checked owner and Android MediaPlayer adapter. Closing the sheet/activity, backgrounding, deletion, retry, audio-focus loss and every actual Record/Live microphone start stop and release playback. Pausing abandons audio focus. Reading a transcript or waveform never starts playback or a network call.
+Playback retains its separate generation-checked owner and Android MediaPlayer adapter. Closing the sheet/activity, backgrounding, deletion, retry, audio-focus loss and every actual Record microphone start stop and release playback. Pausing abandons audio focus. Reading a transcript or waveform never starts playback or a network call.
 
 The LazyColumn remains scrollable for long history and long expanded text. Text selection and editing are explicit, all icon actions retain accessible names and minimum touch targets, and controls remain reachable at large font. Expansion and progress use the existing motion-duration preference.
 

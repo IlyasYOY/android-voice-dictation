@@ -66,7 +66,7 @@ class DictationScreenTest {
         if (tag == "history_close") {
             compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }; return
         }
-        val configuration = tag in setOf("mode_record", "mode_live", "forget")
+        val configuration = tag == "forget"
         if (configuration) compose.onNodeWithTag("open_settings").performScrollTo().performClick()
         if (tag in setOf("saved_recordings", "history_close")) compose.onNodeWithTag(tag).performClick() else compose.onNodeWithTag(tag).performScrollTo().performClick()
         if (configuration) compose.onNodeWithTag("close_settings").performScrollTo().performClick()

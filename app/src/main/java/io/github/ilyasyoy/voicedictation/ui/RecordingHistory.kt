@@ -221,7 +221,7 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         val position = if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f
                         if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, trackModifier)
                         else AudioTrack(null, position, trackModifier)
-                    } else Text(stringResource(R.string.saved_live_text), Modifier.weight(1f).padding(8.dp),
+                    } else Text(stringResource(R.string.saved_text_only), Modifier.weight(1f).padding(8.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val hasText = text.isNotBlank() || draft != null
                     when {
