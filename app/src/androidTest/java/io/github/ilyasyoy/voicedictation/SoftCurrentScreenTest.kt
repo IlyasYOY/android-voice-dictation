@@ -6,7 +6,6 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.ilyasyoy.voicedictation.data.AndroidAudioRecorder
 import io.github.ilyasyoy.voicedictation.data.Transcriber
-import io.github.ilyasyoy.voicedictation.session.Mode
 import io.github.ilyasyoy.voicedictation.ui.DictationViewModel
 import org.junit.*
 import org.junit.Assert.*
@@ -21,7 +20,7 @@ class SoftCurrentScreenTest {
             automation.executeShellCommand(command).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
         }
     }
-    @Test fun settingsNavigationKeepsDraftAndRequiresExplicitModeChoice() {
+    @Test fun settingsNavigationKeepsDraftWithoutAnyModeSelector() {
         lateinit var model: DictationViewModel
         MainActivity.testNotice = "DESIGN TEST · synthetic draft · no API call"
         MainActivity.testFactory = { context ->
@@ -30,16 +29,15 @@ class SoftCurrentScreenTest {
         }
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                assertEquals(Mode.RECORD, model.state.value.mode)
+                compose.onNodeWithTag("mode_live").assertDoesNotExist()
+                compose.onNodeWithTag("mode_record").assertDoesNotExist()
                 capture("01-main-session")
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
                 capture("02-settings")
                 compose.onNodeWithTag("api_key").performScrollTo()
                 capture("03-settings-key-masked")
-                compose.onNodeWithTag("mode_live").performScrollTo().performClick()
                 compose.onNodeWithTag("close_settings").performScrollTo().performClick()
-                capture("04-main-live-selected")
-                assertEquals(Mode.LIVE, model.state.value.mode)
+                capture("04-main-record-only")
                 assertEquals("A thought kept in this session.",model.state.value.text)
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
                 compose.onNodeWithTag("close_settings").assertExists()

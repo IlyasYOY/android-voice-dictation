@@ -17,21 +17,18 @@ internal class FloatingCapture(
     private val origin: EditorToken,
     private val environment: () -> FloatingEnvironment,
     private val onInvalid: () -> Unit,
-    private val onMissingKey: () -> Unit,
     private val onState: (DictationState) -> Unit,
-    private val mode: Mode = Mode.RECORD,
 ) : AutoCloseable {
     private var closed = false
     private val observer = scope.launch(start = CoroutineStart.LAZY) {
         var launched = false
         session.state.collect { state ->
             if (closed) return@collect
-            if (!launched && (mode==Mode.RECORD || !state.keyBusy)) {
+            if (!launched) {
                 launched = true
-                // This fresh check is after the asynchronous key read, immediately before audio start.
+                // Recheck the captured editor immediately before local audio start; no key/network wait.
                 if (!eligible(environment())) { onInvalid(); return@collect }
-                if (mode==Mode.LIVE && !state.validKey) onMissingKey()
-                else { session.setMode(mode); session.start(true) }
+                session.start(true)
             }
             // Starting may synchronously replace the collected idle/storage-error state.
             if (!closed) onState(session.state.value)

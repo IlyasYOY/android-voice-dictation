@@ -32,7 +32,7 @@ class AndroidAudioRecorder(context: Context) : AudioRecorder {
             capture.setAudioSource(MediaRecorder.AudioSource.MIC)
             capture.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             capture.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            capture.setAudioSamplingRate(24000)
+            capture.setAudioSamplingRate(AudioPolicy.SAMPLE_RATE)
             capture.setAudioChannels(1)
             capture.setAudioEncodingBitRate(AudioPolicy.BIT_RATE)
             capture.setMaxDuration(AudioPolicy.MAX_SECONDS * 1000)

@@ -10,7 +10,7 @@ Microphone, enabled accessibility service and notification/channel permissions a
 
 Manufacturer background/autostart restrictions cannot be observed reliably. The guide explains this once after the floating prerequisites, records only a successful acknowledgement, and leaves the app-settings control available in Floating settings. It never reports this acknowledgement as a grant. Already configured installations are not interrupted by this optional explanation; they can open it through the guide.
 
-Only nonsecret versioned setup metadata is stored in `onboarding_v1`: prior visit, optional choice, explanation acknowledgement, permission-request flags and legacy migration state. Required deferral is deliberately not persisted. No history, mode, bubble position, recording, key-encryption or retry policy is changed.
+Only nonsecret versioned setup metadata is stored in `onboarding_v1`: prior visit, optional choice, explanation acknowledgement, permission-request flags and legacy migration state. Required deferral is deliberately not persisted. No history, bubble position, recording, key-encryption or retry policy is changed.
 
 ## Verification
 

@@ -46,7 +46,7 @@ class SoftCurrentAcceptanceTest {
                         VoiceDictationTheme {
                             Box(Modifier.fillMaxSize()) { Box(Modifier.size(width.dp,height.dp)) {
                                 DictationScreen(state,{}, {}, {}, { cancelled=true; state=state.copy(phase=Phase.RESULT) },{}, {}, {}, {}, {},
-                                    { state=state.copy(mode=it) },{})
+                                    {})
                             } }
                         }
                     }
@@ -59,35 +59,21 @@ class SoftCurrentAcceptanceTest {
                 compose.onNodeWithTag("record").assertIsDisplayed().assertContentDescriptionEquals("Record")
                 val bounds=compose.onNodeWithTag("record").getUnclippedBoundsInRoot()
                 assertTrue("Wave must fit the compact viewport: $bounds",bounds.left>=0.dp && bounds.right<=width.dp && bounds.top>=0.dp && bounds.bottom<=height.dp)
-                fun assertModeLabelsFit() {
-                    for (label in listOf("Live","Record")) compose.onNodeWithText(label,useUnmergedTree=true)
-                        .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
-                            val layouts=mutableListOf<TextLayoutResult>(); action(layouts)
-                            assertEquals("Mode labels must not break into fragments",1,layouts.single().lineCount)
-                        }
-                }
-                assertModeLabelsFit()
-                compose.onNodeWithTag("mode_live").performScrollTo().performClick().assertIsSelected()
-                assertEquals(Mode.LIVE,state.mode)
-                compose.onNodeWithTag("mode_record").performScrollTo().performClick().assertIsSelected()
-                assertEquals(Mode.RECORD,state.mode)
+                compose.onNodeWithTag("mode_live").assertDoesNotExist()
+                compose.onNodeWithTag("mode_record").assertDoesNotExist()
                 capture("main-$width-font-$font")
                 compose.onNodeWithTag("open_settings").performScrollTo().performClick()
                 compose.onNodeWithText("A little space for the details.").assertDoesNotExist()
                 compose.onNodeWithTag("api_key").performScrollTo().assertExists()
                 capture("settings-$width-font-$font")
                 compose.onNodeWithTag("close_settings").performScrollTo().performClick()
-                compose.runOnIdle { state=state.copy(mode=Mode.LIVE,phase=Phase.RECORDING,livePartial=true) }
-                compose.onNodeWithTag("mode_live").assertIsNotEnabled()
-                compose.onNodeWithTag("mode_record").assertIsNotEnabled()
-                assertModeLabelsFit()
-                compose.onNodeWithTag("stop").performScrollTo().assertContentDescriptionEquals("Stop")
+                compose.runOnIdle { state=state.copy(phase=Phase.RECORDING) }
+                compose.onNodeWithTag("stop").performScrollTo().assertContentDescriptionEquals(instrumentation.targetContext.getString(io.github.ilyasyoy.voicedictation.R.string.stop))
                 val stopBounds=compose.onNodeWithTag("stop").getUnclippedBoundsInRoot()
                 assertTrue("Full Stop target must fit even with large recording status text: $stopBounds",stopBounds.left>=0.dp && stopBounds.right<=width.dp && stopBounds.top>=0.dp && stopBounds.bottom<=height.dp)
                 capture("recording-$width-font-$font")
                 compose.onNodeWithText("Cancel · keep received text").assertDoesNotExist()
-                compose.onNodeWithTag("session_controls").performScrollTo().performClick()
-                compose.onNodeWithTag("cancel").performClick()
+                compose.onNodeWithTag("cancel").performScrollTo().performClick()
                 assertTrue(cancelled)
                 assertEquals("Synthetic final words",state.text)
             }

@@ -126,14 +126,12 @@ class FloatingDictationService : AccessibilityService() {
         val active = state?.audioBusy == true || state?.keyBusy == true
         val capacityFull = runCatching { AndroidRecordingStorage.repository(this).capacity().full }.getOrDefault(false)
         val status = if (capacityFull && !active) getString(R.string.history_full) else feedback.message ?: when (state?.phase) {
-            Phase.CONNECTING -> getString(R.string.live_connect_status)
-            Phase.RECORDING -> getString(if(state.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording) + " · " + state.elapsed
+            Phase.RECORDING -> getString(R.string.recording) + " · " + state.elapsed
             Phase.TRANSCRIBING -> getString(R.string.transcribing)
-            Phase.FINALIZING -> getString(R.string.live_finish_status)
-            Phase.ERROR -> getString(R.string.floating_stream_error)
+            Phase.ERROR -> getString(R.string.error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true || state?.phase == Phase.CONNECTING, historyFull = capacityFull) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true, historyFull = capacityFull) }
         catch (_: Exception) { closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -181,9 +179,9 @@ class FloatingDictationService : AccessibilityService() {
         fun action(value: String, request: Int) = PendingIntent.getService(this, request,
             Intent(this, FloatingDictationService::class.java).setAction(value), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_current_notification).setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(when (model?.state?.value?.phase) { Phase.RECORDING -> if(model?.state?.value?.mode==Mode.LIVE)R.string.live_stream_status else R.string.recording; Phase.TRANSCRIBING -> R.string.transcribing; Phase.FINALIZING -> R.string.live_finish_status; else -> R.string.live_connect_status }))
+            .setContentText(getString(if (model?.state?.value?.phase == Phase.TRANSCRIBING) R.string.transcribing else R.string.recording))
             .setOngoing(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .addAction(0, getString(R.string.stop_live), action(STOP, 1)).addAction(0, getString(R.string.floating_cancel), action(CANCEL, 2)).build()
+            .addAction(0, getString(R.string.stop), action(STOP, 1)).addAction(0, getString(R.string.floating_cancel), action(CANCEL, 2)).build()
     }
     private fun begin() {
         if (model != null || !microphoneGranted()) return
@@ -196,26 +194,25 @@ class FloatingDictationService : AccessibilityService() {
         val origin = original ?: run { session.close(); endForeground(); return }
         capture = FloatingCapture(scope, session, origin, ::environment,
             onInvalid = ::invalidStart,
-            onMissingKey = { offerRecovery("",getString(R.string.floating_need_key),true) },
             onState = capacityState@{ state ->
                 if (state.capacityBlocked) {
                     closeSession(hideWindow = false, retainCurrent = false)
                     render()
                     return@capacityState
                 }
-                DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, partial=${state.livePartial}, problem=${state.problem}")
+                DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, problem=${state.problem}")
                 if (state.phase == Phase.ERROR) {
                     if(state.canRetry) session.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(state.problem)) }
-                    offerRecovery(state.text,getString(R.string.floating_stream_error), error = true)
+                    offerRecovery(state.text,getString(R.string.error), error = true)
                 }
                 if (state.phase == Phase.TRANSCRIBING) endForeground()
                 if (state.phase == Phase.RESULT) {
                     endForeground()
-                    if (finishRequested && !insertionAttempted) insert(state.text, state.livePartial)
+                    if (finishRequested && !insertionAttempted) insert(state.text)
                 }
                 if (foreground && microphoneGranted()) getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
                 render()
-            }, mode = ModePreferences.load(this))
+            })
         capture?.start()
     }
     private fun invalidStart() {
@@ -236,11 +233,11 @@ class FloatingDictationService : AccessibilityService() {
         closeSession(hideWindow = false, retainCurrent = false, retainRecording = !discardRecording)
         feedback.offer(text,reason); render()
     }
-    private fun insert(text: String, partial: Boolean) {
+    private fun insert(text: String) {
         insertionAttempted = true; finishRequested = false
         if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
         val token = original; val current = editor(); val input = connection
-        if (partial || token == null || current == null || input == null ||
+        if (token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {
             offerRecovery(text,getString(R.string.floating_copy_fallback)); return
         }
@@ -297,7 +294,7 @@ class FloatingDictationService : AccessibilityService() {
         if (retainCurrent && !commitAttempted && !discardFeedback && state != null && (state.text.isNotBlank() || (state.busy && !feedback.available))) {
             feedback.offer(state.text, getString(when {
                 inserting || (insertionAttempted && state.phase == Phase.RESULT) -> R.string.floating_unconfirmed
-                state.busy || state.livePartial -> R.string.floating_cancelled
+                state.busy -> R.string.floating_cancelled
                 else -> R.string.floating_copy_fallback
             }))
         }

@@ -368,24 +368,6 @@ class RecordingHistoryRuntimeTest {
         }
     }
 
-    @Test fun liveTextAndItsEditedDraftOpenInSharedHistoryWithoutFakeAudio() {
-        lateinit var id: String
-        instrumentation.runOnMainSync {
-            id = checkNotNull(repository.liveText(null, "Synthetic live words", false, 5))
-            ids += id
-            repository.saveText(RecordingTextSlot.MAIN, "Edited synthetic live words", id)
-        }
-        ActivityScenario.launch(SavedRecordingsActivity::class.java).use {
-            compose.onNodeWithTag("history_play_$id").assertDoesNotExist()
-            compose.onNodeWithTag("history_text_$id").assertDoesNotExist()
-            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
-            compose.onNodeWithTag("history_text_$id").assertTextEquals("Edited synthetic live words")
-            capture("11-live-text-message")
-            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
-            compose.onNodeWithTag("history_text_$id").assertDoesNotExist()
-        }
-    }
-
     @Test fun unlinkedDraftRemainsEditableAndClearDoesNotDeleteRecordings() {
         lateinit var model: DictationViewModel
         lateinit var id: String
