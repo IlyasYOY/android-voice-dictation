@@ -18,6 +18,7 @@ class FloatingSetupRuntimeTest {
     private var progress = SetupProgress(true, true, true)
     private val actions = mutableListOf<SetupAction>()
     private var disabled = 0
+    private var showRationale = false
     private fun node(name: String) = compose.onNodeWithTag("${context.packageName}:id/$name")
     @Before fun before() {
         FloatingSetupActivity.testGrants = { grants }
@@ -25,11 +26,13 @@ class FloatingSetupRuntimeTest {
             override fun load() = progress
             override fun save(progress: SetupProgress): Boolean { this@FloatingSetupRuntimeTest.progress = progress; return true }
         }
+        FloatingSetupActivity.testRationale = { showRationale }
         FloatingSetupActivity.testAction = { actions += it }
         FloatingSetupActivity.testDisable = { disabled++; grants = grants.copy(floatingWanted = false, accessibility = false) }
         FloatingSetupActivity.testEnable = { grants = grants.copy(floatingWanted = true) }
     }
     @After fun after() {
+        FloatingSetupActivity.testRationale = null
         FloatingSetupActivity.testGrants = null; FloatingSetupActivity.testStore = null
         FloatingSetupActivity.testAction = null; FloatingSetupActivity.testDisable = null; FloatingSetupActivity.testEnable = null
     }
@@ -50,13 +53,17 @@ class FloatingSetupRuntimeTest {
             node("floating_mic").assertExists(); node("floating_enable").assertDoesNotExist(); node("floating_notifications").assertDoesNotExist()
             node("floating_mic").performClick(); assertEquals(listOf(SetupAction.MICROPHONE), actions)
             scenario.recreate(); node("floating_mic").assertIsNotEnabled()
+            showRationale = true
             scenario.onActivity { it.permissionReturned() }; node("floating_mic").assertIsEnabled()
-            // A real permanently denied callback produces this same false-rationale/attempted path.
+            node("floating_mic").assertTextEquals(context.getString(R.string.floating_grant_mic))
+            node("floating_mic").performClick(); assertEquals(2, actions.size)
+            showRationale = false
+            scenario.onActivity { it.permissionReturned() }
             node("floating_mic").assertTextEquals(context.getString(R.string.setup_app_settings))
             grants = grants.copy(microphone = true)
             scenario.moveToState(Lifecycle.State.STARTED); scenario.moveToState(Lifecycle.State.RESUMED)
             node("floating_enable").assertExists(); node("floating_mic").assertDoesNotExist()
-            node("floating_enable").performClick(); assertEquals(SetupAction.ACCESSIBILITY, actions.last())
+            node("floating_enable").performScrollTo().performClick(); assertEquals(SetupAction.ACCESSIBILITY, actions.last())
             grants = grants.copy(accessibility = true)
             scenario.moveToState(Lifecycle.State.STARTED); scenario.moveToState(Lifecycle.State.RESUMED)
             node("floating_notifications").assertExists(); node("floating_enable").assertDoesNotExist()
@@ -65,13 +72,24 @@ class FloatingSetupRuntimeTest {
     }
     @Test fun disableAndReenableRequireExplicitActionAndDisclosureConsent() {
         ActivityScenario.launch(FloatingSetupActivity::class.java).use {
-            node("floating_disable").performClick(); assertEquals(1, disabled)
+            node("floating_disable").performScrollTo().performClick(); assertEquals(1, disabled)
             node("floating_setup_status").assertTextEquals(context.getString(R.string.floating_off))
-            node("floating_enable").performClick()
+            node("floating_enable").performScrollTo().performClick()
             assertFalse(grants.floatingWanted); node("floating_consent").assertExists()
             node("floating_consent").performClick(); assertTrue(grants.floatingWanted)
             node("floating_enable").assertExists(); assertFalse(grants.accessibility)
             assertTrue(actions.isEmpty()) // Consent alone neither grants access nor starts recording.
+        }
+    }
+    @Test fun offWithStillObservedAccessOffersDeliberateRevokeUntilItIsActuallyRemoved() {
+        grants = grants.copy(floatingWanted = false)
+        ActivityScenario.launch(FloatingSetupActivity::class.java).use {
+            node("floating_setup_status").assertTextEquals(context.getString(R.string.floating_off))
+            node("floating_disable").assertTextEquals(context.getString(R.string.floating_revoke))
+            assertEquals(0, disabled)
+            node("floating_disable").performScrollTo().performClick()
+            assertEquals(1, disabled); assertFalse(grants.accessibility)
+            node("floating_disable").assertDoesNotExist()
         }
     }
     @Test fun accessDisclosureAndBackgroundHelpStayAvailableWithoutPermanentParagraphs() {

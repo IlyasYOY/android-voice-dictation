@@ -38,6 +38,7 @@ class FloatingSetupActivity : ComponentActivity() {
         internal var testGrants: (() -> SetupGrants)? = null
         internal var testAction: ((SetupAction) -> Unit)? = null
         internal var testDisable: (() -> Unit)? = null
+        internal var testRationale: ((SetupPermission) -> Boolean)? = null
         internal var testEnable: (() -> Unit)? = null
     }
     private class Model(store: SetupStore) : ViewModel() { val setup = FloatingSetupController(store) }
@@ -74,10 +75,11 @@ class FloatingSetupActivity : ComponentActivity() {
     override fun onResume() { super.onResume(); if (::model.isInitialized) { setup.resumed(grants()); revision++ } }
     private fun render() { if (::model.isInitialized) { setup.refresh(grants()); revision++ } }
     internal fun permissionReturned() { if (::model.isInitialized) setup.permissionReturned(grants()) }
-    private fun microphoneSettings() = setup.requested(SetupPermission.MICROPHONE) && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+    private fun rationale(kind: SetupPermission, permission: String) = testRationale?.invoke(kind) ?: shouldShowRequestPermissionRationale(permission)
+    private fun microphoneSettings() = setup.requested(SetupPermission.MICROPHONE) && !rationale(SetupPermission.MICROPHONE, Manifest.permission.RECORD_AUDIO)
     private fun notificationSettings() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED ||
-        (setup.requested(SetupPermission.NOTIFICATIONS) && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))
+        (setup.requested(SetupPermission.NOTIFICATIONS) && !rationale(SetupPermission.NOTIFICATIONS, Manifest.permission.POST_NOTIFICATIONS))
     private fun primary() {
         when (setup.state.value.step) {
             FloatingSetupStep.MICROPHONE -> if (microphoneSettings()) navigate(SetupAction.MICROPHONE)

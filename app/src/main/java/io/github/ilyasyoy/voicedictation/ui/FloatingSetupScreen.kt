@@ -89,7 +89,7 @@ internal fun FloatingSetupScreen(grants: SetupGrants, progress: SetupProgress, b
             DropdownMenu(more, { more = false }, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.floating_about)) },
                     onClick = { more = false; enableConsent = false; disclosure = true }, modifier = tag("floating_about"))
-                DropdownMenuItem(text = { Text(stringResource(R.string.setup_background)) },
+                if (grants.floatingWanted) DropdownMenuItem(text = { Text(stringResource(R.string.setup_background)) },
                     onClick = { more = false; backgroundHelp = true }, modifier = tag("floating_background_help"))
             }
         }

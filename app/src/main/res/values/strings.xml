@@ -34,16 +34,9 @@
   <string name="floating_service_name">Voice Dictation floating button</string>
   <string name="floating_setup">Set up floating dictation</string>
   <string name="floating_disclosure">Optional special access. Android Accessibility lets this app observe keyboard windows and focused editor metadata across apps, and insert your final dictation. The system grants broader screen-content access; this app does not capture screenshots or read, send, log or save unrelated app text. Only audio you explicitly start is sent to OpenAI and may incur API charges. The bubble never sends messages or presses Enter. Password, numeric/payment and recognized sensitive editors are excluded. Auto-insertion requires Android 13+, a stable caret and a compatible editor; otherwise Copy is offered. No replacement keyboard or separate draw-over-apps permission is required. You can disable this feature here or in Accessibility settings at any time. An API key is needed for transcription. Offline recording is available without one.</string>
-  <string name="floating_enabled">Floating dictation enabled. Tap the circle to start dictation; it never starts by itself.</string>
-  <string name="floating_disabled">Floating dictation is off or Accessibility access is missing.</string>
   <string name="floating_enable">Enable floating dictation</string>
-  <string name="floating_disable">Disable and revoke Accessibility access</string>
-  <string name="floating_settings">Open Accessibility settings</string>
   <string name="floating_agree">Agree and open settings</string>
   <string name="floating_grant_mic">Grant microphone access</string>
-  <string name="floating_grant_notification">Recording notification access/settings</string>
-  <string name="floating_need_notification">Allow notifications so recording always has a visible Stop/Cancel notification.</string>
-  <string name="floating_back">Back to API key and in-app dictation</string>
   <string name="floating_start">Start dictation</string>
   <string name="floating_cancel">Cancel</string>
   <string name="floating_open_setup">Open setup</string>
