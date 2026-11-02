@@ -113,4 +113,14 @@
   <string name="history_less">Скрыть текст</string>
   <string name="history_delete">Удалить</string>
   <string name="history_retry">Повторить распознавание</string>
+  <string name="history_full">История заполнена</string>
+  <string name="history_places_used">Занято: %1$d / %2$d</string>
+  <string name="capacity_history">История</string>
+  <string name="capacity_limit">Лимит</string>
+  <string name="history_limit_title">Лимит истории</string>
+  <string name="history_limit_label">Максимум записей</string>
+  <string name="history_limit_invalid">Введите положительное целое число.</string>
+  <string name="history_limit_detail">Учитываются сохранённые записи и активная диктовка. Снижение лимита сохраняет существующие записи.</string>
+  <string name="history_limit_save">Сохранить лимит</string>
+  <string name="history_full_bubble">История заполнена. Открыть историю</string>
 </resources>

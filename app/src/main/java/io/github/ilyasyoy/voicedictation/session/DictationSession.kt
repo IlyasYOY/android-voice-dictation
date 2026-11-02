@@ -129,19 +129,31 @@ class DictationSession(
         unpersistedDraft = false; problemBeforeDraftFailure = null
     }
     fun permissionDenied() { if (!closed && !state.value.audioBusy) error(Problem.PERMISSION) }
+    fun checkHistoryCapacity(): Boolean = try {
+        recordings.checkCapacity()
+        update { it.copy(capacityBlocked = false) }
+        true
+    } catch (_: HistoryCapacityReached) {
+        update { it.copy(capacityBlocked = true) }; false
+    } catch (_: Exception) { error(Problem.LOCAL_STORAGE); false }
+    private fun capacityReached() { update { it.copy(capacityBlocked = true) } }
     fun start(hasPermission: Boolean) {
         if (closed || state.value.audioBusy || state.value.canRetry || (state.value.mode==Mode.LIVE && state.value.keyBusy)) return
+        if (!checkHistoryCapacity()) return
         if (state.value.mode==Mode.LIVE && !state.value.validKey) { error(Problem.KEY); return }
         if (!hasPermission) { permissionDenied(); return }
         if (!discardAudio()) { error(Problem.LOCAL_STORAGE); return }
-        recordings.beginSession()
+        try { recordings.beginSession(state.value.mode) }
+        catch (_: HistoryCapacityReached) { capacityReached(); return }
+        catch (_: Exception) { error(Problem.LOCAL_STORAGE); return }
         update { it.copy(problem = null, seconds = 0, canRetry = false, safetyStopped = false, livePartial = if (it.mode == Mode.LIVE) it.livePartial else false, completedSegments = 0) }
         if (state.value.mode == Mode.LIVE) { startLive(); return }
         val current = ++generation
         try {
             recorder.start { scope.launch { if (current == generation) safetyStop() } }
             update { it.copy(phase = Phase.RECORDING) }; startTicker()
-        } catch (e: RecordingStorageFailure) { runCatching { recorder.cancel() }; error(Problem.LOCAL_STORAGE) }
+        } catch (_: HistoryCapacityReached) { capacityReached() }
+        catch (e: RecordingStorageFailure) { runCatching { recorder.cancel() }; error(Problem.LOCAL_STORAGE) }
         catch (_: SecurityException) { runCatching { recorder.cancel() }; error(Problem.PERMISSION) }
         catch (_: Exception) { runCatching { recorder.cancel() }; error(Problem.RECORDING) }
     }
@@ -206,13 +218,14 @@ class DictationSession(
                             }
                             LiveEvent.Finished -> {
                                 if (state.value.phase != Phase.FINALIZING) { liveFailure(InvalidTranscript()); continue }
-                                releaseLive()
-                                if (liveText.isBlank()) error(Problem.RESPONSE)
+                                releaseLive(endAdmission = false)
+                                if (liveText.isBlank()) { runCatching { recordings.endSession() }; error(Problem.RESPONSE) }
                                 else {
-                                    val saved=checkpointLive(liveLatestPartial)
+                                    val saved = try { checkpointLive(liveLatestPartial) } finally { runCatching { recordings.endSession() } }
                                     update {it.copy(phase=if(saved)Phase.RESULT else Phase.ERROR,problem=if(saved)null else Problem.LOCAL_STORAGE)}
                                     persistDraft(state.value.text)
                                 }
+
                             }
                             is LiveEvent.Failure -> liveFailure(event.error)
                         }
@@ -224,7 +237,7 @@ class DictationSession(
             finally { runCatching { unowned?.cancel() } }
         }
     }
-    private fun releaseLive() {
+    private fun releaseLive(endAdmission: Boolean = true) {
         ++generation
         request?.cancel(); request = null; ticker?.cancel(); ticker = null
         connectorJob?.cancel(); connectorJob = null
@@ -232,11 +245,12 @@ class DictationSession(
         // Each port must get its cleanup even if another adapter/driver fails.
         runCatching { pcm?.stop() }
         runCatching { live?.cancel() }; live = null
-        runCatching {recordings.endSession()}
+        if (endAdmission) runCatching {recordings.endSession()}
     }
     private fun liveFailure(e: Exception, recording: Boolean = false) {
-        releaseLive()
-        val saved=checkpointLive(true);persistDraft(state.value.text)
+        releaseLive(endAdmission = false)
+        val saved = try { checkpointLive(true) } finally { runCatching { recordings.endSession() } }
+        persistDraft(state.value.text)
         error(if(!saved)Problem.LOCAL_STORAGE else if (recording && e !is SecurityException) Problem.RECORDING else problem(e))
     }
     private fun checkpointLive(partial:Boolean):Boolean = try {

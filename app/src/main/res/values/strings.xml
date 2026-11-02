@@ -111,4 +111,14 @@
   <string name="history_less">Hide transcript</string>
   <string name="history_delete">Delete</string>
   <string name="history_retry">Retry transcription</string>
+  <string name="history_full">History full</string>
+  <string name="history_places_used">Used: %1$d / %2$d</string>
+  <string name="capacity_history">History</string>
+  <string name="capacity_limit">Limit</string>
+  <string name="history_limit_title">History limit</string>
+  <string name="history_limit_label">Maximum items</string>
+  <string name="history_limit_invalid">Enter a positive whole number.</string>
+  <string name="history_limit_detail">Counts saved items and active dictation. Lowering the limit keeps existing items.</string>
+  <string name="history_limit_save">Save limit</string>
+  <string name="history_full_bubble">History full. Manage history</string>
 </resources>

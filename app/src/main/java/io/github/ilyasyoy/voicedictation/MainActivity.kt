@@ -60,7 +60,10 @@ class MainActivity : ComponentActivity() {
                     model::retry, model::edit, ::copy, model::clear, model::forgetKey,
                     onMode = { mode -> model.setMode(mode); if (model.state.value.mode == mode) ModePreferences.save(applicationContext,mode) }, onSave = model::saveKey,
                     onFloatingSetup = { startActivity(Intent(this, FloatingSetupActivity::class.java)) }, evidenceNotice = testNotice,
-                    savedRecordings = recovery.savedCount,
+                    savedRecordings = recovery.savedCount, historyCapacity = recovery.capacity,
+                    onHistoryLimit = { limit -> runCatching {
+                        io.github.ilyasyoy.voicedictation.data.AndroidRecordingStorage.repository(applicationContext).setHistoryLimit(limit)
+                    }.isSuccess },
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true })
                 if (historyOpen) RecordingHistorySheet(
                     onDismiss = { historyOpen = false; model.refreshDraft() },
@@ -76,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private fun record() {
         val state=model.state.value
         if (requestingPermission || state.audioBusy || (state.mode==Mode.LIVE && state.keyBusy)) return
+        if (!model.checkHistoryCapacity()) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             startWithPermission()
         } else { requestingPermission = true; permission.launch(Manifest.permission.RECORD_AUDIO) }

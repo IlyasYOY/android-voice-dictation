@@ -1,5 +1,6 @@
 package io.github.ilyasyoy.voicedictation.session
 
+import io.github.ilyasyoy.voicedictation.data.HistoryCapacityReached
 import io.github.ilyasyoy.voicedictation.data.RecordingRepository
 import io.github.ilyasyoy.voicedictation.data.RecordingUpload
 import io.github.ilyasyoy.voicedictation.data.SavedRecordingFailure
@@ -8,7 +9,8 @@ import java.io.IOException
 
 /** Session file-ownership boundary. Implementations never receive credentials or editor state. */
 interface RecordingRetention {
-    fun beginSession() = Unit
+    fun checkCapacity() = Unit
+    fun beginSession(mode: Mode = Mode.RECORD) = Unit
     fun endSession() = Unit
     fun stopped(audio:File,seconds:Int) = Unit
     fun receivedText(audio:File):String? = null
@@ -51,8 +53,12 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
         if (mainDraft) stored { repository.saveText(io.github.ilyasyoy.voicedictation.data.RecordingTextSlot.MAIN, "") }
         sourceId = null
     }
-    private fun <T> stored(action: () -> T): T = try { action() } catch (e: Exception) { throw RecordingStorageFailure(e) }
-    override fun beginSession() {liveId=null;liveActive=true}
+    private fun <T> stored(action: () -> T): T = try { action() } catch (e: HistoryCapacityReached) { throw e } catch (e: Exception) { throw RecordingStorageFailure(e) }
+    override fun checkCapacity() = stored { repository.requireCapacity() }
+    override fun beginSession(mode: Mode) = stored {
+        liveId = if (mode == Mode.LIVE) repository.reserveLive() else { repository.requireCapacity(); null }
+        liveActive = mode == Mode.LIVE
+    }
     override fun endSession() {liveActive=false;repository.releaseText(liveId)}
     override fun stopped(audio:File,seconds:Int) = stored {repository.duration(audio,seconds)}
     override fun receivedText(audio:File):String? = stored {repository.record(audio)?.let {repository.receivedText(it.id)}}

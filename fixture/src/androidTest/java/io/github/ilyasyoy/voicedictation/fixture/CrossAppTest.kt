@@ -91,6 +91,12 @@ class CrossAppTest {
     private fun specialAccessEnabled() = instrumentation.targetContext.getSystemService(android.view.accessibility.AccessibilityManager::class.java)
         .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
         .any { it.resolveInfo.serviceInfo.packageName == APP }
+    private fun openFloatingSetupFromMain() {
+        launch("$APP.MainActivity")
+        find(By.pkg(APP).desc("Settings"), 60_000).click()
+        scrollFind(By.pkg(APP).text("Set up floating dictation")).click()
+        find(By.clazz("android.widget.ScrollView").pkg(APP), 40_000)
+    }
     private fun setupUserOptIn() {
         val pm = instrumentation.targetContext.packageManager
         if (specialAccessEnabled() && pm.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) == 0 &&
@@ -99,15 +105,14 @@ class CrossAppTest {
             return
         }
         checkpoint("Opening explicit special-access onboarding")
-        launch("$APP.MainActivity")
-        find(label("Set up floating dictation"), 60_000).click()
-        find(By.clazz("android.widget.ScrollView"), 40_000)
+        openFloatingSetupFromMain()
         screenshot("00-floating-setup")
         if (instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) != 0) {
             checkpoint("Requesting microphone through OS UI")
             scrollFind(appId("floating_mic")).click()
-            val allow = device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
-                ?: find(By.res("com.android.packageinstaller", "permission_allow_button"), 40_000)
+            val allow = if (Build.VERSION.SDK_INT < 29) find(By.res("com.android.packageinstaller", "permission_allow_button"), 40_000)
+                else device.wait(Until.findObject(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
+                    ?: find(By.res("com.android.permissioncontroller", "permission_allow_button"), 10_000)
             allow.click()
             device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
         }
@@ -406,6 +411,52 @@ class CrossAppTest {
             device.executeShellCommand(if(originalScale=="null")"settings delete system font_scale" else "settings put system font_scale $originalScale")
         }
     }
+    @Test fun sHistoryCapacityBlocksNewMicrophoneAndResolvesWithoutEditingTheTarget() {
+        launch("$APP.floating.DebugFloatingSetupActivity", server.port)
+        find(label("Use default Record fixture mode")).click()
+        launch("$APP.MainActivity")
+        val entrance = find(By.pkg(APP).descContains("Open recording history"), 60_000)
+        val existing = checkNotNull(Regex("\\((\\d+)\\)").find(entrance.contentDescription)).groupValues[1].toInt()
+        find(By.pkg(APP).desc("Settings")).click()
+        val field = find(By.pkg(APP).clazz("android.widget.EditText"))
+        val originalLimit = field.text.toInt()
+        fun saveVisibleLimit(value: Int) {
+            find(By.pkg(APP).clazz("android.widget.EditText")).apply { click(); text = value.toString() }
+            scrollFind(By.pkg(APP).text("Save limit")).click()
+        }
+        try {
+            saveVisibleLimit(existing + 1)
+            focusField("body"); find(fixtureId("body")).click(); focusField("body")
+            val before = fileRequests.get()
+            find(appId("floating_start"), 40_000).click()
+            find(appId("floating_stop"), 40_000); SystemClock.sleep(1500)
+            find(appId("floating_stop")).click()
+            val deadline = SystemClock.elapsedRealtime() + 45_000
+            while (fileRequests.get() < before + 1 && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
+            assertEquals(before + 1, fileRequests.get())
+            find(By.pkg(APP).desc("History full. Manage history"), 40_000)
+            assertFalse(device.hasObject(appId("floating_stop")))
+            assertFieldUnchanged(); screenshot("vd009-01-full-floating-affordance")
+            find(By.pkg(APP).desc("History full. Manage history")).click()
+            find(By.pkg(APP).text("History full"), 40_000)
+            assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+            SystemClock.sleep(1000); assertEquals(before + 1, fileRequests.get()); assertEquals(0, connections.get())
+            screenshot("vd009-02-deliberate-shared-history")
+            find(By.pkg(APP).text("Limit")).click()
+            saveVisibleLimit(existing + 2)
+            device.pressBack(); focusField("body"); assertFieldUnchanged()
+            find(appId("floating_start"), 40_000).click()
+            find(appId("floating_stop"), 40_000)
+            cancelFloating(); find(appId("floating_start"), 40_000)
+            assertFieldUnchanged(); assertEquals(before + 1, fileRequests.get()); assertEquals(0, connections.get())
+            screenshot("vd009-03-returned-editor-no-stale-insertion")
+            checkpoint("Capacity: one admitted actual recording reached limit; full tap opened history without a second mic/HTTP; explicit increase allowed a fresh capture; Cancel kept target text and prior result")
+        } finally {
+            launch("$APP.MainActivity"); find(By.pkg(APP).desc("Settings"), 60_000).click()
+            val current = find(By.pkg(APP).clazz("android.widget.EditText")).text.toInt()
+            if (current != originalLimit) saveVisibleLimit(originalLimit)
+        }
+    }
     private fun durableStateFile()=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"vd004-upgrade.properties")
     private fun digest(audio:ByteArray)=MessageDigest.getInstance("SHA-256").digest(audio).joinToString("") {"%02x".format(it)}
     private fun historyPlay() = By.pkg(APP).descContains("Play, ")
@@ -506,9 +557,7 @@ class CrossAppTest {
         checkpoint("Fresh guest: main offline/manual-retry success audio and text survived process death; explicit delete survived restart; zero recovery HTTP/WS; separate from interrupted legacy reboot UI run")
     }
     @Test fun zDisableRevokesAccessAndCleansTestConfiguration() {
-        launch("$APP.MainActivity")
-        find(label("Set up floating dictation"), 60_000).click()
-        find(By.clazz("android.widget.ScrollView"), 40_000)
+        openFloatingSetupFromMain()
         screenshot("00-floating-setup")
         scrollFind(appId("floating_disable")).click()
         launch("$FIXTURE.FixtureActivity", server.port); find(fixtureId("body"), 40_000)

@@ -118,8 +118,8 @@ internal class FloatingWindow(
         }
     }
     init { initialize() }
-    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false) {
-        this.imeTop = imeTop; active = recording; hasRecovery = canCopy; requiresSetup = needsSetup
+    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false) {
+        this.imeTop = imeTop; active = recording; hasRecovery = canCopy || historyFull; requiresSetup = needsSetup
         // The service survives configuration changes; every reused view must follow the current palette.
         for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
         val buttonColor = android.content.res.ColorStateList.valueOf(if (dark) SoftCurrentPalette.Night else 0xFFE7DDF2.toInt())
@@ -131,10 +131,10 @@ internal class FloatingWindow(
         if (!active) controlsOpen = false
         layoutControls()
         val recoverable = !active && (canCopy || needsSetup || error || message != context.getString(R.string.floating_start))
-        mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
-        icon.isLongClickable = active || canCopy || needsSetup
+        mark.visual = when { processing && connecting -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; active -> CurrentVisual.RECORDING; needsSetup || error -> CurrentVisual.ERROR; historyFull -> CurrentVisual.ATTENTION; recoverable -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE }
+        icon.isLongClickable = active || canCopy || needsSetup || historyFull
         icon.id = if(active && !processing) R.id.floating_stop else R.id.floating_start
-        icon.contentDescription = context.getString(if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
+        icon.contentDescription = context.getString(if (historyFull && !active) R.string.history_full_bubble else if(!active)R.string.floating_start else if(processing)R.string.current_hold_hint else R.string.current_bubble_hint)
         ViewCompat.setStateDescription(icon, message)
         if (active && cancelAction == -1) cancelAction = ViewCompat.addAccessibilityAction(icon, context.getString(R.string.floating_cancel)) { _, _ -> cancel(); true }
         if (!active && cancelAction != -1) { ViewCompat.removeAccessibilityAction(icon,cancelAction); cancelAction = -1 }

@@ -61,6 +61,10 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
     val playback = remember { AndroidRecordingPlayback.create(context) }
     val playing by playback.state.collectAsStateWithLifecycle()
     val repository = remember { runCatching { AndroidRecordingStorage.repository(context) }.getOrNull() }
+    var limitOpen by rememberSaveable { mutableStateOf(false) }
+    if (limitOpen) HistoryLimitDialog(recovery.capacity, onSave = { limit ->
+        runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess
+    }, onDismiss = { limitOpen = false })
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
     LaunchedEffect(recovery.records) {
         if (draft == null) storedDraft = runCatching {
@@ -103,6 +107,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
                 }
                 context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
             }, onClose = onDismiss, draft = currentDraft, draftProblem = draftProblem, onDraftEdit = onDraftEdit, onDraftClear = onDraftClear,
+            onHistoryLimit = { limitOpen = true },
             waveform = { id, position, modifier -> LoadedAudioTrack(id, repository?.audio(id), position, modifier) })
     }
 }
@@ -112,6 +117,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     audioAvailable: (String) -> Boolean, onPlay: (String) -> Unit, onRetry: (String) -> Unit,
     onDelete: (String) -> Unit, onCopy: (String) -> Unit, onClose: () -> Unit,
     draft: HistoryDraft? = null, draftProblem: Boolean = false, onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
+    onHistoryLimit: () -> Unit = {},
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
     }) {
@@ -133,6 +139,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
         }) {
         LazyColumn(Modifier.fillMaxWidth().testTag("history_list"),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.capacity.full) item("capacity") {
+                HistoryCapacityNotice(state.capacity, onLimit = onHistoryLimit)
+            }
             if (state.storageProblem || draftProblem) item("storage") {
                 Text(stringResource(R.string.error), color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(8.dp).testTag("history_problem").semantics { liveRegion = LiveRegionMode.Polite })

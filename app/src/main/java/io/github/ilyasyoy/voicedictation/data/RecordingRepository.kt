@@ -70,6 +70,11 @@ internal class RecordingRepository(
 ) {
     private val rows = linkedMapOf<String, SavedRecording>()
     private val reserved = mutableSetOf<String>()
+    // Main and overlay share this repository/process. Empty Live admissions carry no
+    // user data and disappear with that process; checkpointed rows always survive.
+    private val liveAdmissions = mutableSetOf<String>()
+    private var countLimit = HistoryCapacity.DEFAULT_LIMIT
+    private var limitReadable = true
     private val uploading = mutableSetOf<RecordingUpload>()
     private val received=mutableMapOf<String,String>() // Copy remains possible if disk commit fails.
     private val observers = CopyOnWriteArrayList<() -> Unit>()
@@ -80,6 +85,7 @@ internal class RecordingRepository(
         val created=root.mkdirs()
         check(created || root.isDirectory) { "Recording directory unavailable" }
         if(created)root.parentFile?.let(AtomicRecordingCommit::syncDirectory)
+        readHistoryLimit()
         root.listFiles()?.filter { it.isDirectory && validId(it.name) }?.forEach { directory ->
             // A crash after the final tombstone unlink may leave an empty directory, never audio.
             if(directory.listFiles()?.isEmpty()==true) {
@@ -103,6 +109,42 @@ internal class RecordingRepository(
         }
     }
 
+    @Synchronized fun capacity() = HistoryCapacity(countLimit, rows.size,
+        liveAdmissions.count { it !in rows }, limitReadable)
+    @Synchronized fun requireCapacity() {
+        if (!limitReadable) throw IOException("History limit unavailable")
+        val state = capacity()
+        if (state.full) throw HistoryCapacityReached(state)
+    }
+    @Synchronized fun setHistoryLimit(limit: Int) {
+        require(limit > 0)
+        val values = Properties().apply { setProperty("format", "1"); setProperty("limit", limit.toString()) }
+        try { commit.write(File(root, "history-limit.properties"), values) }
+        catch (e: Exception) {
+            // A directory-sync failure can happen after atomic replacement. Match the
+            // visible setting instead of admitting against a stale, possibly larger limit.
+            readHistoryLimit(); changed(); throw e
+        }
+        countLimit = limit; limitReadable = true
+        changed()
+    }
+    private fun readHistoryLimit() {
+        val setting = File(root, "history-limit.properties")
+        try {
+            val restored = if (!setting.exists()) HistoryCapacity.DEFAULT_LIMIT else {
+                val p = Properties().apply { setting.inputStream().use { load(it) } }
+                require(p.getProperty("format") == "1")
+                checkNotNull(HistoryCapacity.parse(p.getProperty("limit", "")))
+            }
+            countLimit = restored; limitReadable = true
+        } catch (_: Exception) { limitReadable = false }
+    }
+    @Synchronized fun reserveLive(): String {
+        requireCapacity()
+        val id = UUID.randomUUID().toString()
+        liveAdmissions += id; reserved += id; changed()
+        return id
+    }
     @Synchronized fun records(): List<SavedRecording> = rows.values.sortedByDescending { it.createdAt }
     @Synchronized fun pending(): List<SavedRecording> = rows.values.filter {
         it.id !in reserved && it.kind==SavedRecordingKind.RECORD && audio(it.id).length()>0 &&
@@ -113,7 +155,12 @@ internal class RecordingRepository(
     @Synchronized fun receivedText(id:String):String?=received[id]
     @Synchronized fun receivedTexts():Map<String,String> = received.toMap()
     @Synchronized fun ownedIds():Set<String> = reserved.toSet()
-    @Synchronized fun releaseText(id:String?) {if(id!=null && reserved.remove(id))changed()}
+    @Synchronized fun releaseText(id:String?) {
+        if (id == null) return
+        val admitted = liveAdmissions.remove(id)
+        val owned = reserved.remove(id)
+        if (admitted || owned) changed()
+    }
     @Synchronized fun savedText(slot: RecordingTextSlot): String = savedDraft(slot).text
     @Synchronized fun savedDraft(slot: RecordingTextSlot): SavedRecordingDraft {
         val file = File(root, "${slot.name.lowercase()}-text.properties")
@@ -143,11 +190,28 @@ internal class RecordingRepository(
         if(text.isBlank())return id
         val previous=id?.let(rows::get)
         val now=clock()
-        val record=previous ?: SavedRecording(UUID.randomUUID().toString(),now,now,SavedRecordingStatus.INTERRUPTED,kind=SavedRecordingKind.LIVE)
-        if(previous==null) {check(directory(record.id).mkdir());AtomicRecordingCommit.syncDirectory(root)}
-        if(active)reserved+=record.id else reserved-=record.id
-        save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
-            status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
+        // Already-received text must be kept even during recovery or after a limit
+        // reduction. Ordinary starts were admitted before transport/microphone use.
+        val record=previous ?: SavedRecording(id?.takeIf(::validId) ?: UUID.randomUUID().toString(),now,now,
+            SavedRecordingStatus.INTERRUPTED,kind=SavedRecordingKind.LIVE)
+        try {
+            if(previous==null) {
+                val folder = directory(record.id)
+                check(folder.mkdir() || folder.isDirectory)
+                if (metadata(record.id).exists()) require(read(folder).kind == SavedRecordingKind.LIVE)
+                AtomicRecordingCommit.syncDirectory(root)
+            } else require(previous.kind == SavedRecordingKind.LIVE)
+            if(active)reserved+=record.id else reserved-=record.id
+            save(record.copy(transcript=text,partial=partial,durationSeconds=seconds.coerceAtLeast(0),updatedAt=now,
+                failure=null,status=if(partial)SavedRecordingStatus.INTERRUPTED else SavedRecordingStatus.COMPLETE))
+        } catch (e: Exception) {
+            // A failed first checkpoint may already have staged bytes. Keep that
+            // directory counted after admission release, just as restart would.
+            if (previous == null && directory(record.id).exists()) rows[record.id] = record.copy(status=SavedRecordingStatus.UNAVAILABLE,
+                failure=SavedRecordingFailure.STORAGE)
+            changed()
+            throw e
+        }
         return record.id
     }
     fun observe(observer: () -> Unit): () -> Unit { observers += observer; return { observers -= observer } }
@@ -161,12 +225,23 @@ internal class RecordingRepository(
     }
 
     @Synchronized fun allocate(): File {
+        requireCapacity()
         val id = UUID.randomUUID().toString()
-        check(directory(id).mkdir()) { "Recording directory unavailable" }
-        AtomicRecordingCommit.syncDirectory(root)
         val now = clock()
+        check(directory(id).mkdir()) { "Recording directory unavailable" }
         reserved += id
-        save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
+        try {
+            AtomicRecordingCommit.syncDirectory(root)
+            save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
+        }
+        catch (e: Exception) {
+            // Track even a partially committed allocation. No audio has started yet;
+            // unknown metadata/bytes stay intact and count until explicit cleanup.
+            reserved -= id
+            rows[id] = SavedRecording(id, now, now, SavedRecordingStatus.UNAVAILABLE, failure = SavedRecordingFailure.STORAGE)
+            changed()
+            throw e
+        }
         return audio(id)
     }
 

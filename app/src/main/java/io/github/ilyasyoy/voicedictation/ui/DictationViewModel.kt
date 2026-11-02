@@ -27,6 +27,7 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     fun clear() = session.clear()
     fun refreshDraft() = session.refreshDraft()
     fun permissionDenied() = session.permissionDenied()
+    fun checkHistoryCapacity() = session.checkHistoryCapacity()
     fun start(hasPermission: Boolean) = session.start(hasPermission)
     fun stop() = session.stop()
     fun retry() = session.retry()
