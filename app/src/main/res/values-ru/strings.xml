@@ -8,7 +8,6 @@
   <string name="words_delete">Удалить слово</string>
   <string name="words_options">Действия со словом %1$s</string>
   <string name="words_empty">Добавьте имена и термины, которые часто диктуете.</string>
-  <string name="words_notice">Слова хранятся на устройстве и отправляются с каждой записью или повтором как подсказки распознавания. Результат не гарантирован. Добавление и изменение слов ничего не отправляет.</string>
   <string name="words_empty_error">Введите слово или фразу.</string>
   <string name="words_invalid">Используйте одну строку без управляющих символов, &lt; и &gt;.</string>
   <string name="words_duplicate">Это слово уже есть в списке.</string>

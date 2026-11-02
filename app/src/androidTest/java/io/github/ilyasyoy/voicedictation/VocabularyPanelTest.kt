@@ -88,7 +88,7 @@ class VocabularyPanelTest {
         compose.onNodeWithTag("words_error").assertIsDisplayed()
         compose.onNodeWithTag("words_add_input").assertTextContains("NEOVIM")
     }
-    @Test fun wordNamedNoticeCanBeAddedAndEditedBesideTheNoticeFooter() {
+    @Test fun wordNamedNoticeCanBeAddedAndEdited() {
         var state by mutableStateOf(VocabularyState(listOf("other"), true))
         compose.setContent { VoiceDictationTheme {
             val ui = rememberHistoryUiState()

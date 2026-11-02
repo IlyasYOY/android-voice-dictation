@@ -111,8 +111,6 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
                     }
                 }
             }
-            item("footer:notice") { Text(stringResource(R.string.words_notice), Modifier.padding(8.dp),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }

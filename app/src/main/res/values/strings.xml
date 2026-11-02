@@ -8,7 +8,6 @@
   <string name="words_delete">Delete word</string>
   <string name="words_options">Options for %1$s</string>
   <string name="words_empty">Add names and terms you often dictate.</string>
-  <string name="words_notice">Words stay on this device and are sent with each recording or Retry as recognition hints. Recognition is not guaranteed. Adding or editing a word sends nothing.</string>
   <string name="words_empty_error">Enter a word or phrase.</string>
   <string name="words_invalid">Use one line without control characters or &lt; and &gt;.</string>
   <string name="words_duplicate">This word is already in your list.</string>
