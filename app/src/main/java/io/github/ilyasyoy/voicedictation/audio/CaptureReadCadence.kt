@@ -19,7 +19,11 @@ internal class CaptureReadCadence(bufferFrames: Int, private val sampleRate: Int
     /** Drop optional FFT work first; sustained encoder/storage pressure ends capture explicitly. */
     fun mayAnalyze(nowNanos: Long): Boolean {
         checkBudget(nowNanos)
-        return backlogNanos(nowNanos) <= 100_000_000L
+        // A continuously nonempty stream need not produce an empty read for many minutes.
+        // Allow modest clock skew for FFT suppression only; never relax the hard capture budget.
+        val elapsed = (nowNanos - epochNanos).coerceAtLeast(0)
+        val visualClockTolerance = minOf(elapsed * 300 / 1_000_000, capacityNanos / 4)
+        return backlogNanos(nowNanos) <= 100_000_000L + visualClockTolerance
     }
     private fun backlogNanos(now: Long): Long =
         (now - epochNanos - consumed * 1_000_000_000 / sampleRate).coerceAtLeast(0)

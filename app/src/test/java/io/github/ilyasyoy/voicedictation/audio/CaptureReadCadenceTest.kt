@@ -51,4 +51,18 @@ class CaptureReadCadenceTest {
             assertTrue(cadence.mayAnalyze(now+42_666_667))
         }
     }
+    @Test fun continuousPositiveReadsWith200ppmClockSkewKeepVoiceAnalysisFor30Minutes() {
+        val cadence=CaptureReadCadence(48_000,24_000,0)
+        repeat(42_188) { index ->
+            val nominal=(index+1)*1024L*1_000_000_000/24_000
+            val now=nominal+nominal*200/1_000_000
+            cadence.read(1024,now)
+            assertTrue("analysis at sample block $index",cadence.mayAnalyze(now))
+        }
+    }
+    @Test fun visualClockToleranceNeverRelaxesHardCaptureBudget() {
+        val cadence=CaptureReadCadence(48_000,24_000,0)
+        assertThrows(IOException::class.java) {cadence.read(1024,1_600_000_000)}
+    }
+
 }
