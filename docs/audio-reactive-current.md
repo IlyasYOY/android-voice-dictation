@@ -31,13 +31,13 @@ Successful Stop retains playable AAC/M4A until explicit Delete. Process death du
 
 Android 28 software-emulator tests can validate codec/container/lifecycle behavior, not physical microphone frequency response, speaker identity, vendor encoder performance, or subjective animation quality. Device listening/speaking acceptance remains a merge gate. No video is needed.
 
-## Candidate versions and historical runtime provenance
+## Integrated candidate and historical runtime provenance
 
-This standalone audio candidate is **0.12.1 (versionCode 23)**. The independently maintained adaptive-history PR #11 is **0.11.1 (22)** at `b252d508e19232c093ab6b52d61897a6d130137b`; base Record-only main is **0.10.0 (19)**. Earlier audio candidate 0.12.0 (21) is superseded by this distinct version so it can update the delivered adaptive candidate without a downgrade. This audio-only branch does not contain adaptive layout; installing it changes the app to this separate feature candidate. The increasing codes distinguish sequential update installs without uninstalling data. These are separate feature branches.
+The combined main candidate is **0.12.2 (versionCode 25)**. It includes adaptive history/onboarding/dark-theme fixes from PR #11 and the shared audio response/capture/Stop-tail fixes from PR #12. Its code is higher than the previously delivered standalone candidates. Historical audio-only 0.12.1 (23) and adaptive-only 0.11.2 (24) are superseded by this combined build; standalone behavior described in earlier PR receipts refers to those older commits.
 
 The three actual Android capture/encoder/renderer tests previously passed on **`973e9a0bc3a79834f55820ea69f62690de682b5f`**. In the complete-suite attempt on that same commit, these three plus ApiKeyStoreTest passed before System UI ANR blocked the screen test. **`c55891fae60e506ab965c4e55b03554040a1654b` changes only this document’s acceptance-checklist translation** (20 changed lines); it changes no recording ownership, application, test or build code. Those historical executions must be attributed to `973e9a0`, with their exact delta stated, rather than called new runtime runs of `c55891f`. Current candidate runtime/CI and APK provenance are recorded explicitly in PR #12 and the local verification bundle.
 
-PR #12 contains the audio feature only; adaptive layout remains in PR #11. Later integration must preserve the adaptive dependency and choose a new coherent version; no integration/merge is performed here.
+The integration retains the AndroidX Window dependency, adaptive main/history presentation, cohesive single-pane onboarding, day/night root/window themes and key-save/Paste isolation while wiring the same VoiceLevelSource into the shared control.
 
 After the historical runs above, the backpressure mitigation changes capture code: native headroom becomes two seconds, timing budgets can skip FFT/report capture failure, and Stop preserves the original capture/permission error category while retaining failed audio safely. Historical short-clip passes do not validate this new code; its exact commit and focused rerun are recorded separately in PR #12.
 

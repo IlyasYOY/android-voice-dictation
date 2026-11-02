@@ -41,6 +41,7 @@ fun DictationScreen(
     savedRecordings: Int = 0, onSavedRecordings: () -> Unit = onFloatingSetup,
     historyCapacity: HistoryCapacity? = null, onHistoryLimit: (Int) -> Boolean = { false },
     onSetup: (() -> Unit)? = null, onPasteKey: (() -> Unit)? = null, pasteProblem: Boolean = false,
+    showHistoryEntrance: Boolean = true,
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
@@ -48,11 +49,11 @@ fun DictationScreen(
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
     LaunchedEffect(settingsOpen) { scroll.scrollTo(0) }
-    val historyGesture = remember(settingsOpen, state.audioBusy, onSavedRecordings) {
+    val historyGesture = remember(settingsOpen, state.audioBusy, onSavedRecordings, showHistoryEntrance) {
         object : NestedScrollConnection {
             var distance = 0f
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && !settingsOpen && !state.audioBusy) {
+                if (source == NestedScrollSource.UserInput && showHistoryEntrance && !settingsOpen && !state.audioBusy) {
                     distance = if (available.y < 0) distance - available.y else 0f
                     if (distance > 80f) { distance = 0f; onSavedRecordings() }
                 }
@@ -62,7 +63,7 @@ fun DictationScreen(
     }
     BackHandler(settingsOpen) { settingsOpen = false }
     Scaffold(modifier = Modifier.safeDrawingPadding(), contentWindowInsets = WindowInsets(0), bottomBar = {
-        if (!settingsOpen) HistoryEntrance(savedRecordings, !state.audioBusy, onSavedRecordings)
+        if (!settingsOpen && showHistoryEntrance) HistoryEntrance(savedRecordings, !state.audioBusy, onSavedRecordings)
     }, topBar = {
         Column {
             if (evidenceNotice != null) Surface(color = MaterialTheme.colorScheme.errorContainer) {

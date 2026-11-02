@@ -96,9 +96,13 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                     Text(stringResource(R.string.saved_recordings, savedCount))
                 }
     }
-    if (disclosure) AlertDialog(onDismissRequest = { disclosure = false },
-        title = { Text(stringResource(R.string.floating_service_name)) },
-        text = { Text(stringResource(R.string.floating_disclosure), Modifier.verticalScroll(rememberScrollState())) },
-        confirmButton = { TextButton({ disclosure = false; onEnableFloating() }, Modifier.testTag("setup_agree")) { Text(stringResource(R.string.floating_agree)) } },
-        dismissButton = { TextButton({ disclosure = false }) { Text(stringResource(android.R.string.cancel)) } })
+    if (disclosure) HistorySafeDialog(onDismiss = { disclosure = false },
+        title = stringResource(R.string.floating_service_name),
+        content = { Text(stringResource(R.string.floating_disclosure)) },
+        buttons = {
+            TextButton({ disclosure = false }) { Text(stringResource(android.R.string.cancel)) }
+            TextButton({ disclosure = false; onEnableFloating() }, Modifier.testTag("setup_agree")) {
+                Text(stringResource(R.string.floating_agree))
+            }
+        })
 }

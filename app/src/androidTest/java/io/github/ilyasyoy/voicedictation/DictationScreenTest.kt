@@ -87,6 +87,31 @@ class DictationScreenTest {
         val record=store.records().first {it.transcript==text}
         assertTrue(store.audio(record.id).length()>1000)
     }
+    @Test fun configurationRecreationDoesNotStopRecordingOrRestartUpload() {
+        val release = java.util.concurrent.CountDownLatch(1)
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                release.await(30, TimeUnit.SECONDS)
+                return MockResponse().setBody("{\"text\":\"Synthetic rotation result\"}")
+            }
+        }
+        try {
+            key(); click("record"); waitPhase(Phase.RECORDING)
+            val retained = model
+            scenario.recreate()
+            assertSame(retained, model); waitPhase(Phase.RECORDING)
+            assertEquals(0, server.requestCount)
+            SystemClock.sleep(400)
+            click("stop"); waitPhase(Phase.TRANSCRIBING)
+            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            scenario.recreate()
+            assertSame(retained, model); waitPhase(Phase.TRANSCRIBING)
+            release.countDown(); waitPhase(Phase.RESULT)
+            assertEquals(1, server.requestCount)
+            assertEquals("Synthetic rotation result", model.state.value.text)
+        } finally { release.countDown() }
+    }
+
     @Test fun recordUploadEditCopyAndClear() {
         screenshot("01-idle")
         compose.onNodeWithTag("record").assertIsEnabled()
@@ -175,11 +200,15 @@ class DictationScreenTest {
         scenario.moveToState(Lifecycle.State.CREATED); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(Phase.IDLE,model.state.value.phase)
         scenario.moveToState(Lifecycle.State.RESUMED); assertEquals(0, server.requestCount)
     }
-    @Test fun recreationRetainsSessionDraftButCancelsRecording() {
+    @Test fun recreationRetainsDraftKeyAndRecordingUntilActualBackground() {
         key(); scenario.onActivity { model.edit("Session draft") }
         click("record"); waitPhase(Phase.RECORDING); scenario.recreate()
-        waitPhase(Phase.RESULT); assertEquals("Session draft", model.state.value.text)
-        assertEquals("synthetic-test-key",model.state.value.key); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(0,server.requestCount)
+        waitPhase(Phase.RECORDING); assertEquals("Session draft", model.state.value.text)
+        assertEquals("synthetic-test-key", model.state.value.key)
+        assertEquals(0, RecordingRecovery.processOwned.count); assertEquals(0, server.requestCount)
+        scenario.moveToState(Lifecycle.State.CREATED)
+        assertEquals(Phase.RESULT, model.state.value.phase); assertEquals("Session draft", model.state.value.text)
+        assertEquals(1, RecordingRecovery.processOwned.count); assertEquals(0, server.requestCount)
     }
     @Test fun backCancelsUploadAndIgnoresLateResponse() {
         val release=java.util.concurrent.CountDownLatch(1)
