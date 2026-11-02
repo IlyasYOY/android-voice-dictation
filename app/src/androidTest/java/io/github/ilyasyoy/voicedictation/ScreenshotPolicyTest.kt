@@ -131,13 +131,17 @@ class ScreenshotPolicyTest {
             val context = base.createConfigurationContext(configuration)
             val theme = context.resources.newTheme().apply { applyStyle(R.style.Theme_VoiceDictation, true) }
             val attrs = theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowBackground,
-                android.R.attr.windowLightStatusBar, android.R.attr.windowLightNavigationBar))
+                android.R.attr.windowLightStatusBar))
             try {
                 assertEquals(if (night) P.Night else P.Paper,
                     (attrs.getDrawable(0) as android.graphics.drawable.ColorDrawable).color)
                 assertEquals(!night, attrs.getBoolean(1, false))
-                assertEquals(!night, attrs.getBoolean(2, false))
+
             } finally { attrs.recycle() }
+            if (android.os.Build.VERSION.SDK_INT >= 27) {
+                val bars = theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowLightNavigationBar))
+                try { assertEquals(!night, bars.getBoolean(0, false)) } finally { bars.recycle() }
+            }
         }
     }
 
