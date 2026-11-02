@@ -10,6 +10,8 @@ The service receives only window changes, window-state changes and focused-view 
 
 TYPE_INPUT_METHOD windows identify an on-screen IME independently of its package. A non-focusable TYPE_ACCESSIBILITY_OVERLAY is attached to the system-bound accessibility service. It does not take input focus. The icon can be dragged; touching it explicitly starts the selected mode (Record by default; Live remains connection-first). During capture only the animated control is shown; received text remains in the owned session and is available through intentional recovery after interruption. There is no automatic start on focus/keyboard events.
 
+Completed drags remember a private circle anchor across keyboard/window/service/process recreation and device restart. Geometry changes clamp the visible circle without overwriting user intent; see [coordinate model and persistence](floating-position.md).
+
 No claim of universal keyboard/editor support is made: a hardware keyboard with no visible IME, unexposed/custom editors, floating or OEM windows and privacy-restricted fields may offer no bubble or require Copy. The separate fixture APK contains a second test-only IME; the product does not ship or require it.
 
 ## Microphone lifecycle

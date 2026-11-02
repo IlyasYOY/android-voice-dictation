@@ -457,6 +457,54 @@ class CrossAppTest {
             if (current != originalLimit) saveVisibleLimit(originalLimit)
         }
     }
+    @Test fun tFloatingCircleRemembersDragAcrossKeyboardHomeRotationAndProcessRestart() {
+        fun circle() = find(appId("floating_start"), 40_000)
+        fun reopenEditor() { focusField("body"); find(fixtureId("body"), 40_000).click(); circle() }
+        fun near(expected: android.graphics.Rect) {
+            val actual = circle().visibleBounds
+            val tolerance = (6 * instrumentation.targetContext.resources.displayMetrics.density).toInt()
+            assertTrue("Remembered x: $expected / $actual", kotlin.math.abs(expected.centerX()-actual.centerX()) <= tolerance)
+            assertTrue("Remembered y: $expected / $actual", kotlin.math.abs(expected.centerY()-actual.centerY()) <= tolerance)
+        }
+        fun evidence(name: String) {
+            screenshot(name)
+            // Preserve this scenario's evidence before Gradle removes the fixture package.
+            val source = java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "crossapp-evidence/$name.png")
+            device.executeShellCommand("mkdir -p /sdcard/Download/vd007")
+            device.executeShellCommand("cp ${source.absolutePath} /sdcard/Download/vd007/$name.png")
+        }
+        val initial = circle().visibleBounds
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        val x = (device.displayWidth * .28).toInt()
+        val y = (initial.centerY() - 96 * density).toInt().coerceAtLeast((72 * density).toInt())
+        assertTrue(device.drag(initial.centerX(), initial.centerY(), x, y, 30))
+        SystemClock.sleep(500)
+        val chosen = android.graphics.Rect(circle().visibleBounds)
+        assertTrue(kotlin.math.abs(chosen.centerX()-initial.centerX()) > 32 * density)
+        assertTrue(kotlin.math.abs(chosen.centerY()-initial.centerY()) > 32 * density)
+        assertFieldUnchanged(); evidence("01-dragged-circle")
+        device.pressBack()
+        assertTrue(device.wait(Until.gone(appId("floating_start")), 15_000))
+        reopenEditor(); near(chosen); evidence("02-keyboard-reopened")
+        device.pressHome(); reopenEditor(); near(chosen)
+        try {
+            device.setOrientationLeft(); reopenEditor()
+            val landscape = circle().visibleBounds
+            assertTrue(landscape.left >= 0 && landscape.top >= 0)
+            assertTrue(landscape.right <= device.displayWidth && landscape.bottom <= device.displayHeight)
+            evidence("03-landscape-clamped")
+        } finally { device.setOrientationNatural(); device.unfreezeRotation() }
+        reopenEditor(); near(chosen); evidence("04-portrait-restored")
+        openFloatingSetupFromMain()
+        scrollFind(appId("floating_disable")).click()
+        device.executeShellCommand("am force-stop $APP")
+        setupUserOptIn() // Re-enable via explicit disclosure and Android UI, never a shell grant.
+        reopenEditor(); near(chosen); assertFieldUnchanged()
+        assertEquals(0, fileRequests.get()); assertEquals(0, connections.get())
+        assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
+        evidence("05-new-process-restored")
+        checkpoint("VD007: real circle drag survived keyboard reopen, Home, landscape/portrait and explicit disable/process restart/re-enable; unchanged editor and zero microphone HTTP/WS")
+    }
     private fun durableStateFile()=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"vd004-upgrade.properties")
     private fun digest(audio:ByteArray)=MessageDigest.getInstance("SHA-256").digest(audio).joinToString("") {"%02x".format(it)}
     private fun historyPlay() = By.pkg(APP).descContains("Play, ")
