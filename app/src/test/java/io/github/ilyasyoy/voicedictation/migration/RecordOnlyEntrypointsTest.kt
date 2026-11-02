@@ -9,7 +9,7 @@ class RecordOnlyEntrypointsTest {
         for (name in listOf(
             "session.Mode", "session.ModePreferences", "data.PcmSource", "data.AndroidPcmSource",
             "data.RealtimeTranscriber", "data.OpenAiRealtimeTranscriber", "data.LiveSession",
-            "domain.LiveTranscript", "ui.design.ModeSelectorKt",
+            "domain.LiveTranscript", "domain.AudioTurnDetector", "ui.design.ModeSelectorKt",
         )) assertThrows(ClassNotFoundException::class.java) {
             Class.forName("io.github.ilyasyoy.voicedictation.$name",false,javaClass.classLoader)
         }
