@@ -136,14 +136,14 @@ fun DictationScreen(
                     Button({ focus.clearFocus(); keyboard?.hide(); onSave() }, Modifier.testTag("save_key"), enabled = state.validKey && !state.keySaved && !state.busy) {
                         Text(stringResource(R.string.save_key))
                     }
-                    onPasteKey?.let { paste -> TextButton(paste, Modifier.testTag("paste_key"), enabled = state.key.isEmpty() && !state.hasSavedKey && !state.busy) {
+                    onPasteKey?.let { paste -> TextButton(paste, Modifier.testTag("paste_key"), enabled = state.keyStoreKnown && state.key.isEmpty() && !state.hasSavedKey && !state.busy) {
                         Text(stringResource(R.string.setup_paste))
                     } }
                 }
                 if (pasteProblem) Text(stringResource(R.string.setup_paste_empty), color = MaterialTheme.colorScheme.error)
                 if (state.keySaved) Text(stringResource(R.string.key_saved), Modifier.testTag("key_saved"), style = MaterialTheme.typography.bodySmall)
                 else if (state.hasSavedKey) Text(stringResource(R.string.key_changed), style = MaterialTheme.typography.bodySmall)
-                if (state.key.isNotEmpty() || state.hasSavedKey || state.problem == Problem.STORAGE) TextButton({ focus.clearFocus(); keyboard?.hide(); onForget() }, Modifier.testTag("forget"), enabled = !state.busy) {
+                if (state.key.isNotEmpty() || state.hasSavedKey || !state.keyStoreKnown || state.problem == Problem.STORAGE) TextButton({ focus.clearFocus(); keyboard?.hide(); onForget() }, Modifier.testTag("forget"), enabled = !state.busy) {
                     Text(stringResource(R.string.forget))
                 }
                 Text(stringResource(R.string.privacy), style = MaterialTheme.typography.bodySmall)                        }

@@ -29,12 +29,12 @@ class DictationViewModel(createSession: (CoroutineScope) -> DictationSession) : 
     private val mutableSetupKey = MutableStateFlow(SetupKeyDraft())
     internal val setupKey = mutableSetupKey.asStateFlow()
     internal fun editSetupKey(text: String) {
-        if (!state.value.busy && state.value.keyLoaded && !state.value.hasSavedKey)
+        if (!state.value.busy && state.value.keyLoaded && state.value.keyStoreKnown && !state.value.hasSavedKey)
             mutableSetupKey.value = SetupKeyDraft(text.trim(), active = true)
     }
     internal fun saveSetupKey() {
         val draft = mutableSetupKey.value
-        if (!draft.valid || state.value.busy || !state.value.keyLoaded || state.value.hasSavedKey) return
+        if (!draft.valid || state.value.busy || !state.value.keyLoaded || !state.value.keyStoreKnown || state.value.hasSavedKey) return
         mutableSetupKey.value = draft.copy(confirmed = true)
         session.setKey(draft.text); session.saveKey()
     }

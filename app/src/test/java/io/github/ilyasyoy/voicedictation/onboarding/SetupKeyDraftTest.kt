@@ -93,4 +93,17 @@ class SetupKeyDraftTest {
         assertEquals(Problem.STORAGE, m.state.value.problem); assertEquals("synthetic-existing-key", store.saved)
         assertEquals(0, store.saves); assertEquals(0, store.forgets); assertEquals(0, transmissions)
     }
+    @Test fun unknownStoreAfterReadFailureCannotBeOverwrittenByOnboardingCandidate() = runTest {
+        val store = Store("synthetic-existing-key", failLoad = true); val m = model(store); runCurrent()
+        assertFalse(m.state.value.keyStoreKnown)
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
+        assertEquals("", m.setupKey.value.text); assertEquals(0, store.saves)
+        assertEquals("synthetic-existing-key", store.saved); assertEquals(0, store.forgets)
+        m.start(true); assertEquals(1, starts); m.cancel()
+        // A deliberate Forget resolves the uncertain prior store; it is never automatic.
+        m.forgetKey(); runCurrent(); assertTrue(m.state.value.keyStoreKnown)
+        m.editSetupKey(synthetic); assertEquals(synthetic, m.setupKey.value.text)
+        assertEquals(0, store.saves); assertEquals(0, transmissions)
+    }
+
 }

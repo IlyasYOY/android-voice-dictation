@@ -163,13 +163,13 @@ class MainActivity : ComponentActivity() {
         val state = model.state.value
         val draft = model.setupKey.value
         val candidate = KeyPaste.candidate(state.key.ifEmpty { draft.text }, state.hasSavedKey,
-            state.busy || !state.keyLoaded, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && window.decorView.hasWindowFocus()) {
+            state.busy || !state.keyLoaded || !state.keyStoreKnown, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && window.decorView.hasWindowFocus()) {
             val reader = testPasteReader
             if (reader != null) reader() else SetupPlatform.plainClipboard(this)
         }
         if (candidate == null) { pasteProblem = true; return }
         val current = model.state.value
-        if (current.key.isNotEmpty() || current.hasSavedKey || current.busy || model.setupKey.value.text.isNotEmpty()) return
+        if (current.key.isNotEmpty() || current.hasSavedKey || !current.keyStoreKnown || current.busy || model.setupKey.value.text.isNotEmpty()) return
         model.editSetupKey(candidate); pasteProblem = false
         if (openSetup) setupFlow?.manual()
         refreshSetup()

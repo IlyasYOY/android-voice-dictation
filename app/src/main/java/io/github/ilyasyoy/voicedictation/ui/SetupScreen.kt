@@ -72,9 +72,9 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                             val keyLabel = stringResource(R.string.api_key)
                             OutlinedTextField(draft.text, onKey, Modifier.fillMaxWidth().testTag("setup_key").semantics { contentDescription = keyLabel },
                                 singleLine = true, visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), enabled = !blocked && !state.hasSavedKey)
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), enabled = !blocked && state.keyStoreKnown && !state.hasSavedKey)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                TextButton(onPaste, Modifier.testTag("setup_paste"), enabled = !blocked && draft.text.isEmpty() && state.key.isEmpty() && !state.hasSavedKey) {
+                                TextButton(onPaste, Modifier.testTag("setup_paste"), enabled = !blocked && state.keyStoreKnown && draft.text.isEmpty() && state.key.isEmpty() && !state.hasSavedKey) {
                                     Text(stringResource(R.string.setup_paste))
                                 }
                                 TextButton(onBrowser, Modifier.testTag("setup_browser"), enabled = !blocked) { Text(stringResource(R.string.setup_get_key)) }
@@ -82,7 +82,7 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                             if (state.keyBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                             if (pasteProblem) Text(stringResource(R.string.setup_paste_empty), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("paste_problem"))
                         }
-                        if (ui.storageProblem || navigationProblem || (step == SetupStep.KEY && state.problem == Problem.STORAGE))
+                        if (ui.storageProblem || navigationProblem || (step == SetupStep.KEY && (state.problem == Problem.STORAGE || !state.keyStoreKnown)))
                             Text(stringResource(R.string.error), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("setup_problem"))
                         if (step == SetupStep.BACKGROUND) TextButton(onAppSettings, Modifier.testTag("setup_background_settings"), enabled = !blocked) {
                             Text(stringResource(R.string.setup_app_settings))
@@ -92,7 +92,7 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                                 focus.clearFocus(); keyboard?.hide()
                                 if (step == SetupStep.FLOATING && !grants.floatingWanted) disclosure = true else onPrimary()
                             }, Modifier.fillMaxWidth().testTag("setup_primary"),
-                                enabled = !blocked && (step != SetupStep.KEY || (draft.valid && !state.hasSavedKey))) {
+                                enabled = !blocked && (step != SetupStep.KEY || (draft.valid && state.keyStoreKnown && !state.hasSavedKey))) {
                                 Text(stringResource(label))
                             }
                         }
