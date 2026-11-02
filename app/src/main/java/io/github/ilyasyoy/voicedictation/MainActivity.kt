@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
                     }.isSuccess },
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true },
                     onSetup = if (setupUi.missing != 0) ({ historyOpen = false; model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
-                    onPasteKey = if (setupFlow != null) ({ pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
+                    onPasteKey = if (setupFlow != null) ({ historyOpen = false; pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
                     showHistoryEntrance = !wide)
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,

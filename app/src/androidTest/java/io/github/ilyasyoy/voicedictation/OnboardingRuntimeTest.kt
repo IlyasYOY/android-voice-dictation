@@ -174,4 +174,46 @@ class OnboardingRuntimeTest {
             } finally { clipboard.setPrimaryClip(ClipData.newPlainText("", "")) }
         }
     }
+    @Test fun settingsPasteAfterCompactHistoryAndWideningOpensCohesiveSetup() {
+        // Dedicated test device only. Restore its original wm overrides even after assertion failure.
+        fun shell(command: String): String = instrumentation.uiAutomation.executeShellCommand(command).use {
+            ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().readText()
+        }
+        val oldSize = Regex("""Override size: (\d+x\d+)""").find(shell("wm size"))?.groupValues?.get(1)
+        val oldDensity = Regex("""Override density: (\d+)""").find(shell("wm density"))?.groupValues?.get(1)
+        try {
+            shell("wm size 720x1600"); shell("wm density 320")
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                ready()
+                compose.onNodeWithTag("setup_defer").performScrollTo().performClick()
+                compose.onNodeWithTag("saved_recordings").performClick()
+                compose.onNodeWithTag("history_sheet").assertExists()
+                shell("wm size 1400x1600")
+                compose.waitUntil(30000) { compose.onAllNodesWithTag("history_pane").fetchSemanticsNodes().size == 1 }
+                compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+                compose.onNodeWithTag("open_settings").performClick()
+                compose.onNodeWithTag("paste_key").performScrollTo().performClick()
+                compose.onNodeWithTag("onboarding").assertExists()
+                compose.onNodeWithTag("setup_key").assertExists()
+                compose.onNodeWithTag("history_content").assertDoesNotExist()
+                assertEquals(synthetic, model.setupKey.value.text)
+                assertEquals("", model.state.value.key); assertEquals(0, saves); assertEquals(1, reads)
+                scenario.recreate(); ready()
+                compose.onNodeWithTag("onboarding").assertExists()
+                compose.onNodeWithTag("history_content").assertDoesNotExist()
+                assertEquals(synthetic, model.setupKey.value.text)
+                compose.onNodeWithTag("setup_defer").performScrollTo().performClick()
+                compose.onNodeWithTag("history_pane").assertExists()
+                assertEquals("", model.setupKey.value.text)
+                shell("wm size 720x1600")
+                compose.waitUntil(30000) { compose.onAllNodesWithTag("saved_recordings").fetchSemanticsNodes().size == 1 }
+                compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+                assertEquals(0, saves); assertEquals(0, starts)
+            }
+        } finally {
+            shell("wm size " + (oldSize ?: "reset"))
+            shell("wm density " + (oldDensity ?: "reset"))
+        }
+    }
+
 }
