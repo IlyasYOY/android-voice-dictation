@@ -2,7 +2,7 @@
 
 Selected design A: `History` / `Words` segmented tabs live only inside the existing history panel. On a compact window this is the same bottom sheet; on a wide window it is the persistent right pane. There is no new main-screen entry. Words has an always-visible input and Add above a scrolling list. Each term offers Edit/Delete in its overflow; editing stays inline. Large fonts stack the input/action to keep both usable. Switching to Words stops history playback; the history implementation and actions are otherwise unchanged. Onboarding still occupies one pane.
 
-Panel selection, unfinished add/edit text, caret and both scroll positions are held above the compact/wide branch and restored across configuration changes. Text is saved in Activity instance state, never credentials. Closed sheets clear focus; a relocated input requests its previous focus. The keyboard reduces the safe viewport and the list scrolls underneath the input.
+Panel selection, unfinished add/edit text, caret and both scroll positions are held above the compact/wide branch and restored across configuration changes. Text is saved in Activity instance state, never credentials. Closed sheets clear focus; a relocated input requests its previous focus. The keyboard reduces the safe viewport and the list scrolls underneath the input. In exceptionally short multiwindow/IME viewports the inline form itself can scroll to keep Add reachable. Compact uses one continuous standard drawer; see [adaptive layout](adaptive-history.md).
 
 ## Data and requests
 
