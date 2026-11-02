@@ -11,6 +11,8 @@ internal interface PcmRecordingDriver : AutoCloseable {
     fun read(buffer: ShortArray): Int
     fun write(buffer: ShortArray, size: Int)
     fun stopInput()
+    /** Stop MIC before invoking consume, with at most one bounded snapshot of queued PCM. */
+    fun stopInputAndDrain(consume: (ShortArray, Int) -> Unit) { stopInput() }
     fun finish()
     val cadence: CaptureReadCadence? get() = null
     val bytesWritten: Long
@@ -68,7 +70,22 @@ internal class PcmRecordingRun(
                 } else { spectrum.reset(); silence() }
                 if (samples >= maxSamples || driver.bytesWritten >= maxBytes) { limit = true; break }
             }
-            driver.stopInput() // End actual microphone capture before EOS/MP4 finalization.
+            if (cancelled.get()) driver.stopInput()
+            else {
+                val tailDeadline = nanoTime() + 1_000_000_000L
+                driver.stopInputAndDrain { tail, count ->
+                    require(count in 0..tail.size)
+                    var offset = 0
+                    while (offset < count && samples < maxSamples && !cancelled.get()) {
+                        if (nanoTime() > tailDeadline) throw IOException("Stop tail encoding timed out")
+                        val size = minOf(pcm.size.toLong(), (count - offset).toLong(), maxSamples - samples).toInt()
+                        tail.copyInto(pcm, 0, offset, offset + size)
+                        driver.write(pcm, size) // MIC is already stopped; never capture while draining encoder.
+                        offset += size; samples += size
+                    }
+                    if (!cancelled.get() && nanoTime() > tailDeadline) throw IOException("Stop tail encoding timed out")
+                }
+            }
             if (!cancelled.get()) driver.finish()
         } catch (e: Exception) { failure = e; limit = !stopping.get() }
         finally {
