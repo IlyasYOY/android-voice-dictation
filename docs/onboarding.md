@@ -1,0 +1,17 @@
+# First-run setup (VD011)
+
+Setup shows one missing step: API key, microphone, then the optional keyboard button and its permissions. Existing users with a loaded key and all permissions for their chosen capabilities enter the main screen directly. Key presence is checked locally; launching or resuming never validates a key with the provider.
+
+**Not now** defers the whole guide for the current visit and allows offline Record and stored-history access. Rotation, an app-launched browser/settings round trip, and a permission dialog continue that visit. A normal background/reopen or a fresh process starts a new visit and offers reliably missing setup again. Optional floating opt-out is remembered. Settings offers the guide when something remains missing. Recording capability remains separate from transcription readiness.
+
+The key field is masked. Paste reads a single plain-text clipboard item only after a focused foreground tap, only while no key/candidate exists, and accepts a conservative `sk-` candidate. It never coerces a URI or reads on browser return. A pasted or typed onboarding candidate stays in ViewModel memory through rotation, is absent from saved instance state, and is discarded on deferral or process loss. **Save and continue** is a separate confirmation before the existing encrypted key store receives it. A save failure leaves the guide on the key step. Existing saved keys are never overwritten by Paste. Manual typing in Settings retains its existing explicit Save behavior.
+
+Microphone, enabled accessibility service and notification/channel permissions are observed again on resume. Permission prompts and navigation happen only after a tap, with a guard against duplicates. A permanently denied runtime permission leads to app settings. The floating button remains optional; the existing accessibility disclosure precedes enabling it. Notification readiness follows the existing floating-service requirement for visible Stop/Cancel controls.
+
+Manufacturer background/autostart restrictions cannot be observed reliably. The guide explains this once after the floating prerequisites, records only a successful acknowledgement, and leaves the app-settings control available in Floating settings. It never reports this acknowledgement as a grant. Already configured installations are not interrupted by this optional explanation; they can open it through the guide.
+
+Only nonsecret versioned setup metadata is stored in `onboarding_v1`: prior visit, optional choice, explanation acknowledgement, permission-request flags and legacy migration state. Required deferral is deliberately not persisted. No history, mode, bubble position, recording, key-encryption or retry policy is changed.
+
+## Verification
+
+JVM tests cover migration, re-entry/deferral, denial/cancel, missing/revoked grants, duplicate actions, metadata validation/failure, explicit lazy clipboard access and staged key lifecycle. Android tests separately cover real metadata commits and Compose/activity lifecycle using synthetic key stores/grant observations. The explicit-paste Android test uses only a synthetic clipboard value and requires actual app input focus; this is not proof of provider access or every OEM's permission screens. Existing feature tests explicitly defer setup or use an in-process test-only bypass so their original scenarios remain focused.

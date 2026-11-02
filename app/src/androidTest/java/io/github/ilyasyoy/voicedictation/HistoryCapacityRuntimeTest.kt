@@ -17,6 +17,7 @@ import org.junit.Assert.*
 
 /** Real private ledger/settings, actual Activity/sheet/player. Only audio and transcript fixtures are synthetic. */
 class HistoryCapacityRuntimeTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext

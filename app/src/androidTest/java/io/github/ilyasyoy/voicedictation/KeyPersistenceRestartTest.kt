@@ -14,6 +14,7 @@ import org.junit.Assert.*
 
 /** Dedicated fixture namespace; never reads or changes a user's actual saved credential. */
 class KeyPersistenceRestartTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext

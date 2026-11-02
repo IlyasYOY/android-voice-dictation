@@ -20,6 +20,7 @@ import java.io.File
 
 /** Run on a fresh install or with microphone revoked; exercise the real OS dialogs. */
 class DeniedPermissionTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     @Test fun deniedPermissionCanBeRequestedAgainWithoutBackgroundRecording() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

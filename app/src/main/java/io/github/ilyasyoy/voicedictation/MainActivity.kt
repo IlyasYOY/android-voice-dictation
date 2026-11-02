@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
                 else requestSetupPermission(SetupPermission.MICROPHONE, Manifest.permission.RECORD_AUDIO, SetupAction.MICROPHONE)
             SetupStep.FLOATING -> navigateSetup(SetupAction.ACCESSIBILITY)
             SetupStep.NOTIFICATIONS -> if (notificationSettings()) navigateSetup(SetupAction.NOTIFICATIONS)
-                else if (Build.VERSION.SDK_INT >= 33) requestSetupPermission(SetupPermission.NOTIFICATIONS, Manifest.permission.POST_NOTIFICATIONS, SetupAction.NOTIFICATIONS)
+                else requestSetupPermission(SetupPermission.NOTIFICATIONS, Manifest.permission.POST_NOTIFICATIONS, SetupAction.NOTIFICATIONS)
             SetupStep.BACKGROUND -> setupFlow?.acknowledgeBackground()
             else -> Unit
         }

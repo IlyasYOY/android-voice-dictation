@@ -32,12 +32,20 @@ class CrossAppTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val device get() = UiDevice.getInstance(instrumentation)
     private fun checkpoint(value: String) { instrumentation.sendStatus(2, android.os.Bundle().apply { putString("stream", "\nCHECKPOINT: $value\n") }) }
-    private fun launch(component: String, port: Int? = null) {
+    private fun launch(component: String, port: Int? = null, deferSetup: Boolean = true) {
         val intent = Intent().setComponent(ComponentName(if (component.startsWith("$FIXTURE.")) FIXTURE else APP, component))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         if (port != null) intent.putExtra("port", port)
         if (component == "$FIXTURE.FixtureActivity") intent.putExtra("field", "body")
         instrumentation.targetContext.startActivity(intent)
+        if (component == "$APP.MainActivity" && deferSetup) {
+            val deadline = SystemClock.elapsedRealtime() + 40_000
+            while (!device.hasObject(By.pkg(APP).desc("Settings")) && SystemClock.elapsedRealtime() < deadline) {
+                val notNow = device.findObject(By.pkg(APP).text("Not now"))
+                if (notNow != null) { notNow.click(); checkpoint("Explicitly deferred first-run setup for this existing-feature scenario"); break }
+                SystemClock.sleep(100)
+            }
+        }
     }
     private fun awaitObject(selector: BySelector, timeout: Long): UiObject2? =
         device.wait(Until.findObject(selector), timeout)

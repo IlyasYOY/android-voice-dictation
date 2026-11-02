@@ -32,6 +32,7 @@ import java.nio.ByteOrder
 
 /** Synthetic PCM fixture, actual ledger, sheet, MediaPlayer and clipboard. No OpenAI requests. */
 class RecordingHistoryRuntimeTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose=createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext

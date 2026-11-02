@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit
 
 /** Real Activity, MediaRecorder and HTTP client. Only the API server response is synthetic. */
 class DictationScreenTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)

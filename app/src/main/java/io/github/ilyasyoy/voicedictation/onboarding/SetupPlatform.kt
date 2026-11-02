@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -32,7 +33,7 @@ internal object SetupPlatform {
                 channel?.importance != NotificationManager.IMPORTANCE_NONE)
     }
     fun intent(context: Context, action: SetupAction): Intent = when (action) {
-        SetupAction.KEY_PAGE -> Intent(Intent.ACTION_VIEW, Uri.parse("https://platform.openai.com/api-keys"))
+        SetupAction.KEY_PAGE -> Intent(Intent.ACTION_VIEW, "https://platform.openai.com/api-keys".toUri())
         SetupAction.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         SetupAction.NOTIFICATIONS -> {
             val channel = context.getSystemService(NotificationManager::class.java).getNotificationChannel(FloatingDictationService.CHANNEL)

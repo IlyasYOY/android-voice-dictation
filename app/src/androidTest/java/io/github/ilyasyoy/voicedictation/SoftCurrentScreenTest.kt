@@ -12,6 +12,7 @@ import org.junit.*
 import org.junit.Assert.*
 
 class SoftCurrentScreenTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     private fun capture(name: String) {
         compose.waitForIdle()

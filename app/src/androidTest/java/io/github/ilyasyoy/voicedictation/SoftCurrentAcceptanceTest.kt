@@ -27,6 +27,7 @@ import org.junit.*
 import org.junit.Assert.*
 
 class SoftCurrentAcceptanceTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose=createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private fun capture(name: String) {

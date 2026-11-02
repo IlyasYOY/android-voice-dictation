@@ -15,6 +15,7 @@ import org.junit.Test
 
 /** Main presentation only; precise Setup guidance and storage actions remain separate. */
 class MainErrorScreenTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose=createEmptyComposeRule()
     @Test fun everyMainProblemUsesOneGenericMessageWithoutDiscardOrInlineSettings() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext

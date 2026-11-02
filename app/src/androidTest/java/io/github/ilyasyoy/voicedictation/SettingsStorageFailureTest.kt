@@ -13,6 +13,7 @@ import org.junit.*
 import org.junit.Assert.*
 
 class SettingsStorageFailureTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     @get:Rule val compose = createEmptyComposeRule()
     @Test fun saveAndForgetFailuresStayVisibleInSettings() {
         val saves = AtomicInteger(); val forgets = AtomicInteger()

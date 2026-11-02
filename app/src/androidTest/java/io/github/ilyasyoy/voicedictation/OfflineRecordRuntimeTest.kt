@@ -28,6 +28,7 @@ import java.util.regex.Pattern
 
 /** Actual MediaRecorder/airplane UI; injected offline fault, manual retry through real localhost HTTP. */
 class OfflineRecordRuntimeTest {
+    @get:org.junit.Rule val existingFeatureSetup: org.junit.rules.TestRule = ExistingFeatureSetupRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
     private val device get()=UiDevice.getInstance(instrumentation)
