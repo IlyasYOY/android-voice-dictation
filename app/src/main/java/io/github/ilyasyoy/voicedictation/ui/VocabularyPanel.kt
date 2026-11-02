@@ -49,7 +49,7 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
     Column(modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag("words_content")) {
         WordEntry(ui.wordInput, { ui.wordInput = it; onClearIssue() }, submit,
             stringResource(R.string.words_new), stringResource(R.string.words_add), "words_add_input", "words_add",
-            enabled = state.readable && !busy, restoreFocus = ui.wordFocus == "add", onFocus = { ui.wordFocus = "add" })
+            enabled = state.readable, restoreFocus = ui.wordFocus == "add", onFocus = { ui.wordFocus = "add" }, canSubmit = !busy)
         val error = if (!state.readable && !busy) VocabularyIssue.STORAGE else issue
         if (error != null) Text(stringResource(when (error) {
             VocabularyIssue.EMPTY -> R.string.words_empty_error
@@ -120,22 +120,22 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
 @Composable
 private fun WordEntry(value: TextFieldValue, onValue: (TextFieldValue) -> Unit, onSubmit: () -> Unit,
     label: String, action: String, inputTag: String, actionTag: String, enabled: Boolean,
-    restoreFocus: Boolean, onFocus: () -> Unit) {
+    restoreFocus: Boolean, onFocus: () -> Unit, canSubmit: Boolean = true) {
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (restoreFocus && enabled) requester.requestFocus() }
     val field: @Composable (Modifier) -> Unit = { modifier ->
         OutlinedTextField(value, onValue, enabled = enabled, singleLine = true, label = { Text(label) },
             shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (enabled) onSubmit() }),
+            keyboardActions = KeyboardActions(onDone = { if (enabled && canSubmit) onSubmit() }),
             modifier = modifier.testTag(inputTag).focusRequester(requester).onFocusChanged { if (it.isFocused) onFocus() })
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (LocalDensity.current.fontScale > 1.3f || maxWidth < 240.dp) Column {
             field(Modifier.fillMaxWidth())
-            Button(onSubmit, enabled = enabled && value.text.isNotBlank(), modifier = Modifier.align(Alignment.End).testTag(actionTag)) { Text(action) }
+            Button(onSubmit, enabled = enabled && canSubmit && value.text.isNotBlank(), modifier = Modifier.align(Alignment.End).testTag(actionTag)) { Text(action) }
         } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             field(Modifier.weight(1f))
-            Button(onSubmit, enabled = enabled && value.text.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp).testTag(actionTag)) { Text(action) }
+            Button(onSubmit, enabled = enabled && canSubmit && value.text.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp).testTag(actionTag)) { Text(action) }
         }
     }
 }
