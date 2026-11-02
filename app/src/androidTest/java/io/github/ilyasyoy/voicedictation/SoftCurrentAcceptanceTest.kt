@@ -68,7 +68,7 @@ class SoftCurrentAcceptanceTest {
                 capture("settings-$width-font-$font")
                 compose.onNodeWithTag("close_settings").performScrollTo().performClick()
                 compose.runOnIdle { state=state.copy(phase=Phase.RECORDING) }
-                compose.onNodeWithTag("stop").performScrollTo().assertContentDescriptionEquals("Stop")
+                compose.onNodeWithTag("stop").performScrollTo().assertContentDescriptionEquals(instrumentation.targetContext.getString(io.github.ilyasyoy.voicedictation.R.string.stop))
                 val stopBounds=compose.onNodeWithTag("stop").getUnclippedBoundsInRoot()
                 assertTrue("Full Stop target must fit even with large recording status text: $stopBounds",stopBounds.left>=0.dp && stopBounds.right<=width.dp && stopBounds.top>=0.dp && stopBounds.bottom<=height.dp)
                 capture("recording-$width-font-$font")
