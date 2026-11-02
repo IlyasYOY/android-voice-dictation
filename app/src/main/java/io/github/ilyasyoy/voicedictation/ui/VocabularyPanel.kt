@@ -64,11 +64,11 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
             enabled = !busy, modifier = Modifier.testTag("words_reload")) { Text(stringResource(R.string.words_reload)) }
         LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("words_list"), state = ui.wordList,
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.readable && state.words.isEmpty()) item("empty") {
+            if (state.readable && state.words.isEmpty()) item("header:empty") {
                 Text(stringResource(R.string.words_empty), Modifier.padding(8.dp), style = MaterialTheme.typography.titleMedium)
             }
-            items(state.words, key = { it }) { word ->
-                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            items(state.words, key = { "word:$it" }) { word ->
+                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                     Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(word, Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodyLarge)
@@ -111,7 +111,7 @@ internal fun VocabularyContent(state: VocabularyState, busy: Boolean, issue: Voc
                     }
                 }
             }
-            item("notice") { Text(stringResource(R.string.words_notice), Modifier.padding(8.dp),
+            item("footer:notice") { Text(stringResource(R.string.words_notice), Modifier.padding(8.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
@@ -152,6 +152,10 @@ internal fun HistoryPanel(ui: HistoryUiState, onWordsSelected: () -> Unit, modif
                     ui.wordFocus = null; focus.clearFocus(); ui.wordsSelected = index == 1
                     if (index == 1) onWordsSelected()
                 }, shape = SegmentedButtonDefaults.itemShape(index, 2), icon = {},
+                    colors = SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.primary,
+                        activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                     modifier = Modifier.heightIn(min = 48.dp).testTag(if (index == 0) "history_tab" else "words_tab")) { Text(stringResource(label)) }
             }
         }

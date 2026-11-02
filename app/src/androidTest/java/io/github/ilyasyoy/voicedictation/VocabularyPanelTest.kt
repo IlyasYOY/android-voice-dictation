@@ -88,4 +88,23 @@ class VocabularyPanelTest {
         compose.onNodeWithTag("words_error").assertIsDisplayed()
         compose.onNodeWithTag("words_add_input").assertTextContains("NEOVIM")
     }
+    @Test fun wordNamedNoticeCanBeAddedAndEditedBesideTheNoticeFooter() {
+        var state by mutableStateOf(VocabularyState(listOf("other"), true))
+        compose.setContent { VoiceDictationTheme {
+            val ui = rememberHistoryUiState()
+            VocabularyContent(state, false, null, ui, onSave = { original, text, success ->
+                state = state.copy(words = if (original == null) state.words + text else state.words.map { if (it == original) text else it })
+                success()
+            }, onDelete = { word -> state = state.copy(words = state.words - word) }, onReload = {})
+        } }
+        compose.onNodeWithTag("words_add_input").performTextInput("notice")
+        compose.onNodeWithTag("words_add").performClick()
+        compose.onNodeWithTag("word_menu_notice").assertExists().performClick()
+        compose.onNodeWithTag("word_delete_notice").performClick()
+        compose.onNodeWithTag("word_menu_other").performClick()
+        compose.onNodeWithTag("word_edit_other").performClick()
+        compose.onNodeWithTag("words_edit_input").performTextReplacement("notice")
+        compose.onNodeWithTag("words_save").performClick()
+        compose.onNodeWithTag("word_menu_notice").assertExists()
+    }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="words_title">Слова</string>
-  <string name="words_new">Новое слово или фраза</string>
+  <string name="words_new">Новое слово</string>
   <string name="words_add">Добавить</string>
   <string name="words_edit">Изменить слово</string>
   <string name="words_save">Сохранить</string>

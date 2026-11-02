@@ -23,22 +23,39 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     fun toggle(id: String) { if (!expanded.remove(id)) expanded.add(id) }
     companion object {
         val Saver = listSaver<HistoryUiState, Any>(
-            save = { listOf(it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
+            save = { listOf("history-ui-v2", it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
                 it.draftExpanded, it.deleteId.orEmpty(), it.menuId.orEmpty(), it.limitOpen,
                 it.wordsSelected, it.wordInput.text, it.wordInput.selection.start, it.wordInput.selection.end,
                 it.editingWord.orEmpty(), it.wordEdit.text, it.wordEdit.selection.start, it.wordEdit.selection.end,
                 it.wordList.firstVisibleItemIndex, it.wordList.firstVisibleItemScrollOffset, it.wordFocus.orEmpty()) + it.expanded.toList() },
-            restore = { values -> HistoryUiState(LazyListState(values[0] as Int, values[1] as Int),
-                LazyListState(values[14] as Int, values[15] as Int)).apply {
-                draftExpanded = values[2] as Boolean; deleteId = (values[3] as String).ifEmpty { null }
-                menuId = (values[4] as String).ifEmpty { null }; limitOpen = values[5] as Boolean
-                wordsSelected = values[6] as Boolean
-                wordInput = TextFieldValue(values[7] as String, TextRange(values[8] as Int, values[9] as Int))
-                editingWord = (values[10] as String).ifEmpty { null }
-                wordEdit = TextFieldValue(values[11] as String, TextRange(values[12] as Int, values[13] as Int))
-                wordFocus = (values[16] as String).ifEmpty { null }
-                expanded.addAll(values.drop(17).map { it as String })
-            } })
+            restore = ::restoreSaved)
+
+        /** Old installed versions saved six header fields followed by expanded IDs, without a version. */
+        internal fun restoreSaved(saved: List<Any>): HistoryUiState {
+            val versioned = saved.firstOrNull() == "history-ui-v2"
+            if (!versioned && saved.firstOrNull() !is Int) return HistoryUiState()
+            val values = if (versioned) saved.drop(1) else saved
+            // Recognize the unreleased initial Words shape too; never cast an expanded legacy ID to Boolean.
+            val words = versioned || (values.size >= 17 && values.getOrNull(6) is Boolean)
+            fun position(index: Int) = (values.getOrNull(index) as? Int)?.coerceAtLeast(0) ?: 0
+            fun text(index: Int) = values.getOrNull(index) as? String ?: ""
+            fun input(textIndex: Int, startIndex: Int, endIndex: Int): TextFieldValue {
+                val value = text(textIndex)
+                return TextFieldValue(value, TextRange(position(startIndex).coerceAtMost(value.length), position(endIndex).coerceAtMost(value.length)))
+            }
+            return HistoryUiState(LazyListState(position(0), position(1)),
+                if (words) LazyListState(position(14), position(15)) else LazyListState()).apply {
+                draftExpanded = values.getOrNull(2) as? Boolean ?: false
+                deleteId = text(3).ifEmpty { null }; menuId = text(4).ifEmpty { null }
+                limitOpen = values.getOrNull(5) as? Boolean ?: false
+                if (words) {
+                    wordsSelected = values.getOrNull(6) as? Boolean ?: false
+                    wordInput = input(7, 8, 9); editingWord = text(10).ifEmpty { null }
+                    wordEdit = input(11, 12, 13); wordFocus = text(16).takeIf { it == "add" || it == "edit" }
+                }
+                expanded.addAll(values.drop(if (words) 17 else 6).filterIsInstance<String>())
+            }
+        }
     }
 }
 @Composable internal fun rememberHistoryUiState() = rememberSaveable(saver = HistoryUiState.Saver) { HistoryUiState() }

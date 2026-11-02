@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="words_title">Words</string>
-  <string name="words_new">New word or phrase</string>
+  <string name="words_new">New word</string>
   <string name="words_add">Add</string>
   <string name="words_edit">Edit word</string>
   <string name="words_save">Save</string>
