@@ -22,13 +22,13 @@ internal object HistoryLayoutPolicy {
         val fold = hinge ?: return split(full)
         // Ignore features outside this app window; never infer a hinge from device identity.
         if (fold.vertical) {
-            if (fold.right < 0 || fold.left > w || fold.bottom <= 0 || fold.top >= h) return split(full)
+            if (fold.right <= 0 || fold.left >= w || fold.bottom <= 0 || fold.top >= h) return split(full)
             val left = fold.left.coerceIn(0f, w); val right = fold.right.coerceIn(left, w)
             if (w >= threshold && left >= mainMin && w - right >= historyMin)
                 return HistoryLayout(full, left, right - left, w - right)
             return single(if (left >= w - right) HistoryRegion(0f, 0f, left, h) else HistoryRegion(right, 0f, w - right, h))
         }
-        if (fold.bottom < 0 || fold.top > h || fold.right <= 0 || fold.left >= w) return split(full)
+        if (fold.bottom <= 0 || fold.top >= h || fold.right <= 0 || fold.left >= w) return split(full)
         val top = fold.top.coerceIn(0f, h); val bottom = fold.bottom.coerceIn(top, h)
         // Tabletop: use the larger unobstructed region, rather than span controls across the fold.
         return split(if (top >= h - bottom) HistoryRegion(0f, 0f, w, top) else HistoryRegion(0f, bottom, w, h - bottom))

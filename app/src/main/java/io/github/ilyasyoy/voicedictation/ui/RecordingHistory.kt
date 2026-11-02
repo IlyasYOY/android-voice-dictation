@@ -19,7 +19,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -55,7 +55,7 @@ internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -
 @Composable
 internal fun HistoryPlaybackLifecycle(controller: HistoryViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val activity = LocalContext.current as? android.app.Activity
+    val activity = LocalActivity.current
     DisposableEffect(lifecycle, controller, activity) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP && activity?.isChangingConfigurations != true) controller.background()
@@ -71,7 +71,10 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     recovery: RecordingRecoveryState, controller: HistoryViewModel, ui: HistoryUiState,
     onRecordsChanged: () -> Unit = {}, draft: HistoryDraft? = null, draftProblem: Boolean = false,
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
-    sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f) {
+    sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
+    onOpenForDialog: () -> Unit = {}) {
+    val pendingDialog = ui.deleteId != null || ui.limitOpen
+    LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
@@ -80,7 +83,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val dismiss = { controller.background(); onDismiss() }
+    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; onDismiss() }
     val content: @Composable () -> Unit = {
         RecordingHistory(recovery, playing,
             audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
@@ -93,16 +96,16 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     }
     if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(28.dp)) { content() }
-    else if (open) ModalBottomSheet(onDismissRequest = dismiss,
+    else if (open || pendingDialog) ModalBottomSheet(onDismissRequest = dismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.background,
-        sheetMaxWidth = sheetRegion?.width?.dp ?: 640.dp,
+        sheetMaxWidth = minOf(640.dp, sheetRegion?.width?.dp ?: 640.dp),
         contentWindowInsets = { if (sheetRegion != null) WindowInsets(0) else BottomSheetDefaults.windowInsets },
         modifier = (if (sheetRegion != null) Modifier
             .absoluteOffset(x = (sheetRegion.left - (windowWidth - sheetRegion.width) / 2f).dp,
                 y = -(windowHeight - sheetRegion.top - sheetRegion.height).dp)
             .heightIn(max = sheetRegion.height.dp) else Modifier).testTag("history_sheet")) { content() }
-    if ((wide || open) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
+    if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
         onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
         onDismiss = { ui.limitOpen = false })
 }

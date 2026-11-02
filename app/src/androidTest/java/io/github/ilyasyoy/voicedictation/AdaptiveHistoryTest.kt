@@ -6,6 +6,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -28,8 +30,9 @@ class AdaptiveHistoryTest {
 
     @Test fun sheetPaneResizePreservesExpansionDraftAndMainSettingsWithoutDuplicateContent() {
         val width = mutableStateOf(1000.dp)
+        val font = mutableFloatStateOf(1f)
         val restore = StateRestorationTester(compose)
-        restore.setContent { VoiceDictationTheme {
+        restore.setContent { CompositionLocalProvider(LocalDensity provides Density(.3f, font.floatValue)) { VoiceDictationTheme {
             val controller: HistoryViewModel = viewModel()
             val ui = rememberHistoryUiState()
             var open by rememberSaveable { mutableStateOf(true) }
@@ -43,10 +46,10 @@ class AdaptiveHistoryTest {
                     }
                 }, history = { wide, _, _, _ ->
                     HistoryPresentation(wide, open, { open = false }, RecordingRecoveryState(records = listOf(row)), controller, ui,
-                        draft = HistoryDraft("Synthetic edited draft", row.id))
+                        draft = HistoryDraft("Synthetic edited draft", row.id), onOpenForDialog = { open = true })
                 })
             }
-        } }
+        } } }
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("history_sheet").assertDoesNotExist()
         compose.onNodeWithTag("test_settings").performClick()
@@ -66,6 +69,20 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("test_settings_form").assertExists()
         compose.onAllNodesWithTag("history_content").assertCountEquals(1)
+        compose.onNodeWithTag("history_menu_adaptive").performScrollTo().performClick()
+        compose.onNodeWithTag("history_delete_adaptive").performClick()
+        compose.runOnIdle { width.value = 400.dp }
+        compose.onNodeWithTag("history_sheet").assertExists()
+        compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
+        pressBack() // Cancel confirmation, then dismiss the transferred sheet.
+        pressBack()
+        compose.runOnIdle { width.value = 1000.dp }
+        compose.runOnIdle { font.floatValue = 2f }
+        compose.onNodeWithTag("history_pane").assertDoesNotExist()
+        // The compact presentation was deliberately dismissed earlier; it stays closed.
+        compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+        compose.onNodeWithTag("test_open").performClick()
+        compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
     }
 
     @Test fun deleteConfirmationTransfersOnceAndScrollStateIsShared() {
@@ -73,7 +90,7 @@ class AdaptiveHistoryTest {
         lateinit var ui: HistoryUiState
         val records = (0..39).map { row.copy(id = "row-$it") }
         var deletes = 0
-        compose.setContent { VoiceDictationTheme {
+        compose.setContent { CompositionLocalProvider(LocalDensity provides Density(.3f, 1f)) { VoiceDictationTheme {
             ui = rememberHistoryUiState()
             Box(Modifier.requiredSize(width.value, 600.dp)) {
                 AdaptiveHistoryLayout(main = {}, history = { wide, _, _, _ ->
@@ -85,7 +102,7 @@ class AdaptiveHistoryTest {
                         { true }, {}, {}, { deletes++ }, {}, {}, ui = ui)
                 })
             }
-        } }
+        } } }
         compose.onNodeWithTag("history_list").performScrollToIndex(15)
         var index = 0
         compose.runOnIdle { index = ui.list.firstVisibleItemIndex; ui.expanded.add("row-20"); ui.deleteId = "row-20" }

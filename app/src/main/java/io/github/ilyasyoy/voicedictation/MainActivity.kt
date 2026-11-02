@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },
+                    onOpenForDialog = { historyOpen = true },
                     recovery = recovery, controller = historyController, ui = historyUi,
                     sheetRegion = region, windowWidth = windowWidth, windowHeight = windowHeight,
                     onRecordsChanged = model::refreshDraft,
