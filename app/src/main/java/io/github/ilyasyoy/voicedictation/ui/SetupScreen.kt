@@ -3,7 +3,6 @@ package io.github.ilyasyoy.voicedictation.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -59,13 +58,8 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
         SetupStep.BACKGROUND -> R.string.setup_done
         SetupStep.LOADING -> null
     }
-    Surface(Modifier.fillMaxSize().testTag("onboarding"), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
-            Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(title), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("setup_title"))
-                Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    SetupLayout(stringResource(title), Modifier.testTag("onboarding")) {
+                SetupCard {
                         detail?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium) }
                         if (step == SetupStep.LOADING) LinearProgressIndicator(Modifier.fillMaxWidth())
                         if (step == SetupStep.KEY) {
@@ -88,15 +82,12 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                             Text(stringResource(R.string.setup_app_settings))
                         }
                         primary?.let { label ->
-                            Button({
+                            SetupPrimary(stringResource(label), {
                                 focus.clearFocus(); keyboard?.hide()
                                 if (step == SetupStep.FLOATING && !grants.floatingWanted) disclosure = true else onPrimary()
-                            }, Modifier.fillMaxWidth().testTag("setup_primary"),
-                                enabled = !blocked && (step != SetupStep.KEY || (draft.valid && state.keyStoreKnown && !state.hasSavedKey))) {
-                                Text(stringResource(label))
-                            }
+                            }, Modifier.testTag("setup_primary"),
+                                enabled = !blocked && (step != SetupStep.KEY || (draft.valid && state.keyStoreKnown && !state.hasSavedKey)))
                         }
-                    }
                 }
                 TextButton({ focus.clearFocus(); keyboard?.hide(); disclosure = false; onDefer() }, Modifier.align(Alignment.CenterHorizontally).testTag("setup_defer")) {
                     Text(stringResource(R.string.setup_not_now))
@@ -104,8 +95,6 @@ internal fun SetupScreen(ui: SetupUi, state: DictationState, draft: SetupKeyDraf
                 if (savedCount > 0) TextButton(onHistory, Modifier.align(Alignment.CenterHorizontally).testTag("setup_history")) {
                     Text(stringResource(R.string.saved_recordings, savedCount))
                 }
-            }
-        }
     }
     if (disclosure) AlertDialog(onDismissRequest = { disclosure = false },
         title = { Text(stringResource(R.string.floating_service_name)) },

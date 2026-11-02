@@ -144,4 +144,12 @@
   <string name="setup_app_settings">Открыть настройки приложения</string>
   <string name="setup_done">Готово</string>
   <string name="setup_guide">Настройка по шагам</string>
+  <string name="setup_back">Назад</string>
+  <string name="floating_button_title">Плавающая кнопка</string>
+  <string name="floating_on">Включена</string>
+  <string name="floating_off">Выключена</string>
+  <string name="floating_turn_off">Выключить</string>
+  <string name="floating_revoke">Отозвать доступ</string>
+  <string name="floating_about">О доступе</string>
+  <string name="setup_more">Ещё</string>
 </resources>

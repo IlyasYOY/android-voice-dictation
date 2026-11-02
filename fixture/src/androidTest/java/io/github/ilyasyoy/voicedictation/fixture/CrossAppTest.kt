@@ -103,7 +103,7 @@ class CrossAppTest {
         launch("$APP.MainActivity")
         find(By.pkg(APP).desc("Settings"), 60_000).click()
         scrollFind(By.pkg(APP).text("Set up floating dictation")).click()
-        find(By.clazz("android.widget.ScrollView").pkg(APP), 40_000)
+        find(appId("floating_setup_title"), 40_000)
     }
     private fun setupUserOptIn() {
         val pm = instrumentation.targetContext.packageManager
@@ -115,6 +115,10 @@ class CrossAppTest {
         checkpoint("Opening explicit special-access onboarding")
         openFloatingSetupFromMain()
         screenshot("00-floating-setup")
+        if (device.hasObject(appId("floating_setup_status").text("Off"))) {
+            scrollFind(appId("floating_enable")).click()
+            scrollFind(appId("floating_consent")).click()
+        }
         if (instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.RECORD_AUDIO, APP) != 0) {
             checkpoint("Requesting microphone through OS UI")
             scrollFind(appId("floating_mic")).click()
@@ -124,12 +128,10 @@ class CrossAppTest {
             allow.click()
             device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_foreground_only_button")), 40_000)
         }
-        if (Build.VERSION.SDK_INT >= 33 && instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) != 0) {
-            scrollFind(appId("floating_notifications")).click()
-            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 40_000).click()
-            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 40_000)
+        if (specialAccessEnabled()) {
+            grantFloatingNotificationsIfNeeded()
+            return
         }
-        if (specialAccessEnabled()) return
         // Scroll back to the explicit disclosure/opt-in button.
         repeat(3) { scroll(Direction.UP) }
         checkpoint("Opening accessibility disclosure/settings")
@@ -170,6 +172,15 @@ class CrossAppTest {
             SystemClock.sleep(200)
         }
         assertTrue("OS accessibility consent must actually enable the chosen service",specialAccessEnabled())
+        grantFloatingNotificationsIfNeeded()
+    }
+    private fun grantFloatingNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 && instrumentation.targetContext.packageManager.checkPermission(android.Manifest.permission.POST_NOTIFICATIONS, APP) != 0) {
+            openFloatingSetupFromMain()
+            scrollFind(appId("floating_notifications")).click()
+            find(By.res("com.android.permissioncontroller", "permission_allow_button"), 40_000).click()
+            device.wait(Until.gone(By.res("com.android.permissioncontroller", "permission_allow_button")), 40_000)
+        }
     }
     @Before fun prepare() {
         device.wakeUp()

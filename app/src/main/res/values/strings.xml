@@ -142,4 +142,12 @@
   <string name="setup_app_settings">Open app settings</string>
   <string name="setup_done">Done</string>
   <string name="setup_guide">Setup guide</string>
+  <string name="setup_back">Back</string>
+  <string name="floating_button_title">Floating button</string>
+  <string name="floating_on">On</string>
+  <string name="floating_off">Off</string>
+  <string name="floating_turn_off">Turn off</string>
+  <string name="floating_revoke">Revoke access</string>
+  <string name="floating_about">About access</string>
+  <string name="setup_more">More</string>
 </resources>

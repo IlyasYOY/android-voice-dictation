@@ -12,6 +12,9 @@ internal data class SetupGrants(val microphone: Boolean, val floatingWanted: Boo
 internal data class SetupSnapshot(val keyLoading: Boolean, val keyReady: Boolean, val grants: SetupGrants)
 internal data class SetupProgress(val seen: Boolean = false, val floatingChoiceResolved: Boolean = false,
     val backgroundAcknowledged: Boolean = false, val requested: Int = 0, val legacyReady: Boolean = false) {
+    fun merge(other: SetupProgress) = SetupProgress(seen || other.seen,
+        floatingChoiceResolved || other.floatingChoiceResolved, backgroundAcknowledged || other.backgroundAcknowledged,
+        requested or other.requested, legacyReady || other.legacyReady)
     fun encode() = "1|$seen|$floatingChoiceResolved|$backgroundAcknowledged|$requested|$legacyReady"
     companion object {
         fun decode(raw: String?): SetupProgress {
@@ -42,10 +45,11 @@ internal class SetupFlow(private val store: SetupStore) {
     private val mutableState = MutableStateFlow(SetupUi())
     val state = mutableState.asStateFlow()
     private fun write(next: SetupProgress, required: Boolean = false): Boolean {
-        if (next == progress) return true
-        val saved = store.save(next)
+        val merged = next.merge(store.load())
+        if (merged == progress) return true
+        val saved = store.save(merged)
         if (!saved && required) { mutableState.value = mutableState.value.copy(storageProblem = true); return false }
-        progress = next // Deferral must still allow offline access when metadata storage fails.
+        progress = merged // Deferral must still allow offline access when metadata storage fails.
         return saved
     }
     fun foreground(snapshot: SetupSnapshot) {
@@ -57,6 +61,7 @@ internal class SetupFlow(private val store: SetupStore) {
     }
     fun update(snapshot: SetupSnapshot) {
         latest = snapshot
+        progress = progress.merge(store.load())
         if (!snapshot.keyLoading && !progress.seen) {
             val legacyComplete = snapshot.keyReady && snapshot.grants.microphone &&
                 (!snapshot.grants.floatingWanted || (snapshot.grants.accessibility && snapshot.grants.notifications))
