@@ -34,6 +34,37 @@ class OpenAiTranscriberTest {
         assertTrue(text.contains("name=\"response_format\"") && text.contains("\r\n\r\njson\r\n"))
         assertTrue(text.contains("filename=\"dictation.m4a\"")); assertTrue(text.contains("Content-Type: audio/mp4"))
         assertTrue(body.toList().windowed(4).any { it == audio.readBytes().toList() })
+        assertFalse(text.contains("keywords")); assertFalse(text.contains("name=\"prompt\"")); assertFalse(text.contains("name=\"languages"))
+    }
+    @Test fun `dictionary edits send nothing and each explicit request snapshots current repeated keyword fields`() = runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("request-words").toFile()
+        try {
+            val dictionary = VocabularyRepository(root)
+            val withWords = OpenAiTranscriber(OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
+                server.url("/v1/audio/transcriptions"), dictionary::snapshot)
+            dictionary.add("Neovim"); dictionary.add("Ильяс"); dictionary.add("Responses API")
+            assertEquals(0, server.requestCount)
+            server.enqueue(MockResponse().setBody("{\"text\":\"first\"}").setBodyDelay(300, TimeUnit.MILLISECONDS))
+            val first = async { withWords.transcribe(audio, "synthetic") }
+            val request = withContext(Dispatchers.IO) { server.takeRequest(3, TimeUnit.SECONDS)!! }
+            dictionary.edit("Neovim", "Taskwarrior"); dictionary.delete("Responses API")
+            val body = request.body.readUtf8()
+            assertEquals(3, Regex("name=\"keywords\\[\\]\"").findAll(body).count())
+            for (word in listOf("Neovim", "Ильяс", "Responses API")) assertTrue(body.contains("\r\n\r\n$word\r\n"))
+            assertFalse(body.contains("Taskwarrior")); assertEquals("first", first.await())
+            server.enqueue(MockResponse().setBody("{\"text\":\"retry\"}"))
+            assertEquals("retry", withWords.transcribe(audio, "synthetic"))
+            val retry = server.takeRequest(3, TimeUnit.SECONDS)!!.body.readUtf8()
+            assertTrue(retry.contains("Taskwarrior")); assertTrue(retry.contains("Ильяс")); assertFalse(retry.contains("Neovim"))
+            assertFalse(retry.contains("name=\"prompt\"")); assertEquals(2, server.requestCount)
+        } finally { root.deleteRecursively() }
+    }
+    @Test fun `unreadable dictionary or invalid keyword prevents upload without losing audio`() = runBlocking {
+        val invalid = OpenAiTranscriber(endpoint = server.url("/v1/audio/transcriptions"), keywords = { listOf("bad\nword") })
+        try { invalid.transcribe(audio, "synthetic"); fail() } catch (e: VocabularyFailure) { assertEquals(VocabularyIssue.INVALID, e.issue) }
+        val unavailable = OpenAiTranscriber(endpoint = server.url("/v1/audio/transcriptions"), keywords = { throw VocabularyFailure(VocabularyIssue.STORAGE) })
+        try { unavailable.transcribe(audio, "synthetic"); fail() } catch (e: VocabularyFailure) { assertEquals(VocabularyIssue.STORAGE, e.issue) }
+        assertTrue(audio.exists()); assertEquals(0, server.requestCount)
     }
     @Test fun `api errors preserve status without disclosing server content or retrying`() = runBlocking {
         for (status in listOf(400, 401, 403, 429, 500, 503)) {

@@ -83,8 +83,11 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; onDismiss() }
+    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; ui.wordMenu = null; ui.wordFocus = null; onDismiss() }
     val content: @Composable () -> Unit = {
+        HistoryPanel(ui, onWordsSelected = { controller.background(); ui.menuId = null },
+            modifier = Modifier.fillMaxHeight(if (wide) 1f else .9f),
+            words = { VocabularyPanel(ui, it) }, history = { modifier -> Box(modifier) {
         RecordingHistory(recovery, playing,
             audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
             onPlay = controller::play, onRetry = controller::retry,
@@ -92,11 +95,23 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
-            waveform = { id, position, modifier -> LoadedAudioTrack(id, repository?.audio(id), position, modifier) })
+            waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
+        } })
     }
+    HistoryPanelHost(wide, open || pendingDialog, dismiss, sheetRegion, windowWidth, windowHeight, content)
+    if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
+        onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
+        onDismiss = { ui.limitOpen = false })
+}
+
+/** Stateless host shared with headless component verification; identical bounds/IME policy for both tabs. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HistoryPanelHost(wide: Boolean, open: Boolean, onDismiss: () -> Unit,
+    sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f, content: @Composable () -> Unit) {
     if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(28.dp)) { content() }
-    else if (open || pendingDialog) ModalBottomSheet(onDismissRequest = dismiss,
+    else if (open) ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.background,
         sheetMaxWidth = minOf(640.dp, sheetRegion?.width?.dp ?: 640.dp),
@@ -105,9 +120,6 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             .absoluteOffset(x = (sheetRegion.left - (windowWidth - sheetRegion.width) / 2f).dp,
                 y = -(windowHeight - sheetRegion.top - sheetRegion.height).dp)
             .heightIn(max = sheetRegion.height.dp) else Modifier).testTag("history_sheet")) { content() }
-    if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
-        onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
-        onDismiss = { ui.limitOpen = false })
 }
 
 @Composable

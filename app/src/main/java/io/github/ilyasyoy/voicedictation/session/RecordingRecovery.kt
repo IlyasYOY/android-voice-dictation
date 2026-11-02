@@ -98,7 +98,7 @@ internal class RecordingRecovery {
             failure=when(e) {
                 is CancellationException -> previousFailure
                 is MissingSavedKey -> RecordingRetryFailure.KEY
-                is RecordingStorageFailure -> RecordingRetryFailure.STORAGE
+                is RecordingStorageFailure, is VocabularyFailure -> RecordingRetryFailure.STORAGE
                 is ApiFailure -> if(e.status in setOf(401,403))RecordingRetryFailure.AUTH else RecordingRetryFailure.SERVICE
                 is IOException -> RecordingRetryFailure.NETWORK
                 else -> RecordingRetryFailure.SERVICE
