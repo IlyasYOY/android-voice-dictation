@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -114,4 +115,28 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("history_confirm_delete").performClick()
         compose.runOnIdle { assertEquals(1, deletes); assertNull(ui.deleteId) }
     }
+    @Test fun deleteAndLimitDialogsStayInReportedVerticalAndHorizontalSafeRegions() {
+        val vertical = mutableStateOf(true)
+        val limit = mutableStateOf(false)
+        var boundary = 0f
+        compose.setContent { VoiceDictationTheme {
+            val size = LocalWindowInfo.current.containerSize
+            val density = LocalDensity.current.density
+            val w = size.width / density; val h = size.height / density
+            val safe = if (vertical.value) HistoryRegion(w / 2 + 12f, 0f, w / 2 - 12f, h)
+                else HistoryRegion(0f, h / 2 + 12f, w, h / 2 - 12f)
+            boundary = (if (vertical.value) safe.left else safe.top) * density
+            CompositionLocalProvider(LocalHistoryDialogRegion provides safe) {
+                if (limit.value) HistoryLimitDialog(HistoryCapacity(), { true }, {})
+                else HistorySafeDialog({}, content = { Text("Synthetic delete confirmation") },
+                    buttons = { TextButton({}) { Text("Delete") } })
+            }
+        } }
+        for (v in listOf(true, false)) for (l in listOf(false, true)) {
+            compose.runOnIdle { vertical.value = v; limit.value = l }
+            val bounds = compose.onNodeWithTag("history_safe_dialog").fetchSemanticsNode().boundsInRoot
+            compose.runOnIdle { if (v) assertTrue(bounds.left >= boundary - 1f) else assertTrue(bounds.top >= boundary - 1f) }
+        }
+    }
+
 }

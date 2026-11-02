@@ -31,12 +31,21 @@ internal fun AdaptiveHistoryLayout(hinge: FoldingFeature? = null,
         val plan = HistoryLayoutPolicy.calculate(maxWidth.value, maxHeight.value, density.fontScale, fold)
         val region = plan.region
         Box(Modifier.absoluteOffset(region.left.dp, region.top.dp).width(plan.mainWidth.dp).height(region.height.dp)
-            .testTag("dictation_pane")) { main(plan.wide) }
+            .testTag("dictation_pane")) {
+            CompositionLocalProvider(LocalHistoryDialogRegion provides region.copy(
+                left = region.left + origin.x / density.density, top = region.top + origin.y / density.density,
+                width = plan.mainWidth)) { main(plan.wide) }
+        }
         Box(Modifier.absoluteOffset((region.left + if (plan.wide) plan.mainWidth + plan.gap else 0f).dp, region.top.dp)
             .width((if (plan.wide) plan.historyWidth else region.width).dp).height(region.height.dp)
             .padding(vertical = if (plan.wide) 12.dp else 0.dp, horizontal = if (plan.wide) 8.dp else 0.dp)) {
-            history(plan.wide, region.copy(left = region.left + origin.x / density.density,
-                top = region.top + origin.y / density.density), window.width / density.density, window.height / density.density)
+            val historyRegion = region.copy(
+                left = region.left + (if (plan.wide) plan.mainWidth + plan.gap else 0f) + origin.x / density.density,
+                top = region.top + origin.y / density.density,
+                width = if (plan.wide) plan.historyWidth else region.width)
+            CompositionLocalProvider(LocalHistoryDialogRegion provides historyRegion) {
+                history(plan.wide, historyRegion, window.width / density.density, window.height / density.density)
+            }
         }
     }
 }

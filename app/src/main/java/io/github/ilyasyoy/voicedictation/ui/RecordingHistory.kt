@@ -73,7 +73,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
     onOpenForDialog: () -> Unit = {}) {
-    val pendingDialog = ui.deleteId != null || ui.limitOpen
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
@@ -122,12 +122,13 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     }) {
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
-    if (deleteRecord != null) AlertDialog(onDismissRequest = { ui.deleteId = null },
-        text = { Text(stringResource(R.string.saved_delete_confirm)) },
-        confirmButton = { TextButton({ onDelete(deleteRecord.id); ui.deleteId = null },
-            enabled = !state.retrying && deleteRecord.id !in state.ownedIds, modifier = Modifier.testTag("history_confirm_delete")) {
-            Text(stringResource(R.string.saved_delete))
-        } }, dismissButton = { TextButton({ ui.deleteId = null }) { Text(stringResource(android.R.string.cancel)) } })
+    if (deleteRecord != null) HistorySafeDialog(onDismiss = { ui.deleteId = null },
+        content = { Text(stringResource(R.string.saved_delete_confirm)) }, buttons = {
+            TextButton({ ui.deleteId = null }) { Text(stringResource(android.R.string.cancel)) }
+            TextButton({ onDelete(deleteRecord.id); ui.deleteId = null },
+                enabled = !state.retrying && deleteRecord.id !in state.ownedIds,
+                modifier = Modifier.testTag("history_confirm_delete")) { Text(stringResource(R.string.saved_delete)) }
+        })
     val currentDraft = draft?.takeIf { it.visible }
     val dismissLabel = stringResource(R.string.history_close)
     val historyLabel = stringResource(R.string.history_title)

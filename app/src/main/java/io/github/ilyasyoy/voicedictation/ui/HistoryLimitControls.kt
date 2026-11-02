@@ -50,11 +50,9 @@ internal fun HistoryLimitCard(capacity: HistoryCapacity, onSave: (Int) -> Boolea
 
 @Composable
 internal fun HistoryLimitDialog(capacity: HistoryCapacity, onSave: (Int) -> Boolean, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.history_limit_title)) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-            HistoryLimitEditor(capacity, onSave, onDismiss)
-        } }, confirmButton = {},
-        dismissButton = { TextButton(onDismiss) { Text(stringResource(android.R.string.cancel)) } })
+    HistorySafeDialog(onDismiss, title = stringResource(R.string.history_limit_title),
+        content = { HistoryLimitEditor(capacity, onSave, onDismiss) },
+        buttons = { TextButton(onDismiss) { Text(stringResource(android.R.string.cancel)) } })
 }
 
 @Composable
