@@ -7,4 +7,3 @@ object AudioPolicy {
     const val UPLOAD_BYTES = 24_000_000L
     const val SAMPLE_RATE = 24_000
 }
-
