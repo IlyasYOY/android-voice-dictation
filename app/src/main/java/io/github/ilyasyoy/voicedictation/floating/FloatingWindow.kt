@@ -7,9 +7,12 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
+import android.util.DisplayMetrics
 import android.view.*
 import android.widget.*
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import io.github.ilyasyoy.voicedictation.R
 import io.github.ilyasyoy.voicedictation.ui.design.*
 import kotlin.math.abs
@@ -57,12 +60,14 @@ internal class FloatingWindow(
     private val cancelButton = button(R.string.floating_cancel, R.id.floating_cancel) { controlsOpen = false; cancel() }
     private val discardButton = button(R.string.current_discard, R.id.floating_discard, discard)
     private val setupButton = button(R.string.floating_open_setup, R.id.floating_open_setup, setup)
+    @SuppressLint("RtlHardcoded") // rawX and persisted anchors use physical display-left pixels, also in RTL.
     private val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-        PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
+        PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.LEFT }
     private var attached = false
-    private var moved = false
+    private val position = FloatingPositionState(FloatingPositionPreferences(context))
+    private var dragging = false
     private var imeTop = 0
     private var active = false
     private var hasRecovery = false
@@ -96,28 +101,59 @@ internal class FloatingWindow(
         controls.addView(copyButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         controls.addView(closeButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         content.addView(controls); content.addView(cancelButton); content.addView(setupButton); content.addView(discardButton)
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
+        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragged = false
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         icon.setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false; held = false
+                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false; dragged = false; held = false
                     if (active || hasRecovery || requiresSetup) handler.postDelayed(hold, ViewConfiguration.getLongPressTimeout().toLong())
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX-downX; val dy = event.rawY-downY
-                    if (abs(dx)+abs(dy)>slop) { dragging = true; handler.removeCallbacks(hold) }
-                    if (dragging && !held) { moved = true; params.x=startX+dx.toInt(); params.y=startY+dy.toInt(); clamp(); update() }
+                    if (abs(dx)+abs(dy)>slop) { dragged = true; handler.removeCallbacks(hold) }
+                    if (dragged && !held && attached) {
+                        dragging = true; params.x=startX+dx.toInt(); params.y=startY+dy.toInt()
+                        if (clamp(applyPreference = false)) update() else hide()
+                    }
                     true
                 }
-                MotionEvent.ACTION_UP -> { handler.removeCallbacks(hold); if (!dragging && !held) view.performClick(); true }
-                MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(hold); true }
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(hold)
+                    if (dragging && dragged && !held && attached) safeArea()?.let { area ->
+                        val movedX = abs(event.rawX - downX) > slop
+                        val movedY = abs(event.rawY - downY) > slop
+                        val diagonal = !movedX && !movedY && abs(event.rawX-downX)+abs(event.rawY-downY)>slop
+                        position.dragged(FloatingPoint(params.x + (params.width - dp(64)) / 2, params.y + root.paddingTop), area,
+                            horizontalMoved = movedX || diagonal, verticalMoved = movedY || diagonal)
+                    }
+                    dragging = false
+                    if (!dragged && !held && attached) view.performClick()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(hold); dragging = false
+                    if (attached) { if (clamp()) update() else hide() }
+                    true
+                }
                 else -> false
             }
         }
     }
-    init { initialize() }
+    init {
+        initialize()
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            root.post {
+                if (attached) {
+                    val old = listOf(params.x, params.y, params.width, params.height)
+                    if (!clamp()) hide()
+                    else if (old != listOf(params.x, params.y, params.width, params.height)) update()
+                }
+            }
+            insets
+        }
+    }
     fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false) {
         this.imeTop = imeTop; active = recording; hasRecovery = canCopy || historyFull; requiresSetup = needsSetup
         // The service survives configuration changes; every reused view must follow the current palette.
@@ -149,28 +185,49 @@ internal class FloatingWindow(
         closeButton.visibility = if(panel)View.VISIBLE else View.GONE
         setupButton.visibility = if(panel && needsSetup)View.VISIBLE else View.GONE
         discardButton.visibility = if(panel)View.VISIBLE else View.GONE
-        val resetPosition = !moved || !attached
-        if (resetPosition) { params.x=context.resources.displayMetrics.widthPixels-params.width-dp(8); params.y=Int.MAX_VALUE }
         if (!clamp()) { hide(); return }
-        if(!attached) { wm.addView(root,params); attached=true } else update()
+        if(!attached) { wm.addView(root,params); attached=true; ViewCompat.requestApplyInsets(root) } else update()
         mark.start()
     }
-    private fun clamp(): Boolean {
-        val screen = context.resources.displayMetrics
-        val bars = ViewCompat.getRootWindowInsets(root)?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-        val top = maxOf(dp(24), bars?.top ?: 0)
-        val bottom = minOf(imeTop, screen.heightPixels - (bars?.bottom ?: 0)) - dp(8)
-        val available = bottom-top
-        if (available < dp(64)) return false
+    private fun safeArea(): FloatingArea? {
+        val screen: android.graphics.Rect
+        val insets: WindowInsetsCompat?
+        if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = wm.maximumWindowMetrics
+            screen = metrics.bounds
+            insets = WindowInsetsCompat.toWindowInsetsCompat(metrics.windowInsets)
+        } else {
+            val legacy = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(legacy)
+            screen = android.graphics.Rect(0, 0, legacy.widthPixels, legacy.heightPixels)
+            insets = ViewCompat.getRootWindowInsets(root)
+        }
+        val bars = insets?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+        return FloatingArea.create(screen.width(), screen.height(), imeTop, context.resources.displayMetrics.density,
+            bars?.left ?: 0, bars?.top ?: 0, bars?.right ?: 0, bars?.bottom ?: 0)
+    }
+    private fun clamp(applyPreference: Boolean = !dragging): Boolean {
+        val area = safeArea() ?: return false
+        val available = area.height
+        val minimumWidth = area.diameter + root.paddingLeft + root.paddingRight
+        if (area.width < minimumWidth) return false
+        params.width = params.width.coerceIn(minimumWidth, area.width)
         // Measure real wrapped text/buttons, then give WM an exact bounded height. The ScrollView
         // exposes overflow intentionally; no fixed panel estimate can push actions under the IME.
         root.measure(View.MeasureSpec.makeMeasureSpec(params.width,View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.AT_MOST))
         params.height = root.measuredHeight.coerceAtMost(available)
-        params.x=params.x.coerceIn(0,maxOf(0,screen.widthPixels-params.width))
-        params.y=params.y.coerceIn(top,maxOf(top,bottom-params.height))
+        if (params.height < area.diameter + root.paddingTop + root.paddingBottom) return false
+        if (applyPreference) {
+            val anchor = position.place(area)
+            params.x = anchor.x - (params.width - dp(64)) / 2
+            params.y = anchor.y - root.paddingTop
+        }
+        params.x=params.x.coerceIn(area.left,area.right-params.width)
+        params.y=params.y.coerceIn(area.top,maxOf(area.top,area.bottom-params.height))
         return true
     }
     private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
-    fun hide() { mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
+    fun hide() { mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; dragging=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
 }
