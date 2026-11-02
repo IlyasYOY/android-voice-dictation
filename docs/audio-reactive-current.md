@@ -29,3 +29,9 @@ Successful Stop retains playable AAC/M4A until explicit Delete. Process death du
 8. Перезапустите приложение после завершённой записи: её звук и текст должны сохраниться. Завершение процесса посреди записи проверяйте только на ненужных тестовых данных: строка истории должна остаться как прерванная, но незавершённый M4A может не воспроизводиться.
 
 Android 28 software-emulator tests can validate codec/container/lifecycle behavior, not physical microphone frequency response, speaker identity, vendor encoder performance, or subjective animation quality. Device listening/speaking acceptance remains a merge gate. No video is needed.
+
+## Candidate versions and historical runtime provenance
+
+This standalone audio candidate is **0.12.0 (versionCode 21)**. The independently maintained adaptive-history PR #11 is **0.11.0 (20)** at `0ec58340643361305f19866f2cf53eb4e750eeca`; base Record-only main is **0.10.0 (19)**. The increasing codes distinguish sequential update installs without uninstalling data. These are separate feature branches.
+
+The three actual Android capture/encoder/renderer tests previously passed on **`973e9a0bc3a79834f55820ea69f62690de682b5f`**. In the complete-suite attempt on that same commit, these three plus ApiKeyStoreTest passed before System UI ANR blocked the screen test. **`c55891fae60e506ab965c4e55b03554040a1654b` changes only this document’s acceptance-checklist translation** (20 changed lines); it changes no recording ownership, application, test or build code. Those historical executions must be attributed to `973e9a0`, with their exact delta stated, rather than called new runtime runs of `c55891f`. Current candidate runtime/CI and APK provenance are recorded explicitly in PR #12 and the local verification bundle.
