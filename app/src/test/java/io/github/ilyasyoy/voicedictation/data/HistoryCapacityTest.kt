@@ -106,4 +106,16 @@ class HistoryCapacityTest {
         assertEquals(1, store.capacity().used); assertTrue(store.ownedIds().isEmpty())
         assertEquals(SavedRecordingStatus.UNAVAILABLE, store.records().single().status)
     }
+    @Test fun oldAudioAboveLimitAndSafetyRecoveryAreKeptWithoutEviction() {
+        val root=temporary.newFolder();val cache=temporary.newFolder()
+        repeat(103){File(cache,"$it.m4a").writeText("legacy-$it")}
+        val store=RecordingRepository(root);store.migrateLegacy(cache)
+        assertEquals(103,store.records().size);assertTrue(store.capacity().full)
+        val existing=temporary.newFile("already-stopped.m4a").apply {writeText("must keep")}
+        val retained=store.retain(existing)
+        assertEquals("must keep",retained.readText());assertEquals(104,store.capacity().used)
+        assertThrows(HistoryCapacityReached::class.java){store.allocate()}
+        assertEquals(104,RecordingRepository(root).capacity().used)
+    }
+
 }

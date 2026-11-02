@@ -47,7 +47,6 @@
   <string name="current_bubble_help">Tap the wave to start or stop. Hold during recording for Cancel. A red wave indicates a failed session; tap to start again. Hold while idle to open setup and recover genuinely unsent text. An unverified insertion settles silently and is never repeated. Recovery stays only in process memory until discarded or the process ends.</string>
   <string name="current_back">Back to dictation</string>
   <string name="current_hold_hint">Hold for recording controls</string>
-    <string name="current_cancel_session">Cancel recording</string>
     <string name="current_discard">Discard text</string>
     <string name="current_recover">Available text</string>
     <string name="current_dismiss">Dismiss</string>
