@@ -26,6 +26,7 @@ class OnboardingRuntimeTest {
     private val synthetic = "sk-test-fixture-" + "c".repeat(32)
     private var grants = SetupGrants(true, false, false, true)
     private var saved: String? = null
+    private var failSave = false
     private var loads = 0; private var saves = 0; private var reads = 0; private var starts = 0
     private val actions = mutableListOf<SetupAction>()
     private var progress = SetupProgress()
@@ -45,7 +46,7 @@ class OnboardingRuntimeTest {
             override fun cancel() = Unit
         }, Transcriber { _, _ -> error("No provider call authorized") }, keyStore = object : ApiKeyStore {
             override suspend fun load(): String? { loads++; return saved }
-            override suspend fun save(key: String) { saves++; saved = key }
+            override suspend fun save(key: String) { saves++; if (failSave) throw java.io.IOException("synthetic save failure"); saved = key }
             override suspend fun forget() { saved = null }
         }).also { model = it } }
     }
@@ -75,6 +76,23 @@ class OnboardingRuntimeTest {
             compose.waitUntil(30000) { saves == 1 && model.state.value.keySaved && !model.state.value.keyBusy }
             compose.onNodeWithTag("setup_title").assertTextEquals(instrumentation.targetContext.getString(R.string.setup_keyboard_button))
             assertEquals(0, starts)
+        }
+    }
+    @Test fun failedSaveEditRotationAndNotNowCannotActivateTheStagedKey() {
+        failSave = true
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            ready(); compose.onNodeWithTag("setup_key").performTextReplacement(synthetic)
+            compose.onNodeWithTag("setup_primary").performScrollTo().performClick()
+            compose.waitUntil(30000) { saves == 1 && !model.state.value.keyBusy }
+            assertNull(saved); assertEquals("", model.state.value.key)
+            val replacement = synthetic + "replacement"
+            compose.onNodeWithTag("setup_key").performTextReplacement(replacement)
+            scenario.recreate(); ready()
+            assertEquals(replacement, model.setupKey.value.text); assertEquals("", model.state.value.key)
+            compose.onNodeWithTag("setup_defer").performScrollTo().performClick()
+            compose.onNodeWithTag("record").assertExists()
+            assertEquals("", model.state.value.key); assertFalse(model.setupKeyReady())
+            assertEquals(0, starts); assertEquals(1, saves)
         }
     }
     @Test fun savedInstanceStateDoesNotContainTheUnconfirmedKey() {

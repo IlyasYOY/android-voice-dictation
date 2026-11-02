@@ -61,13 +61,6 @@ class DictationSession(
     private var liveLatestPartial=true
     private fun update(block: (DictationState) -> DictationState) { if (!closed) mutableState.value = block(mutableState.value) }
     fun setKey(key: String) { if (!closed && !state.value.busy) update { it.copy(key = key.trim(), keySaved = key.trim() == savedKey, problem = null) } }
-    /** Drop only an abandoned unsaved candidate, even while its explicit save is pending.
-     * Already persisted keys and independently edited credentials remain intact.
-     */
-    internal fun discardUnsavedKey(candidate: String) {
-        if (closed || state.value.key != candidate || state.value.keySaved || savedKey == candidate) return
-        update { it.copy(key = savedKey.orEmpty(), keySaved = savedKey != null) }
-    }
     init {
         if (keyStore !== NoKeyStore) scope.launch {
             try {
@@ -81,9 +74,14 @@ class DictationSession(
             finally { update { it.copy(keyBusy = false, keyLoaded = true) } }
         }
     }
-    fun saveKey() {
-        if (closed || state.value.busy || !state.value.validKey) return
-        val key = state.value.key
+    fun saveKey() = persistKey(state.value.key)
+    /** An onboarding candidate becomes an active credential only after encrypted persistence succeeds. */
+    internal fun saveSetupKey(candidate: String) {
+        if (!state.value.keyLoaded || !state.value.keyStoreKnown || state.value.hasSavedKey) return
+        persistKey(candidate.trim())
+    }
+    private fun persistKey(key: String) {
+        if (closed || state.value.busy || key.isEmpty() || key.any { it.code !in 33..126 }) return
         update { it.copy(keyBusy = true) }
         scope.launch {
             try { keyStore.save(key); if (closed) return@launch; keyProblem=null; savedKey = key; update { it.copy(key = key, keySaved = true, hasSavedKey = true, keyStoreKnown = true, problem = null) } }

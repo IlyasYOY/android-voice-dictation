@@ -109,7 +109,7 @@ class SetupKeyDraftTest {
     @Test fun failedSaveThenDeferralCannotUploadWithTheAbandonedCandidate() = runTest {
         val store = Store(failSave = true); val m = model(store); runCurrent()
         m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
-        assertEquals(synthetic, m.state.value.key)
+        assertEquals("", m.state.value.key)
         m.clearSetupKey()
         assertEquals("", m.state.value.key); assertFalse(m.setupKeyReady())
         m.start(true); m.stop(); runCurrent()
@@ -129,7 +129,7 @@ class SetupKeyDraftTest {
     @Test fun deferralDuringPendingSaveClearsCandidateBeforeRecordStopAndLateFailure() = runTest {
         val store = PendingStore(fail = true); val m = model(store); runCurrent()
         m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
-        assertTrue(m.state.value.keyBusy)
+        assertTrue(m.state.value.keyBusy); assertEquals("", m.state.value.key)
         m.clearSetupKey(); assertEquals("", m.state.value.key)
         m.start(true); m.stop(); runCurrent()
         assertEquals(0, transmissions)
@@ -157,6 +157,17 @@ class SetupKeyDraftTest {
         m.setKey("synthetic-different-manual-key"); m.clearSetupKey()
         assertEquals("synthetic-different-manual-key", m.state.value.key)
         assertEquals(0, transmissions); assertEquals(0, store.forgets)
+    }
+
+    @Test fun editingAfterFailedSaveKeepsTheReplacementStagedAndOfflineAfterDeferral() = runTest {
+        val store = Store(failSave = true); val m = model(store); runCurrent()
+        m.editSetupKey(synthetic); m.saveSetupKey(); runCurrent()
+        val replacement = synthetic + "replacement"
+        m.editSetupKey(replacement)
+        assertEquals(replacement, m.setupKey.value.text); assertFalse(m.setupKey.value.confirmed)
+        assertEquals("", m.state.value.key); assertFalse(m.setupKeyReady())
+        m.clearSetupKey(); m.start(true); m.stop(); runCurrent()
+        assertEquals(0, transmissions); assertEquals(1, store.saves); assertNull(store.saved)
     }
 
 }
