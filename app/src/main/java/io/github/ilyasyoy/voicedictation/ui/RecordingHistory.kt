@@ -249,11 +249,13 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         record.kind == SavedRecordingKind.RECORD -> Spacer(Modifier.size(48.dp))
                     }
                 }
-                if (record.kind == SavedRecordingKind.RECORD) Text(
-                    if (!available) stringResource(R.string.history_missing_audio)
-                    else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
-                    modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (record.kind == SavedRecordingKind.RECORD) {
+                    Text(
+                        if (!available) stringResource(R.string.history_missing_audio)
+                        else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
+                        modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (expanded || (canRetry && text.isNotBlank())) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)

@@ -24,7 +24,7 @@ internal class VocabularyRepository(private val directory: File, private val com
     @Synchronized fun refresh() {
         try {
             if (directory.mkdirs()) directory.parentFile?.let(AtomicRecordingCommit::syncDirectory)
-            check(directory.isDirectory)
+            check(directory.isDirectory && directory.canRead() && directory.canExecute())
             mutable.value = VocabularyState(read(), true)
         } catch (_: Exception) { mutable.value = mutable.value.copy(readable = false) }
     }
@@ -84,7 +84,8 @@ internal class VocabularyRepository(private val directory: File, private val com
                 throw VocabularyFailure(VocabularyIssue.INVALID)
             val word = input.trim()
             if (word.isEmpty()) throw VocabularyFailure(VocabularyIssue.EMPTY)
-            if (existing.any { identity(it) == identity(word) }) throw VocabularyFailure(VocabularyIssue.DUPLICATE)
+            val normalized = identity(word)
+            if (existing.any { identity(it) == normalized }) throw VocabularyFailure(VocabularyIssue.DUPLICATE)
             return word
         }
         private fun identity(word: String) = Normalizer.normalize(word, Normalizer.Form.NFC).lowercase(Locale.ROOT)
