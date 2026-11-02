@@ -41,7 +41,7 @@ class DictationSession(
     private var keyProblem: Problem? = null
     private val restoredDraft=runCatching {recordings.restoreDraft()}
     private val draft=restoredDraft.getOrNull().orEmpty()
-    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore,
+    private val mutableState = MutableStateFlow(DictationState(mode = initialMode, keyBusy = keyStore !== NoKeyStore, keyLoaded = keyStore === NoKeyStore,
         text=draft,phase=if(draft.isBlank())Phase.IDLE else Phase.RESULT,problem=if(restoredDraft.isFailure)Problem.LOCAL_STORAGE else null))
     val state = mutableState.asStateFlow()
     private var unpersistedDraft = false
@@ -71,7 +71,7 @@ class DictationSession(
                 update { it.copy(key = savedKey.orEmpty(), keySaved = savedKey != null, hasSavedKey = savedKey != null) }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { keyStorageError() }
-            finally { update { it.copy(keyBusy = false) } }
+            finally { update { it.copy(keyBusy = false, keyLoaded = true) } }
         }
     }
     fun saveKey() {

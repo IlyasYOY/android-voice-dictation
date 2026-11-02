@@ -114,6 +114,8 @@ class FloatingSetupActivity : ComponentActivity() {
             button(R.string.current_discard, R.id.floating_discard) { recovery.discard(); render() }
         }
         button(R.string.floating_back) { finish() }
+        button(R.string.setup_app_settings) { startActivity(io.github.ilyasyoy.voicedictation.onboarding.SetupPlatform.intent(this,
+            io.github.ilyasyoy.voicedictation.onboarding.SetupAction.APP_SETTINGS)) }
         layout.addView(TextView(this).apply { text = getString(R.string.floating_disclosure); textSize = 16f; setTextColor(ink); setPadding(0,dp(12),0,dp(12)) })
         for (i in 0 until layout.childCount) (layout.getChildAt(i) as? TextView)?.setTextColor(ink)
         val scroll=ScrollView(this).apply { setBackgroundColor(paper); addView(layout) }

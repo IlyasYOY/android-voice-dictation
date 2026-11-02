@@ -33,7 +33,7 @@
   <string name="storage_error">Could not read or update secure key storage. Forget the saved key and enter it again.</string>
   <string name="floating_service_name">Voice Dictation floating button</string>
   <string name="floating_setup">Set up floating dictation</string>
-  <string name="floating_disclosure">Optional special access. Android Accessibility lets this app observe keyboard windows and focused editor metadata across apps, and insert your final dictation. The system grants broader screen-content access; this app does not capture screenshots or read, send, log or save unrelated app text. Only audio you explicitly start is sent to OpenAI and may incur API charges. The bubble never sends messages or presses Enter. Password, numeric/payment and recognized sensitive editors are excluded. Auto-insertion requires Android 13+, a stable caret and a compatible editor; otherwise Copy is offered. No replacement keyboard or separate draw-over-apps permission is required. You can disable this feature here or in Accessibility settings at any time. Save your API key in the main app first.</string>
+  <string name="floating_disclosure">Optional special access. Android Accessibility lets this app observe keyboard windows and focused editor metadata across apps, and insert your final dictation. The system grants broader screen-content access; this app does not capture screenshots or read, send, log or save unrelated app text. Only audio you explicitly start is sent to OpenAI and may incur API charges. The bubble never sends messages or presses Enter. Password, numeric/payment and recognized sensitive editors are excluded. Auto-insertion requires Android 13+, a stable caret and a compatible editor; otherwise Copy is offered. No replacement keyboard or separate draw-over-apps permission is required. You can disable this feature here or in Accessibility settings at any time. An API key is needed for transcription. Offline recording is available without one.</string>
   <string name="floating_enabled">Floating dictation enabled. Tap the circle to start dictation; it never starts by itself.</string>
   <string name="floating_disabled">Floating dictation is off or Accessibility access is missing.</string>
   <string name="floating_enable">Enable floating dictation</string>
@@ -121,4 +121,25 @@
   <string name="history_limit_detail">Counts saved items and active dictation. Lowering the limit keeps existing items.</string>
   <string name="history_limit_save">Save limit</string>
   <string name="history_full_bubble">History full. Manage history</string>
+  <string name="setup_title">Set up dictation</string>
+  <string name="setup_key_detail">For transcription. You can record offline.</string>
+  <string name="setup_save_continue">Save and continue</string>
+  <string name="setup_paste">Paste</string>
+  <string name="setup_get_key">Get a key</string>
+  <string name="setup_paste_empty">No key to paste.</string>
+  <string name="setup_not_now">Not now</string>
+  <string name="setup_microphone">Microphone</string>
+  <string name="setup_microphone_detail">Records only when you start dictation.</string>
+  <string name="setup_keyboard_button">Keyboard button</string>
+  <string name="setup_floating_detail">Optional. Enable Voice Dictation floating button in Accessibility.</string>
+  <string name="setup_accessibility">Open accessibility</string>
+  <string name="setup_notifications">Recording controls</string>
+  <string name="setup_notifications_detail">Allow notifications for visible Stop and Cancel controls.</string>
+  <string name="setup_allow_notifications">Allow notifications</string>
+  <string name="setup_notification_settings">Open notification settings</string>
+  <string name="setup_background">Background activity</string>
+  <string name="setup_background_detail">Some phones limit background activity. If the button disappears, review your phone’s app settings.</string>
+  <string name="setup_app_settings">Open app settings</string>
+  <string name="setup_done">Done</string>
+  <string name="setup_guide">Setup guide</string>
 </resources>

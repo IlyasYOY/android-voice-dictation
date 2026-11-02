@@ -322,7 +322,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     companion object {
         @Volatile internal var instance: FloatingDictationService? = null
-        private const val CHANNEL = "floating_microphone"
+        internal const val CHANNEL = "floating_microphone"
         private const val NOTIFICATION = 41
         private const val START = "io.github.ilyasyoy.voicedictation.floating.START"
         private const val STOP = "io.github.ilyasyoy.voicedictation.floating.STOP"
