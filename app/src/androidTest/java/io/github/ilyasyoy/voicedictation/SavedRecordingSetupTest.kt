@@ -2,6 +2,8 @@ package io.github.ilyasyoy.voicedictation
 
 import io.github.ilyasyoy.voicedictation.session.*
 
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import org.junit.Rule
 import android.widget.Button
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -14,6 +16,7 @@ import java.io.File
 
 /** Real Setup views with a suspended upload port; no audio capture, key or network call. */
 class SavedRecordingSetupTest {
+    @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     @Test fun recreatedSetupObservesOldRetryCancellationAndReenablesActions() {
         val recovery=RecordingRecovery.processOwned
@@ -27,12 +30,14 @@ class SavedRecordingSetupTest {
         }
         try {
             ActivityScenario.launch(FloatingSetupActivity::class.java).use {scenario->
+                compose.waitForIdle()
                 scenario.onActivity {assertFalse(it.findViewById<Button>(R.id.floating_retry_audio).isEnabled)}
                 scenario.recreate()
+                compose.waitForIdle()
                 scenario.onActivity {assertFalse(it.findViewById<Button>(R.id.floating_discard_audio).isEnabled)}
                 retry.cancel();cleanup.complete(Unit)
                 runBlocking {withTimeout(5000){retry.join()}}
-                instrumentation.waitForIdleSync()
+                compose.waitForIdle()
                 scenario.onActivity {
                     assertTrue(it.findViewById<Button>(R.id.floating_retry_audio).isEnabled)
                     assertTrue(it.findViewById<Button>(R.id.floating_discard_audio).isEnabled)
@@ -47,10 +52,11 @@ class SavedRecordingSetupTest {
         instrumentation.runOnMainSync {recovery.discard();file=recovery.retain(file,RecordingRetryFailure.KEY)}
         try {
             ActivityScenario.launch(FloatingSetupActivity::class.java).use {scenario->
+                compose.waitForIdle()
                 for((failure,message) in listOf(RecordingRetryFailure.KEY to R.string.current_retry_key_error,
                     RecordingRetryFailure.AUTH to R.string.current_retry_key_error,RecordingRetryFailure.NETWORK to R.string.current_retry_network_error)) {
                     instrumentation.runOnMainSync {recovery.retain(file,failure)}
-                    instrumentation.waitForIdleSync()
+                    compose.waitForIdle()
                     scenario.onActivity {
                         assertEquals(it.getString(message),it.findViewById<TextView>(R.id.floating_audio_problem).text.toString())
                         assertTrue(it.findViewById<Button>(R.id.floating_retry_audio).isEnabled)
