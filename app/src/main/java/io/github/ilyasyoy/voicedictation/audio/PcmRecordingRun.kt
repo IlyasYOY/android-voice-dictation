@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.audio
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -87,10 +89,10 @@ internal class PcmRecordingRun(
                 }
             }
             if (!cancelled.get()) driver.finish()
-        } catch (e: Exception) { failure = e; limit = !stopping.get() }
+        } catch (e: Exception) { Diagnostics.failure(DiagnosticArea.RECORDER, DiagnosticAction.RECORD, e); failure = e; limit = !stopping.get() }
         finally {
             stopping.set(true); silence(); spectrum.reset(); pcm.fill(0)
-            try { driver.close() } catch (e: Exception) { if (failure == null) failure = e }
+            try { driver.close() } catch (e: Exception) { Diagnostics.failure(DiagnosticArea.RECORDER, DiagnosticAction.CLOSE, e); if (failure == null) failure = e }
             // Cancellation is serialized with this decision, including a cancel arriving during close.
             runCatching(released)
             synchronized(cancelled) {

@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.session
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import android.content.Context
 import java.io.File
 import io.github.ilyasyoy.voicedictation.data.*
@@ -24,7 +26,7 @@ internal object DictationSessions {
     fun prepare(context: Context) {
         runCatching {AndroidRecordingStorage.repository(context)}
             .onSuccess {RecordingRecovery.processOwned.attach(it)}
-            .onFailure {RecordingRecovery.processOwned.storageUnavailable()}
+            .onFailure {Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, it);RecordingRecovery.processOwned.storageUnavailable()}
     }
 
     fun create(context: Context, scope: CoroutineScope, keyStore: ApiKeyStore? = null,

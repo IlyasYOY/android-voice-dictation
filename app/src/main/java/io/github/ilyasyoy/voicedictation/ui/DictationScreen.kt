@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation.ui
 
 import io.github.ilyasyoy.voicedictation.session.*
+import io.github.ilyasyoy.voicedictation.diagnostics.ExportState
 import io.github.ilyasyoy.voicedictation.data.HistoryCapacity
 import io.github.ilyasyoy.voicedictation.ui.design.*
 import androidx.activity.compose.BackHandler
@@ -41,6 +42,7 @@ fun DictationScreen(
     historyCapacity: HistoryCapacity? = null, onHistoryLimit: (Int) -> Boolean = { false },
     onSetup: (() -> Unit)? = null, onPasteKey: (() -> Unit)? = null, pasteProblem: Boolean = false,
     onSettingsVisibilityChanged: (Boolean) -> Unit = {},
+    onExportLogs: () -> Unit = {}, logExportState: ExportState = ExportState.IDLE,
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
@@ -90,6 +92,20 @@ fun DictationScreen(
                     }
                 }
                 if (settingsOpen) {
+                    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.diagnostics_retention), style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onExportLogs, Modifier.fillMaxWidth().testTag("export_logs"), enabled = !logExportState.busy) {
+                                Text(stringResource(if (logExportState.busy) R.string.diagnostics_saving else R.string.diagnostics_export))
+                            }
+                            if (logExportState == ExportState.SAVED || logExportState == ExportState.FAILED) Text(
+                                stringResource(if (logExportState == ExportState.SAVED) R.string.diagnostics_saved else R.string.diagnostics_failed),
+                                Modifier.testTag("export_status").semantics { liveRegion = LiveRegionMode.Polite },
+                                color = if (logExportState == ExportState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     if (historyCapacity != null) HistoryLimitCard(historyCapacity, onHistoryLimit)
                     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

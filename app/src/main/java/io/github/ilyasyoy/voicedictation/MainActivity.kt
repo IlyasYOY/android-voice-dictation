@@ -1,6 +1,7 @@
 package io.github.ilyasyoy.voicedictation
 
 import android.Manifest
+import io.github.ilyasyoy.voicedictation.diagnostics.*
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -36,6 +37,13 @@ import io.github.ilyasyoy.voicedictation.onboarding.*
 import io.github.ilyasyoy.voicedictation.floating.FloatingPreferences
 
 class MainActivity : ComponentActivity() {
+    private val logExport by lazy { ViewModelProvider(this)[DiagnosticExportViewModel::class.java] }
+    private val saveLogs = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> logExport.selected(uri) }
+    private fun exportLogs() {
+        if (!logExport.choose()) return
+        try { saveLogs.launch("voice-dictation-logs-${java.time.LocalDate.now(java.time.ZoneOffset.UTC)}.zip") }
+        catch (error: Exception) { logExport.pickerFailed(error) }
+    }
     private lateinit var model: DictationViewModel
     private var setupFlow: SetupFlow? = null
     private var setupGrants by mutableStateOf(SetupGrants(false, false, false, false))
@@ -53,6 +61,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Diagnostics.record(DiagnosticArea.MAIN, DiagnosticAction.START)
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -80,6 +89,7 @@ class MainActivity : ComponentActivity() {
                 val historyController: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
                 HistoryPlaybackLifecycle(historyController)
                 val state by model.state.collectAsStateWithLifecycle()
+                val logExportState by logExport.state.collectAsStateWithLifecycle()
                 val draft by model.setupKey.collectAsStateWithLifecycle()
                 val setupUi = setupFlow?.state?.collectAsStateWithLifecycle()?.value ?: SetupUi()
                 LaunchedEffect(state.keyLoaded, state.keyBusy, state.keySaved, state.hasSavedKey, state.validKey, draft.active, draft.confirmed) {
@@ -119,7 +129,8 @@ class MainActivity : ComponentActivity() {
                     onSavedRecordings = { retainRetryRecording(); historyOpen = true },
                     onSetup = if (setupUi.missing != 0) ({ historyOpen = false; model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
                     onPasteKey = if (setupFlow != null) ({ historyOpen = false; pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
-                    onSettingsVisibilityChanged = { settingsOpen = it })
+                    onSettingsVisibilityChanged = { settingsOpen = it },
+                    onExportLogs = ::exportLogs, logExportState = logExportState)
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },
@@ -137,6 +148,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        Diagnostics.record(DiagnosticArea.MAIN, DiagnosticAction.RESUME)
         setupFlow?.navigationReturned()
         if (::model.isInitialized) refreshSetup(checkGrants = true, foreground = true)
     }
@@ -230,6 +242,7 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
     }
     override fun onStop() {
+        Diagnostics.record(DiagnosticArea.MAIN, if (isChangingConfigurations) DiagnosticAction.CONFIGURATION else DiagnosticAction.BACKGROUND)
         setupFlow?.background(continuation = isChangingConfigurations || requestingPermission)
         requestingPermission = false
         if (::model.isInitialized && !isChangingConfigurations) {

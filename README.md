@@ -1,5 +1,7 @@
 # Android Voice Dictation
 
+[Local diagnostics](docs/diagnostics.md): Settings → **Save logs ZIP**, retained for up to 7 days / 1 MiB. Manual export only; no dictation content or credentials.
+
 [Custom vocabulary / Words](docs/custom-vocabulary.md): saved recognition hints in a History/Words tab inside the existing history panel, with inline Add/Edit/Delete. Terms are sent with each explicit transcription; editing the list sends nothing.
 
 Приватное Android-приложение для записи и распознавания речи. Android 8+ / API 26, compile/target API 36; Kotlin, Compose, Material 3, русский и английский интерфейс.

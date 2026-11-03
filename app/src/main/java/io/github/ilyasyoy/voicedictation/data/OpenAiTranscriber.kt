@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.data
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 import java.io.File
 import java.io.IOException
@@ -33,6 +35,18 @@ class OpenAiTranscriber(
     private val keywords: () -> List<String> = { emptyList() },
 ) : Transcriber {
     override suspend fun transcribe(audio: File, key: String): String {
+        Diagnostics.record(DiagnosticArea.NETWORK, DiagnosticAction.START)
+        try {
+            return requestTranscript(audio, key).also { Diagnostics.record(DiagnosticArea.NETWORK, DiagnosticAction.STOP) }
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            Diagnostics.record(DiagnosticArea.NETWORK, DiagnosticAction.CANCEL, DiagnosticCode.CANCELLED)
+            throw cancel
+        } catch (error: Exception) {
+            Diagnostics.failure(DiagnosticArea.NETWORK, DiagnosticAction.PROCESS, error)
+            throw error
+        }
+    }
+    private suspend fun requestTranscript(audio: File, key: String): String {
         require(audio.length() in 1..AudioPolicy.UPLOAD_BYTES)
         require(key.isNotBlank() && key.none { it.isWhitespace() || it.code < 32 })
         val words = keywords().toList()
