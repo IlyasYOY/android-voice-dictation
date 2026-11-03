@@ -1,7 +1,5 @@
 package io.github.ilyasyoy.voicedictation
 
-import android.content.Intent
-import android.provider.DocumentsContract
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -23,6 +21,7 @@ class DiagnosticsRuntimeTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val device get() = UiDevice.getInstance(instrumentation)
+    @Before fun recoverCloudSystemUi() { dismissStaleSystemUiAnr(instrumentation) }
     @After fun clean() { MainActivity.testFactory=null;MainActivity.testNotice=null }
     private fun launch(): ActivityScenario<MainActivity> {
         MainActivity.testFactory={ DictationViewModel(AndroidAudioRecorder(it),Transcriber { _,_ -> error("No API calls allowed") }) }
@@ -69,7 +68,7 @@ class DiagnosticsRuntimeTest {
             device.executeShellCommand("rm /sdcard/Download/$name")
         }
     }
-    @Test fun recoveryAndNetworkFailuresExportOnlyCodesAndNoPrivateContent() = runBlocking {
+    @Test fun recoveryAndNetworkFailuresExportOnlyCodesAndNoPrivateContent() = runBlocking<Unit> {
         val secret="PRIVACY_SENTINEL_KEY_TEXT_AUDIO_WORDS_CLIPBOARD_SERVER"
         val file=File(context.cacheDir,"diagnostic-synthetic.m4a").apply { writeText(secret) }
         val recovery=RecordingRecovery();recovery.retain(file)
