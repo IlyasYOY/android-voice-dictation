@@ -145,4 +145,10 @@
   <string name="floating_revoke">Revoke access</string>
   <string name="floating_about">About access</string>
   <string name="setup_more">More</string>
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_retention">Last 7 days · up to 1 MiB. No dictation content.</string>
+    <string name="diagnostics_export">Save logs ZIP</string>
+    <string name="diagnostics_saving">Saving…</string>
+    <string name="diagnostics_saved">Logs saved. Share the ZIP when reporting a problem.</string>
+    <string name="diagnostics_failed">Couldn’t save logs. Try another location.</string>
 </resources>

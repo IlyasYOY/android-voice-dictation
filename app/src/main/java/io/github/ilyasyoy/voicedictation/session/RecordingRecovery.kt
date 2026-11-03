@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.session
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import java.io.File
 import java.io.IOException
 import io.github.ilyasyoy.voicedictation.data.*
@@ -55,7 +57,7 @@ internal class RecordingRecovery {
         storageProblem=store.migrationPending
         publish()
     }
-    fun storageUnavailable() {storageProblem=true;publish(RecordingRetryFailure.STORAGE)}
+    fun storageUnavailable() {Diagnostics.record(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, DiagnosticCode.LOCAL_STORAGE);storageProblem=true;publish(RecordingRetryFailure.STORAGE)}
     private fun publish(failure: RecordingRetryFailure?=mutable.value.failure) {
         mutable.value=RecordingRecoveryState(count,retrying,failure,repository?.records().orEmpty(),storageProblem,repository?.receivedTexts().orEmpty(),repository?.ownedIds().orEmpty(), repository?.capacity() ?: HistoryCapacity(readable = false))
     }
@@ -65,7 +67,7 @@ internal class RecordingRecovery {
             try {
                 val retained=store.retain(file,failure?.let {SavedRecordingFailure.valueOf(it.name)})
                 files.remove(file);publish(failure ?: mutable.value.failure);return retained
-            } catch(_:Exception) {storageProblem=true}
+            } catch(error:Exception) {Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, error);storageProblem=true}
         }
         if(file.exists() && file !in files)files+=file
         publish(if(storageProblem)RecordingRetryFailure.STORAGE else failure ?: mutable.value.failure)
@@ -78,6 +80,7 @@ internal class RecordingRecovery {
         val previousFailure=mutable.value.failure
         var audio=source
         var token:RecordingUpload?=null
+        Diagnostics.record(DiagnosticArea.RECOVERY, DiagnosticAction.RETRY)
         retrying=true;activeAudio=source;files.remove(source);publish(null)
         var failure:RecordingRetryFailure?=null
         try {
@@ -93,8 +96,11 @@ internal class RecordingRecovery {
             require(text.isNotBlank())
             if(store!=null)try {check(store.complete(checkNotNull(token),text))} catch(e:Exception) {throw RecordingStorageFailure(e)} else audio.delete()
             storageProblem=store?.migrationPending==true
+            Diagnostics.record(DiagnosticArea.RECOVERY, DiagnosticAction.PROCESS)
             return text
         } catch(e: Exception) {
+            if (e is CancellationException) Diagnostics.record(DiagnosticArea.RECOVERY, DiagnosticAction.CANCEL, DiagnosticCode.CANCELLED)
+            else Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.RETRY, e)
             failure=when(e) {
                 is CancellationException -> previousFailure
                 is MissingSavedKey -> RecordingRetryFailure.KEY
@@ -105,7 +111,7 @@ internal class RecordingRecovery {
             }
             if(store!=null && token!=null) {
                 try {store.failed(token,failure?.let {SavedRecordingFailure.valueOf(it.name)})}
-                catch(_:Exception) {storageProblem=true;failure=RecordingRetryFailure.STORAGE}
+                catch(error:Exception) {Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, error);storageProblem=true;failure=RecordingRetryFailure.STORAGE}
             } else if(audio.exists())files.add(0,audio)
             throw e
         } finally {retrying=false;activeAudio=null;publish(failure)}
@@ -113,11 +119,11 @@ internal class RecordingRecovery {
     fun discard() {
         if(retrying)return
         val store=repository
-        if(store!=null)store.pending().forEach {runCatching {store.discard(it.id)}.onFailure {storageProblem=true}}
+        if(store!=null)store.pending().forEach {runCatching {store.discard(it.id)}.onFailure {Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, it);storageProblem=true}}
         files.forEach {it.delete()};files.clear();publish(null)
     }
     fun discard(id:String):Boolean {
         if(retrying)return false
-        return try {repository?.discard(id)==true} catch(_:Exception) {storageProblem=true;publish(RecordingRetryFailure.STORAGE);false}
+        return try {repository?.discard(id)==true} catch(error:Exception) {Diagnostics.failure(DiagnosticArea.RECOVERY, DiagnosticAction.STORAGE, error);storageProblem=true;publish(RecordingRetryFailure.STORAGE);false}
     }
 }

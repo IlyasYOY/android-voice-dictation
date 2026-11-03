@@ -147,4 +147,10 @@
   <string name="floating_revoke">Отозвать доступ</string>
   <string name="floating_about">О доступе</string>
   <string name="setup_more">Ещё</string>
+    <string name="diagnostics_title">Диагностика</string>
+    <string name="diagnostics_retention">За 7 дней · до 1 МиБ. Без содержимого диктовок.</string>
+    <string name="diagnostics_export">Сохранить ZIP с логами</string>
+    <string name="diagnostics_saving">Сохранение…</string>
+    <string name="diagnostics_saved">Логи сохранены. Приложите ZIP к описанию ошибки.</string>
+    <string name="diagnostics_failed">Не удалось сохранить логи. Выберите другое место.</string>
 </resources>

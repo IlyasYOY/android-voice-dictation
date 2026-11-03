@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.floating
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import io.github.ilyasyoy.voicedictation.session.*
 
 import android.Manifest
@@ -48,11 +50,12 @@ class FloatingDictationService : AccessibilityService() {
     private var disposed = false
     private var receiverRegistered = false
     private val refresh = Runnable { nextRefreshAt = Long.MAX_VALUE; updateVisibility() }
-    private val screenOff = object : BroadcastReceiver() { override fun onReceive(context: Context?, intent: Intent?) { editorEligible = false; closeSession(); window?.hide() } }
+    private val screenOff = object : BroadcastReceiver() { override fun onReceive(context: Context?, intent: Intent?) { Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.SCREEN_OFF); editorEligible = false; closeSession(); window?.hide() } }
 
     @RequiresApi(33)
     override fun onCreateInputMethod(): InputMethod = EditorInput(this) { scheduleRefresh() }.also { editorInput = it }
     override fun onServiceConnected() {
+        Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.CONNECT)
         instance = this
         if (!receiverRegistered) {
             ContextCompat.registerReceiver(this, screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -132,7 +135,7 @@ class FloatingDictationService : AccessibilityService() {
             else -> getString(R.string.floating_start)
         }
         try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true, historyFull = capacityFull, levels = state?.voiceLevels ?: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) }
-        catch (_: Exception) { closeSession(); window?.hide() }
+        catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.RENDER, error); closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     private fun notificationsAllowed(): Boolean = NotificationManagerCompat.from(this).areNotificationsEnabled() &&
@@ -160,7 +163,7 @@ class FloatingDictationService : AccessibilityService() {
         connection = if (Build.VERSION.SDK_INT >= 33) editorInput?.currentInputConnection?.let(::AndroidEditorConnection) else null
         pending = original
         try { ContextCompat.startForegroundService(this, Intent(this, FloatingDictationService::class.java).setAction(START)) }
-        catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true) }
+        catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.FOREGROUND, error); offerRecovery("",getString(R.string.floating_start_blocked),true) }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -188,7 +191,7 @@ class FloatingDictationService : AccessibilityService() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
             foreground = true
-        } catch (_: Exception) { offerRecovery("",getString(R.string.floating_start_blocked),true); return }
+        } catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.FOREGROUND, error); offerRecovery("",getString(R.string.floating_start_blocked),true); return }
         finishRequested = false; insertionAttempted = false; commitAttempted = false; feedback.resetSignal()
         val session = DebugFloatingConfiguration.session(this, scope) ?: DictationSessions.create(this, scope)
         val origin = original ?: run { session.close(); endForeground(); return }
@@ -216,6 +219,7 @@ class FloatingDictationService : AccessibilityService() {
         capture?.start()
     }
     private fun invalidStart() {
+        Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.START, DiagnosticCode.BLOCKED)
         if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
         val permissionLost = !microphoneGranted() || !notificationsAllowed()
         cancelKeepingText(getString(if (permissionLost) R.string.floating_need_permission else R.string.floating_focus_changed))
@@ -229,6 +233,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun cancelFromUser() = cancelKeepingText(getString(R.string.floating_cancelled),discardRecording=true)
     private fun cancelKeepingText(reason: String,discardRecording: Boolean=false) {
+        Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.CANCEL)
         val text = model?.state?.value?.text ?: feedback.text
         closeSession(hideWindow = false, retainCurrent = false, retainRecording = !discardRecording)
         feedback.offer(text,reason); render()
@@ -239,6 +244,7 @@ class FloatingDictationService : AccessibilityService() {
         val token = original; val current = editor(); val input = connection
         if (token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {
+            Diagnostics.record(DiagnosticArea.INSERTION, DiagnosticAction.INSERT, DiagnosticCode.COPY)
             offerRecovery(text,getString(R.string.floating_copy_fallback)); return
         }
         inserting = true
@@ -248,6 +254,7 @@ class FloatingDictationService : AccessibilityService() {
                 val result = FinalTextInsertion.insert(token, text, input, ::environment, { commitAttempted = true }) {
                     currentEpoch == epoch && !disposed
                 }
+                Diagnostics.record(DiagnosticArea.INSERTION, DiagnosticAction.INSERT, DiagnosticCode.valueOf(result.name))
                 if (currentEpoch == epoch) {
                     if (result == InsertionResult.CANCELLED) closeSession()
                     else {
@@ -274,7 +281,7 @@ class FloatingDictationService : AccessibilityService() {
         val clip = ClipData.newPlainText(getString(R.string.transcript), text)
         if (Build.VERSION.SDK_INT >= 33) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         try { getSystemService(ClipboardManager::class.java).setPrimaryClip(clip); feedback.message = getString(R.string.copied) }
-        catch (_: Exception) { feedback.message = getString(R.string.floating_copy_failed) }
+        catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.COPY, error); feedback.message = getString(R.string.floating_copy_failed) }
         render()
     }
     private fun endForeground() {
@@ -308,10 +315,11 @@ class FloatingDictationService : AccessibilityService() {
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     private fun openRecovery() { startActivity(Intent(this,io.github.ilyasyoy.voicedictation.SavedRecordingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     fun disableFromUser() { closeSession(); disableSelf() }
-    override fun onInterrupt() { closeSession() }
-    override fun onUnbind(intent: Intent?): Boolean { closeSession(); return super.onUnbind(intent) }
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); closeSession(); window = createWindow(); scheduleRefresh() }
+    override fun onInterrupt() { Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.INTERRUPT); closeSession() }
+    override fun onUnbind(intent: Intent?): Boolean { Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.UNBIND); closeSession(); return super.onUnbind(intent) }
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) { super.onConfigurationChanged(newConfig); Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.CONFIGURATION); closeSession(); window = createWindow(); scheduleRefresh() }
     override fun onDestroy() {
+        Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.CLOSE)
         disposed = true; handler.removeCallbacksAndMessages(null); closeSession(); scope.cancel()
         if (receiverRegistered) { unregisterReceiver(screenOff); receiverRegistered = false }
         if (instance === this) instance = null

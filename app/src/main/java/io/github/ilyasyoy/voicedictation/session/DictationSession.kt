@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.session
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import io.github.ilyasyoy.voicedictation.data.*
 import io.github.ilyasyoy.voicedictation.domain.AudioPolicy
 import java.io.File
@@ -42,7 +44,20 @@ class DictationSession(
     private var request: Job? = null
     private var ticker: Job? = null
     private var generation = 0
-    private fun update(block: (DictationState) -> DictationState) { if (!closed) mutableState.value = block(mutableState.value) }
+    private fun update(block: (DictationState) -> DictationState) {
+        if (closed) return
+        val previous = mutableState.value
+        val next = block(previous)
+        mutableState.value = next
+        if (next.problem != null && next.problem != previous.problem)
+            Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.PROCESS, DiagnosticCode.valueOf(next.problem.name))
+        if (next.phase != previous.phase) when (next.phase) {
+            Phase.RECORDING -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.RECORD)
+            Phase.TRANSCRIBING -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.PROCESS)
+            Phase.RESULT -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.STOP)
+            else -> Unit
+        }
+    }
     fun setKey(key: String) { if (!closed && !state.value.busy) update { it.copy(key = key.trim(), keySaved = key.trim() == savedKey, problem = null) } }
     init {
         if (keyStore !== NoKeyStore) scope.launch {
@@ -120,7 +135,7 @@ class DictationSession(
     } catch (_: HistoryCapacityReached) {
         update { it.copy(capacityBlocked = true) }; false
     } catch (_: Exception) { error(Problem.LOCAL_STORAGE); false }
-    private fun capacityReached() { update { it.copy(capacityBlocked = true) } }
+    private fun capacityReached() { Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.STORAGE, DiagnosticCode.CAPACITY); update { it.copy(capacityBlocked = true) } }
     fun start(hasPermission: Boolean) {
         if (closed || state.value.audioBusy || state.value.canRetry) return
         if (!checkHistoryCapacity()) return
@@ -149,7 +164,7 @@ class DictationSession(
         }
     }
     private fun safetyStop() {
-        if (state.value.phase == Phase.RECORDING) { update { it.copy(safetyStopped = true) }; stop() }
+        if (state.value.phase == Phase.RECORDING) { Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.SAFETY_STOP); update { it.copy(safetyStopped = true) }; stop() }
     }
     private fun releaseWork() {
         ++generation
@@ -165,7 +180,7 @@ class DictationSession(
         catch (_: SecurityException) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.PERMISSION) }
         catch (_: Exception) { runCatching { recorder.cancel() }; discardAudio(); error(Problem.RECORDING) }
     }
-    fun retry() { if (!state.value.busy && state.value.canRetry && state.value.validKey) upload() }
+    fun retry() { if (!state.value.busy && state.value.canRetry && state.value.validKey) { Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.RETRY); upload() } }
     /** Transfer failed-file ownership before closing an overlay session; no credential/editor travels. */
     fun takeRetryRecording(): File? {
         if(closed || state.value.audioBusy || !state.value.canRetry) return null
@@ -177,8 +192,8 @@ class DictationSession(
         val recording=state.value.phase==Phase.RECORDING
         if(!recording && pendingAudio==null)return null
         releaseWork() // Invalidate a suspended/late upload before transferring its file.
-        val audio=if(recording) try {recorder.stop()} catch(_:Exception) {runCatching {recorder.cancel()};null} else pendingAudio
-        if(recording && audio!=null)runCatching {recordings.stopped(audio,state.value.seconds)}
+        val audio=if(recording) try {recorder.stop()} catch(error:Exception) {Diagnostics.failure(DiagnosticArea.SESSION, DiagnosticAction.BACKGROUND, error);runCatching {recorder.cancel()};null} else pendingAudio
+        if(recording && audio!=null)runCatching {recordings.stopped(audio,state.value.seconds)}.onFailure { Diagnostics.failure(DiagnosticArea.SESSION, DiagnosticAction.STORAGE, it) }
         val released=audio?.let { runCatching { recordings.release(it) }.isSuccess } ?: true
         pendingAudio=null
         update { it.copy(phase=if(it.text.isBlank())Phase.IDLE else Phase.RESULT,problem=if(released)null else Problem.LOCAL_STORAGE,canRetry=false) }
@@ -235,9 +250,10 @@ class DictationSession(
     }
     fun cancel() {
         if (closed) return
+        Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.CANCEL)
         persistDraft(state.value.text)
         releaseWork()
-        runCatching { recorder.cancel() }; val removed=discardAudio()
+        runCatching { recorder.cancel() }.onFailure { Diagnostics.failure(DiagnosticArea.RECORDER, DiagnosticAction.CANCEL, it) }; val removed=discardAudio()
         update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed && !unpersistedDraft)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false) }
     }
     private fun discardAudio(): Boolean {
@@ -251,6 +267,7 @@ class DictationSession(
         cancel()
         savedKey = null
         mutableState.value = state.value.copy(key = "", keySaved = false, hasSavedKey = false, keyBusy = false, text = "")
+        Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.CLOSE)
         closed = true
         scope.cancel()
     }
