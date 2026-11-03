@@ -30,14 +30,19 @@ class OpenAiTranscriber(
         .readTimeout(10, TimeUnit.MINUTES).writeTimeout(2, TimeUnit.MINUTES).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).build(),
     private val endpoint: HttpUrl = "https://api.openai.com/v1/audio/transcriptions".toHttpUrl(),
+    private val keywords: () -> List<String> = { emptyList() },
 ) : Transcriber {
     override suspend fun transcribe(audio: File, key: String): String {
         require(audio.length() in 1..AudioPolicy.UPLOAD_BYTES)
         require(key.isNotBlank() && key.none { it.isWhitespace() || it.code < 32 })
+        val words = keywords().toList()
+        // Repeat the documented multipart array field; do not turn terms into instructions/prompt.
+        words.forEach { VocabularyRepository.validated(it, emptyList()) }
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", "gpt-transcribe")
             .addFormDataPart("response_format", "json")
             .addFormDataPart("file", "dictation.m4a", audio.asRequestBody("audio/mp4".toMediaType()))
+            .apply { words.forEach { addFormDataPart("keywords[]", it) } }
             .build()
         val call = client.newCall(Request.Builder().url(endpoint)
             .header("Authorization", "Bearer $key").post(body).build())

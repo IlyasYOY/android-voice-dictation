@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="history_drawer_expanded">Expanded</string>
+  <string name="history_drawer_collapsed">Collapsed</string>
+  <string name="words_title">Words</string>
+  <string name="words_new">New word</string>
+  <string name="words_add">Add</string>
+  <string name="words_edit">Edit word</string>
+  <string name="words_save">Save</string>
+  <string name="words_delete">Delete word</string>
+  <string name="words_options">Options for %1$s</string>
+  <string name="words_empty">Add names and terms you often dictate.</string>
+  <string name="words_empty_error">Enter a word or phrase.</string>
+  <string name="words_invalid">Use one line without control characters or &lt; and &gt;.</string>
+  <string name="words_duplicate">This word is already in your list.</string>
+  <string name="words_capacity">The dictionary reached its local 64 KiB text limit. Shorten or delete a term before adding more.</string>
+  <string name="words_missing">This word changed. Check the list and try again.</string>
+  <string name="words_storage">Could not read or save Words. Check storage and reload; your input is kept.</string>
+  <string name="words_reload">Reload Words</string>
   <string name="app_name">Voice Dictation</string>
   <string name="recording">● Recording</string>
   <string name="transcribing">Transcribing…</string>
@@ -24,7 +41,7 @@
   <string name="storage_error">Could not read or update secure key storage. Forget the saved key and enter it again.</string>
   <string name="floating_service_name">Voice Dictation floating button</string>
   <string name="floating_setup">Set up floating dictation</string>
-  <string name="floating_disclosure">Optional special access. Android Accessibility lets this app observe keyboard windows and focused editor metadata across apps, and insert your final dictation. The system grants broader screen-content access; this app does not capture screenshots or read, send, log or save unrelated app text. Only audio you explicitly start is sent to OpenAI and may incur API charges. The bubble never sends messages or presses Enter. Password, numeric/payment and recognized sensitive editors are excluded. Auto-insertion requires Android 13+, a stable caret and a compatible editor; otherwise Copy is offered. No replacement keyboard or separate draw-over-apps permission is required. You can disable this feature here or in Accessibility settings at any time. An API key is needed for transcription. Offline recording is available without one.</string>
+  <string name="floating_disclosure">Optional special access. Android Accessibility lets this app observe keyboard windows and focused editor metadata across apps, and insert your final dictation. The system grants broader screen-content access; this app does not capture screenshots or read, send, log or save unrelated app text. Recordings you explicitly start and your saved Words are sent to OpenAI as transcription hints and may incur API charges. The bubble never sends messages or presses Enter. Password, numeric/payment and recognized sensitive editors are excluded. Auto-insertion requires Android 13+, a stable caret and a compatible editor; otherwise Copy is offered. No replacement keyboard or separate draw-over-apps permission is required. You can disable this feature here or in Accessibility settings at any time. An API key is needed for transcription. Offline recording is available without one.</string>
   <string name="floating_enable">Enable floating dictation</string>
   <string name="floating_agree">Agree and open settings</string>
   <string name="floating_grant_mic">Grant microphone access</string>

@@ -9,8 +9,14 @@ import kotlinx.coroutines.withContext
 
 /** Application composition root. Shared transports/storage; fresh audio and lifecycle per owner. */
 internal object DictationSessions {
-    private val fileTranscriber by lazy { OpenAiTranscriber() }
-    private val fileTranscription = Transcriber { audio, key -> withContext(Dispatchers.IO) { fileTranscriber.transcribe(audio, key) } }
+    private var sharedFileTranscription: Transcriber? = null
+    @Synchronized private fun fileTranscription(context: Context): Transcriber {
+        sharedFileTranscription?.let { return it }
+        val app = context.applicationContext
+        val provider = OpenAiTranscriber(keywords = { AndroidVocabularyStorage.repository(app).snapshot() })
+        return Transcriber { audio, key -> withContext(Dispatchers.IO) { provider.transcribe(audio, key) } }
+            .also { sharedFileTranscription = it }
+    }
     private var keys: ApiKeyStore? = null
     @Synchronized private fun keys(context: Context): ApiKeyStore =
         keys ?: AndroidApiKeyStore(context.applicationContext).also { keys = it }
@@ -25,14 +31,14 @@ internal object DictationSessions {
                fileTranscriber: Transcriber? = null, mainDraft:Boolean=false): DictationSession {
         val app = context.applicationContext
         prepare(app)
-        return DictationSession(scope, DeferredAudioRecorder {prepare(app);AndroidAudioRecorder(app)}, fileTranscriber ?: fileTranscription,
+        return DictationSession(scope, DeferredAudioRecorder {prepare(app);AndroidAudioRecorder(app)}, fileTranscriber ?: fileTranscription(app),
             keyStore ?: keys(app),
             StoredRecordingRetention({AndroidRecordingStorage.repository(app)},mainDraft))
     }
 
     suspend fun transcribeRetained(context: Context, audio: File): String {
         val key=keys(context).load() ?: throw MissingSavedKey()
-        return fileTranscription.transcribe(audio,key)
+        return fileTranscription(context).transcribe(audio,key)
     }
 }
 

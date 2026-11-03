@@ -115,8 +115,8 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithText("Audio and text stay on this device until you delete them. Nothing is uploaded automatically.").assertDoesNotExist()
             capture("05-history-pending")
             compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
-            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
-            compose.onNodeWithTag("history_swipe").performTouchInput { swipeUp() }
+            compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
+            compose.onNodeWithTag("history_swipe", useUnmergedTree = true).performTouchInput { swipeUp() }
             compose.onNodeWithTag("history_sheet").assertExists()
         }
         assertNotNull(repository.record(pending))
@@ -292,13 +292,13 @@ class RecordingHistoryRuntimeTest {
             compose.waitForIdle()
             val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
             device.waitForIdle(); device.pressBack()
-            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+            compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_sheet").performTouchInput { swipeDown() }
-            compose.waitUntil(10000) { compose.onAllNodesWithTag("history_sheet").fetchSemanticsNodes().isEmpty() }
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("history_content").fetchSemanticsNodes().isEmpty() }
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
-            compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+            compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
         }
     }
 

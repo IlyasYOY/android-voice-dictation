@@ -1,5 +1,7 @@
 # Android Voice Dictation
 
+[Custom vocabulary / Words](docs/custom-vocabulary.md): saved recognition hints in a History/Words tab inside the existing history panel, with inline Add/Edit/Delete. Terms are sent with each explicit transcription; editing the list sends nothing.
+
 Приватное Android-приложение для записи и распознавания речи. Android 8+ / API 26, compile/target API 36; Kotlin, Compose, Material 3, русский и английский интерфейс.
 
 Нажатие на органичную кнопку сразу начинает локальную **запись**, без ожидания ключа и сети. **Stop** останавливает микрофон и запрашивает распознавание файла через `gpt-transcribe`, когда доступен ключ. При отсутствии ключа или ошибке аудио сохраняется для явного повтора. Автоматических повторов при восстановлении сети/ключа, запуске приложения или обновлении нет.

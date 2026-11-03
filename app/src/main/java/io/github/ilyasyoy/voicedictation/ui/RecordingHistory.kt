@@ -72,8 +72,9 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onRecordsChanged: () -> Unit = {}, draft: HistoryDraft? = null, draftProblem: Boolean = false,
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
-    onOpenForDialog: () -> Unit = {}) {
+    onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
     val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
@@ -83,8 +84,12 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             repository?.savedDraft(RecordingTextSlot.MAIN)?.let { HistoryDraft(it.text, it.sourceId) }
         }.getOrNull()
     }
-    val dismiss = { controller.background(); ui.deleteId = null; ui.limitOpen = false; ui.menuId = null; onDismiss() }
+    val dismiss = { controller.background(); ui.closeTransient(); onDismiss() }
     val content: @Composable () -> Unit = {
+        if (visible) {
+        HistoryPanel(ui, onWordsSelected = { controller.background(); ui.menuId = null },
+            modifier = Modifier.fillMaxHeight(),
+            words = { VocabularyPanel(ui, it) }, history = { modifier -> Box(modifier) {
         RecordingHistory(recovery, playing,
             audioAvailable = { id -> repository?.audio(id)?.let { it.isFile && it.length() > 0 } == true },
             onPlay = controller::play, onRetry = controller::retry,
@@ -92,22 +97,30 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
-            waveform = { id, position, modifier -> LoadedAudioTrack(id, repository?.audio(id), position, modifier) })
+            waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
+        } })
+        } else Box(Modifier.fillMaxSize()) // Keep sheet geometry, without decoding hidden history waveforms.
     }
-    if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(28.dp)) { content() }
-    else if (open || pendingDialog) ModalBottomSheet(onDismissRequest = dismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.background,
-        sheetMaxWidth = minOf(640.dp, sheetRegion?.width?.dp ?: 640.dp),
-        contentWindowInsets = { if (sheetRegion != null) WindowInsets(0) else BottomSheetDefaults.windowInsets },
-        modifier = (if (sheetRegion != null) Modifier
-            .absoluteOffset(x = (sheetRegion.left - (windowWidth - sheetRegion.width) / 2f).dp,
-                y = -(windowHeight - sheetRegion.top - sheetRegion.height).dp)
-            .heightIn(max = sheetRegion.height.dp) else Modifier).testTag("history_sheet")) { content() }
+    if (embedded) {
+        if (wide) HistoryPanelHost(true, true, dismiss, content = content) else content()
+    } else HistoryPanelHost(wide, open || pendingDialog, dismiss, content)
     if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
         onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
         onDismiss = { ui.limitOpen = false })
+}
+
+/** Stateless host shared with headless component verification; identical bounds/IME policy for both tabs. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HistoryPanelHost(wide: Boolean, open: Boolean, onDismiss: () -> Unit,
+    content: @Composable () -> Unit) {
+    if (wide) Surface(Modifier.fillMaxSize().testTag("history_pane"), color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(28.dp)) { content() }
+    else {
+        val state = rememberStandardBottomSheetState(initialValue = if (open) SheetValue.Expanded else SheetValue.PartiallyExpanded)
+        HistoryDrawer(state, open, true, 0, {}, {}, onDismiss, Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
+            main = { Box(Modifier.fillMaxSize()) }, content = content)
+    }
 }
 
 @Composable
@@ -237,11 +250,13 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         record.kind == SavedRecordingKind.RECORD -> Spacer(Modifier.size(48.dp))
                     }
                 }
-                if (record.kind == SavedRecordingKind.RECORD) Text(
-                    if (!available) stringResource(R.string.history_missing_audio)
-                    else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
-                    modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (record.kind == SavedRecordingKind.RECORD) {
+                    Text(
+                        if (!available) stringResource(R.string.history_missing_audio)
+                        else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
+                        modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (expanded || (canRetry && text.isNotBlank())) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)

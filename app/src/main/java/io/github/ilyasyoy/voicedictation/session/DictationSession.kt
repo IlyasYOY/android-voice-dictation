@@ -223,7 +223,7 @@ class DictationSession(
         is SecurityException -> Problem.PERMISSION
         is ApiFailure -> when (e.status) { 401, 403 -> Problem.AUTH; 429 -> Problem.QUOTA; else -> Problem.SERVER }
         is InvalidTranscript -> Problem.RESPONSE
-        is RecordingStorageFailure -> Problem.LOCAL_STORAGE
+        is RecordingStorageFailure, is VocabularyFailure -> Problem.LOCAL_STORAGE
         is IOException -> Problem.NETWORK
         else -> Problem.RESPONSE
     }

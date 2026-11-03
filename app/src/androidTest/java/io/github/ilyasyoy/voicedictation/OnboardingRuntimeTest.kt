@@ -207,7 +207,7 @@ class OnboardingRuntimeTest {
                 assertEquals("", model.setupKey.value.text)
                 shell("wm size 720x1600")
                 compose.waitUntil(30000) { compose.onAllNodesWithTag("saved_recordings").fetchSemanticsNodes().size == 1 }
-                compose.onNodeWithTag("history_sheet").assertDoesNotExist()
+                compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
                 assertEquals(0, saves); assertEquals(0, starts)
             }
         } finally {
