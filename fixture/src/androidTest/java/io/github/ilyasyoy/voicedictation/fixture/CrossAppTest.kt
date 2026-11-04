@@ -223,18 +223,50 @@ class CrossAppTest {
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
     /** Real accessibility overlay above the real fixture IME; localhost failure only. */
     @Test fun vividCurrentStatesAboveKeyboardInBothThemes() {
+        fun awaitRedPigment(): Boolean {
+            // API 28 UiAutomator can retain the processing node's old description after
+            // the actual window is already red. Assert the user-visible pixels directly.
+            val file=java.io.File(instrumentation.targetContext.cacheDir,"vivid-pigment.png")
+            val deadline=SystemClock.elapsedRealtime()+20_000
+            try {
+                while(SystemClock.elapsedRealtime()<deadline) {
+                    if(device.takeScreenshot(file)) {
+                        val bitmap=android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                        if(bitmap!=null) try {
+                            val hsv=FloatArray(3); var red=0
+                            for(y in 0 until bitmap.height step 3) for(x in 0 until bitmap.width step 3) {
+                                android.graphics.Color.colorToHSV(bitmap.getPixel(x,y),hsv)
+                                if((hsv[0]>345f || hsv[0]<10f) && hsv[1]>.35f && hsv[2]>.35f) red++
+                            }
+                            if(red>30)return true
+                        } finally {bitmap.recycle()}
+                    }
+                    SystemClock.sleep(200)
+                }
+                return false
+            } finally {file.delete()}
+        }
         fun evidence(name: String) {
             SystemClock.sleep(700)
-            screenshot(name)
-            val path=java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "crossapp-evidence/$name.png")
             device.executeShellCommand("mkdir -p /sdcard/Download/vivid-current")
-            device.executeShellCommand("cp ${path.absolutePath} /sdcard/Download/vivid-current/$name.png")
+            // screencap honors the emulator's current display size (UiDevice may pad to
+            // stale physical metrics after wm overrides). These are actual window pixels.
+            device.executeShellCommand("screencap -p /sdcard/Download/vivid-current/$name.png")
         }
         try {
+            // Screenshot color acceptance uses static states. Continuous software-rendered
+            // animation can starve the real encoder on this unaccelerated cloud emulator.
+            device.executeShellCommand("settings put global animator_duration_scale 0")
             for (theme in listOf("no", "yes")) {
                 device.executeShellCommand("cmd uimode night $theme")
                 focusField("body"); find(fixtureId("body")).click(); focusField("body")
                 find(appId("floating_start"),40_000)
+                // A new tap clears the previous failure; hiding the IME releases capture.
+                // Reopening gives a fresh idle window without depending on cached controls.
+                find(appId("floating_start")).click(); find(appId("floating_stop"))
+                device.pressBack(); SystemClock.sleep(700)
+                focusField("body"); find(fixtureId("body")).click(); focusField("body")
+                find(appId("floating_start"),30_000)
                 evidence("overlay-idle-$theme")
                 startRecording()
                 evidence("overlay-recording-$theme") // real MIC, emulator silence
@@ -248,15 +280,11 @@ class CrossAppTest {
                     assertEquals(before+1,fileRequests.get())
                     evidence("overlay-processing-$theme")
                 } finally { release.countDown(); heldResponse.set(null) }
-                val error=By.pkg(APP).desc("Review text or recording problem")
-                find(error,40_000)
+                assertTrue("503 must settle the small overlay to red",awaitRedPigment())
                 evidence("overlay-error-$theme")
                 assertFieldUnchanged()
                 device.executeShellCommand("settings put global animator_duration_scale 0")
                 evidence("overlay-error-reduced-$theme")
-                device.executeShellCommand("settings put global animator_duration_scale 1")
-                find(error).click(); scrollFind(appId("floating_discard")).click()
-                find(appId("floating_start"),30_000)
             }
         } finally {
             heldResponse.getAndSet(null)?.countDown()

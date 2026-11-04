@@ -63,5 +63,14 @@ MIC capture (silence) and Cancel. Cross-app
 above the fixture IME, actual MIC, held localhost request and 503 retained failure.
 These are screenshots, not video or provider proof.
 
+On the unaccelerated API 28 cloud emulator the screenshot harness settles the UI
+with animations disabled; the synthetic voice screenshot explicitly steps and
+freezes the shared renderer. The fixture editor follows system day/night too.
+Pixel checks avoid API 28's stale accessibility descriptions after color changes.
+An earlier animation-enabled overlay attempt returned a recording error at Stop;
+standalone Android capture/encoder checks passed. This is not a continuous-speech
+device acceptance pass. Keep normal-motion capture and listening on the phone as
+a merge gate; this change does not relax capture guards or change recording code.
+
 Counts, execution receipts, candidate commit and APK checksum are in the draft PR.
 Test source or compilation alone is not execution.
