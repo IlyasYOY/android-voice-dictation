@@ -17,7 +17,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.window.layout.FoldingFeature
 
-/** Main composition moves intact between the compact scaffold body and the wide main pane. */
+/** Keep a book fold's geometry in FLAT too; posture alone must not move the workspace. */
+internal fun selectHistoryFoldingFeature(features: List<FoldingFeature>): FoldingFeature? =
+    features.firstOrNull { it.isSeparating || it.occlusionType == FoldingFeature.OcclusionType.FULL }
+        ?: features.firstOrNull { it.orientation == FoldingFeature.Orientation.VERTICAL }
+
+/** Main stays in one scaffold body while pane bounds and sheet visibility change around it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AdaptiveHistoryLayout(hinge: FoldingFeature? = null, historyEnabled: Boolean = true,
@@ -28,26 +33,35 @@ internal fun AdaptiveHistoryLayout(hinge: FoldingFeature? = null, historyEnabled
     val density = LocalDensity.current
     val window = LocalWindowInfo.current.containerSize
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val currentMain by rememberUpdatedState(main)
-    val mainContent = remember { movableContentOf<Boolean> { wide -> currentMain(wide) } }
     val canExpand by rememberUpdatedState(drawerEnabled)
     val drawer = rememberStandardBottomSheetState(initialValue = if (drawerOpen) SheetValue.Expanded else SheetValue.PartiallyExpanded,
         confirmValueChange = { it != SheetValue.Expanded || canExpand })
+    var compactTarget by remember { mutableStateOf<Boolean?>(null) }
     Surface(Modifier.fillMaxSize().testTag("adaptive_root"), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .onGloballyPositioned { origin = it.positionInWindow() }) {
-            val fold = hinge?.takeIf { it.isSeparating }?.let {
+            val fold = hinge?.let {
                 val bounds = it.bounds
                 HistoryHinge((bounds.left - origin.x) / density.density, (bounds.top - origin.y) / density.density,
                     (bounds.right - origin.x) / density.density, (bounds.bottom - origin.y) / density.density,
-                    it.orientation == FoldingFeature.Orientation.VERTICAL)
+                    it.orientation == FoldingFeature.Orientation.VERTICAL,
+                    separating = it.isSeparating, occluding = it.occlusionType == FoldingFeature.OcclusionType.FULL)
             }
             val plan = HistoryLayoutPolicy.calculate(maxWidth.value, maxHeight.value, density.fontScale, fold, allowHistoryPane = historyEnabled)
             val region = plan.region
-            LaunchedEffect(plan.wide) {
-                // A resize during a drag retains its settling intent; ordinary resize does not dismiss playback/state.
-                if (plan.wide && (drawer.targetValue == SheetValue.Expanded) != drawerOpen) {
-                    if (drawer.targetValue == SheetValue.Expanded) onDrawerExpanded() else onDrawerCollapsed()
+            val showDrawer = historyEnabled && !plan.wide && drawerVisible
+            val visibleTarget = if (showDrawer) drawer.targetValue == SheetValue.Expanded else null
+            SideEffect {
+                // Capture intent while the real sheet still has anchors. Its empty wide host can
+                // change anchors during measurement; that is not a user's collapse/dismissal.
+                if (visibleTarget != null) compactTarget = visibleTarget
+                else {
+                    compactTarget?.let { target ->
+                        if (plan.wide && target != drawerOpen) {
+                            if (target) onDrawerExpanded() else onDrawerCollapsed()
+                        }
+                    }
+                    compactTarget = null
                 }
             }
             Box(Modifier.absoluteOffset(region.left.dp, region.top.dp).width(plan.mainWidth.dp).height(region.height.dp)
@@ -55,12 +69,14 @@ internal fun AdaptiveHistoryLayout(hinge: FoldingFeature? = null, historyEnabled
                 CompositionLocalProvider(LocalHistoryDialogRegion provides region.copy(
                     left = region.left + origin.x / density.density, top = region.top + origin.y / density.density,
                     width = plan.mainWidth)) {
-                    if (historyEnabled && !plan.wide && drawerVisible) HistoryDrawer(drawer, drawerOpen, drawerEnabled, drawerCount,
+                    // Keep the body in a single subcomposition, including Settings/setup. Moving an
+                    // AndroidView-bearing body in/out of Material's subcomposition corrupts slot state.
+                    HistoryDrawer(drawer, drawerOpen, drawerEnabled, drawerCount,
                         onDrawerReveal, onDrawerExpanded, onDrawerCollapsed,
-                        main = { padding -> Box(Modifier.fillMaxSize().padding(padding)) { mainContent(false) } },
+                        visible = showDrawer,
+                        main = { padding -> Box(Modifier.fillMaxSize().padding(padding)) { main(plan.wide) } },
                         content = { history(false, region.copy(left = region.left + origin.x / density.density,
                             top = region.top + origin.y / density.density), window.width / density.density, window.height / density.density) })
-                    else mainContent(plan.wide)
                 }
             }
             if (historyEnabled && plan.wide) Box(Modifier.absoluteOffset((region.left + plan.mainWidth + plan.gap).dp, region.top.dp)

@@ -22,7 +22,8 @@ internal val LocalHistoryContentVisible = staticCompositionLocalOf { true }
 @Composable
 internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, count: Int,
     onReveal: () -> Unit, onExpanded: () -> Unit, onCollapsed: () -> Unit,
-    modifier: Modifier = Modifier, main: @Composable (PaddingValues) -> Unit, content: @Composable () -> Unit) {
+    modifier: Modifier = Modifier, visible: Boolean = true,
+    main: @Composable (PaddingValues) -> Unit, content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -30,8 +31,10 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
     val expanded by rememberUpdatedState(onExpanded)
     val collapsed by rememberUpdatedState(onCollapsed)
     val requestedOpen by rememberUpdatedState(open)
+    val shown by rememberUpdatedState(visible)
     val revealState = remember(state) { booleanArrayOf(false) }
-    LaunchedEffect(open, enabled, state) {
+    LaunchedEffect(open, enabled, visible, state) {
+        if (!visible) return@LaunchedEffect
         if (!enabled) state.partialExpand()
         else if (open && state.currentValue != SheetValue.Expanded) state.expand()
         else if (!open && state.currentValue != SheetValue.PartiallyExpanded) state.partialExpand()
@@ -41,6 +44,7 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
         snapshotFlow { state.currentValue }.distinctUntilChanged().collect { value ->
             if (value != previous) {
                 previous = value
+                if (!shown) return@collect
                 if (value == SheetValue.Expanded && !requestedOpen) expanded()
                 else if (value == SheetValue.PartiallyExpanded) {
                     focus.clearFocus(); keyboard?.hide()
@@ -51,12 +55,13 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val peek = minOf(76.dp, maxHeight / 2)
+        val peek = if (visible) minOf(76.dp, maxHeight / 2) else 0.dp
         val closedOffset = with(density) { (maxHeight - peek).toPx() }
         val contentVisible by remember(state, closedOffset, open) { derivedStateOf {
             open || runCatching { state.requireOffset() < closedOffset - 1f }.getOrDefault(false)
         } }
-        LaunchedEffect(state, closedOffset) {
+        LaunchedEffect(state, closedOffset, visible) {
+            if (!visible) return@LaunchedEffect
             snapshotFlow { runCatching { state.requireOffset() }.getOrNull() }.collect { offset ->
                 val moved = offset != null && offset < closedOffset - 1f
                 if (moved && !revealState[0]) reveal()
@@ -64,24 +69,26 @@ internal fun HistoryDrawer(state: SheetState, open: Boolean, enabled: Boolean, c
             }
         }
         BottomSheetScaffold(scaffoldState = rememberBottomSheetScaffoldState(state),
-            modifier = Modifier.fillMaxSize().testTag("history_drawer"),
-            sheetPeekHeight = peek, sheetMaxWidth = 640.dp, sheetSwipeEnabled = enabled,
+            modifier = Modifier.fillMaxSize().then(if (visible) Modifier.testTag("history_drawer") else Modifier),
+            sheetPeekHeight = peek, sheetMaxWidth = 640.dp, sheetSwipeEnabled = enabled && visible,
             sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             sheetContentColor = MaterialTheme.colorScheme.onSurface, containerColor = Color.Transparent,
-            sheetDragHandle = {
+            sheetDragHandle = if (!visible) null else { {
                 HistoryEntrance(count, enabled, state.currentValue == SheetValue.Expanded,
                     onToggle = { if (enabled) {
                         scope.launch {
                             if (state.currentValue == SheetValue.Expanded) state.partialExpand() else state.expand()
                         }
                     } }, modifier = Modifier.height(peek))
-            }, sheetContent = {
+            } }, sheetContent = {
+                if (visible) {
                 Box(Modifier.fillMaxWidth().weight(1f).testTag("history_sheet")) {
                     CompositionLocalProvider(LocalHistoryContentVisible provides contentVisible) { content() }
                 }
+                }
             }, content = main)
         // Native confirmation dialogs receive Back first; then the drawer, then main/capture handlers.
-        BackHandler(open || state.currentValue == SheetValue.Expanded) {
+        BackHandler(visible && (open || state.currentValue == SheetValue.Expanded)) {
             focus.clearFocus(); keyboard?.hide()
             if (state.currentValue == SheetValue.PartiallyExpanded) collapsed()
             else scope.launch { state.partialExpand() }
