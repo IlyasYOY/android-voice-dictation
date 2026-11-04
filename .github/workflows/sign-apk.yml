@@ -1,0 +1,67 @@
+name: Sign installable APK
+
+on:
+  workflow_run:
+    workflows: [Android checks]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sign-apk-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    # The listener and signing code come from the default branch, never the PR.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event == 'push' ||
+       github.event.workflow_run.event == 'pull_request')
+    name: Verify and sign update APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # REQUIRED before storing secrets: allow deployments only from the default
+    # branch. Otherwise a same-repository PR could request these secrets itself.
+    environment: apk-signing
+    steps:
+      - name: Check out trusted signing code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      # No Gradle, PR checkout, dependency installation, or build cache in this job.
+      - name: Validate source and download only APK data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_apk_signing.py prepare --destination "$RUNNER_TEMP/apk-input"
+      - name: Sign with existing update identity and verify
+        env:
+          APK_SIGNING_KEYSTORE_BASE64: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          APK_SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          APK_SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+        run: >-
+          python3 scripts/ci_apk_signing.py sign
+          --apk "$RUNNER_TEMP/apk-input/app-debug.apk"
+          --source "$RUNNER_TEMP/apk-input/source.json"
+          --destination "$RUNNER_TEMP/apk-update"
+      - name: Upload verified update APK
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app-update
+          path: ${{ runner.temp }}/apk-update/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Show download link, commit and verification
+        env:
+          APK_ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: python3 scripts/ci_apk_signing.py summary --directory "$RUNNER_TEMP/apk-update"

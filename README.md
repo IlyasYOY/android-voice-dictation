@@ -18,6 +18,10 @@
 
 ## Разработка и проверка
 
+[Постоянная подпись CI APK для обновления](docs/apk-signing.md): после однократного
+включения скачивайте `app-update` из `Sign installable APK`. `app-debug-build-only`
+имеет временную CI-подпись и не предназначен для обновления установленной сборки.
+
 Используйте подготовленную облачную среду, JDK 17/21 и Gradle Wrapper. Читайте [AGENTS.md](AGENTS.md), [архитектуру](docs/architecture.md) и [настройку среды](docs/cloud-environment.md).
 
 ```bash

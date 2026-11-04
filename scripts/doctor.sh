@@ -7,6 +7,11 @@ ok() { printf 'OK    %s\n' "$*"; }
 missing() { printf 'ERROR %s\n' "$*" >&2; errors=$((errors + 1)); }
 
 printf 'Project: %s\nSDK:     %s\n' "$ANDROID_PROJECT_ROOT" "$ANDROID_HOME"
+if command -v python3 >/dev/null 2>&1; then
+    ok 'Python 3 (CI signing policy tests)'
+else
+    missing 'Python 3 is required for CI signing policy tests.'
+fi
 if [[ -n "${JAVA_HOME:-}" ]]; then
     java_bin="$JAVA_HOME/bin/java"
     javac_bin="$JAVA_HOME/bin/javac"
