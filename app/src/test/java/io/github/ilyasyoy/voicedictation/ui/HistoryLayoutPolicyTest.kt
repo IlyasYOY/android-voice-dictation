@@ -5,6 +5,41 @@ import org.junit.Test
 
 class HistoryLayoutPolicyTest {
     private fun plan(width: Float, font: Float = 1f, hinge: HistoryHinge? = null) = HistoryLayoutPolicy.calculate(width, 700f, font, hinge)
+    @Test fun `book fold posture alone never changes layout across medium widths and fonts`() {
+        for (width in listOf(616f, 640f, 673f, 700f)) for (font in listOf(1f, 1.2f, 2f)) {
+            val flat = HistoryHinge(width / 2, 0f, width / 2, 700f, true, separating = false, occluding = false)
+            val expected = plan(width, font, flat)
+            repeat(5) {
+                assertEquals(expected, plan(width, font, flat.copy(separating = true)))
+                assertEquals(expected, plan(width, font, flat))
+            }
+            assertEquals(width >= 640f && font == 1f, expected.wide)
+            assertEquals(width / 2, expected.mainWidth, .01f)
+        }
+    }
+    @Test fun `resizing and losing a fold recomputes safe geometry instead of caching a posture layout`() {
+        val flat = HistoryHinge(350f, 0f, 350f, 700f, true, separating = false, occluding = false)
+        assertTrue(plan(700f, hinge = flat).wide)
+        val narrow = plan(500f, hinge = flat.copy(left = 250f, right = 250f))
+        assertFalse(narrow.wide); assertEquals(250f, narrow.mainWidth, .01f)
+        assertEquals(plan(300f), plan(300f, hinge = flat)) // Feature is outside the resized window.
+        assertEquals(700f, plan(700f, 2f).mainWidth, .01f) // Cover display reports no feature.
+        assertEquals(plan(700f, hinge = flat), plan(700f, hinge = flat.copy(separating = true)))
+    }
+    @Test fun `flat horizontal crease uses full height but separation or occlusion reserves a safe side`() {
+        val flat = HistoryHinge(0f, 300f, 1000f, 340f, false, separating = false, occluding = false)
+        assertEquals(plan(1000f), plan(1000f, hinge = flat))
+        val safe = HistoryRegion(0f, 340f, 1000f, 360f)
+        assertEquals(safe, plan(1000f, hinge = flat.copy(separating = true)).region)
+        assertEquals(safe, plan(1000f, hinge = flat.copy(occluding = true)).region)
+    }
+    @Test fun `flat occluding book hinge reserves its entire width at both postures`() {
+        val flat = HistoryHinge(300f, 0f, 340f, 700f, true, separating = false, occluding = true)
+        val p = plan(700f, hinge = flat)
+        assertEquals(300f, p.mainWidth, .01f); assertEquals(40f, p.gap, .01f)
+        assertEquals(360f, p.historyWidth, .01f)
+        assertEquals(p, plan(700f, hinge = flat.copy(separating = true)))
+    }
     @Test fun `usable pane minima use current available width without a tablet cutoff`() {
         for (width in listOf(280f, 360f, 600f, 615.99f)) assertFalse(plan(width).wide)
         for (width in listOf(616f, 640f, 673f, 700f, 704f, 839f, 839.99f, 840f, 1000f, 1800f)) {

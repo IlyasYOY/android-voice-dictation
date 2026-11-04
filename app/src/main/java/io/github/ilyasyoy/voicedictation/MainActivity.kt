@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
     private var navigationProblem by mutableStateOf(false)
     private val setupPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { setupPermissionReturned() }
     private var requestingPermission = false
-    private var separatingHinge by mutableStateOf<FoldingFeature?>(null)
+    private var foldingFeature by mutableStateOf<FoldingFeature?>(null)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val requested = requestingPermission
         requestingPermission = false
@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->
-                    separatingHinge = info.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull { it.isSeparating }
+                    foldingFeature = selectHistoryFoldingFeature(info.displayFeatures.filterIsInstance<FoldingFeature>())
                 }
             }
         }
@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 val showSetup = setupUi.step != null && !state.audioBusy && !historyOpen
                 BackHandler(showSetup) { deferSetup() }
                 LaunchedEffect(showSetup) { if (showSetup) historyController.background() }
-                AdaptiveHistoryLayout(separatingHinge, historyEnabled = !showSetup,
+                AdaptiveHistoryLayout(foldingFeature, historyEnabled = !showSetup,
                     drawerOpen = historyOpen, drawerEnabled = !state.audioBusy, drawerVisible = !settingsOpen,
                     drawerCount = recovery.savedCount, onDrawerReveal = ::retainRetryRecording,
                     onDrawerExpanded = { historyOpen = true }, onDrawerCollapsed = {

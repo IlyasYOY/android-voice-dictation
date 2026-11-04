@@ -17,6 +17,9 @@ import io.github.ilyasyoy.voicedictation.onboarding.*
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.unit.dp
@@ -33,7 +36,7 @@ import org.junit.Test
 /** Synthetic layout tests; compilation is reported separately from actual device execution. */
 class AdaptiveHistoryTest {
     @get:Rule val compose = createComposeRule()
-    private val row = SavedRecording("adaptive", 1700000000000, 1700000000000,
+    private val row = SavedRecording("00000000-0000-0000-0000-000000000001", 1700000000000, 1700000000000,
         SavedRecordingStatus.COMPLETE, 12, "Synthetic retained transcript")
 
     @Test fun sheetPaneResizePreservesExpansionDraftAndMainSettingsWithoutDuplicateContent() {
@@ -61,15 +64,15 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("history_sheet").assertDoesNotExist()
         compose.onNodeWithTag("test_settings").performClick()
-        compose.onNodeWithTag("history_expand_adaptive").performClick()
-        compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
+        compose.onNodeWithTag("history_expand_${row.id}").performClick()
+        compose.onNodeWithTag("history_text_${row.id}").assertTextContains("Synthetic edited draft")
         compose.runOnIdle { width.value = 400.dp }
         compose.onNodeWithTag("history_sheet").assertExists()
         compose.onNodeWithTag("history_pane").assertDoesNotExist()
         compose.onAllNodesWithTag("history_content").assertCountEquals(1)
-        compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
+        compose.onNodeWithTag("history_text_${row.id}").assertTextContains("Synthetic edited draft")
         restore.emulateSavedInstanceStateRestore()
-        compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
+        compose.onNodeWithTag("history_text_${row.id}").assertTextContains("Synthetic edited draft")
         pressBack()
         compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
         compose.onNodeWithTag("test_settings_form").assertExists()
@@ -77,8 +80,8 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("test_settings_form").assertExists()
         compose.onAllNodesWithTag("history_content").assertCountEquals(1)
-        compose.onNodeWithTag("history_menu_adaptive").performScrollTo().performClick()
-        compose.onNodeWithTag("history_delete_adaptive").performClick()
+        compose.onNodeWithTag("history_menu_${row.id}").performScrollTo().performClick()
+        compose.onNodeWithTag("history_delete_${row.id}").performClick()
         compose.runOnIdle { width.value = 400.dp }
         compose.onNodeWithTag("history_sheet").assertExists()
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
@@ -90,7 +93,7 @@ class AdaptiveHistoryTest {
         // The compact presentation was deliberately dismissed earlier; it stays closed.
         compose.onNodeWithTag("history_sheet").assertIsNotDisplayed()
         compose.onNodeWithTag("test_open").performClick()
-        compose.onNodeWithTag("history_text_adaptive").assertTextContains("Synthetic edited draft")
+        compose.onNodeWithTag("history_text_${row.id}").assertTextContains("Synthetic edited draft")
     }
 
     @Test fun deleteConfirmationTransfersOnceAndScrollStateIsShared() {
@@ -119,7 +122,7 @@ class AdaptiveHistoryTest {
         compose.runOnIdle { assertEquals(index, ui.list.firstVisibleItemIndex); assertTrue("row-20" in ui.expanded) }
         compose.runOnIdle { width.value = 700.dp }
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
-        compose.onNodeWithTag("history_confirm_delete").performClick()
+        compose.onNodeWithTag("history_confirm_delete").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.runOnIdle { assertEquals(1, deletes); assertNull(ui.deleteId) }
     }
     @Test fun deleteAndLimitDialogsStayInReportedVerticalAndHorizontalSafeRegions() {
@@ -188,7 +191,8 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("setup_key").performTextReplacement("synthetic-staged-text")
         for (w in listOf(400.dp, 700.dp)) {
             compose.runOnIdle { width.value = w }
-            compose.onNodeWithTag("setup_key").assertTextEquals("synthetic-staged-text")
+            compose.onNodeWithTag("setup_key").assert(SemanticsMatcher.expectValue(
+                SemanticsProperties.InputText, AnnotatedString("synthetic-staged-text")))
             compose.onNodeWithTag("history_content").assertDoesNotExist()
             assertBackground()
         }

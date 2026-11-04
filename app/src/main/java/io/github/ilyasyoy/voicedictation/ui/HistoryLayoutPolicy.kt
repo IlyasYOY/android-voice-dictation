@@ -2,7 +2,8 @@ package io.github.ilyasyoy.voicedictation.ui
 
 /** Coordinates are dp in the inset-safe content area, never physical display dimensions. */
 internal data class HistoryRegion(val left: Float, val top: Float, val width: Float, val height: Float)
-internal data class HistoryHinge(val left: Float, val top: Float, val right: Float, val bottom: Float, val vertical: Boolean)
+internal data class HistoryHinge(val left: Float, val top: Float, val right: Float, val bottom: Float, val vertical: Boolean,
+    val separating: Boolean = true, val occluding: Boolean = true)
 internal data class HistoryLayout(val region: HistoryRegion, val mainWidth: Float, val gap: Float, val historyWidth: Float) {
     val wide get() = historyWidth > 0f
 }
@@ -20,7 +21,9 @@ internal object HistoryLayoutPolicy {
             val history = (region.width * .46f).coerceIn(historyMin, region.width - mainMin - spacing)
             return HistoryLayout(region, region.width - history - spacing, spacing, history)
         }
-        val fold = hinge ?: return split(full)
+        // A reported vertical book crease reserves the same safe panes in FLAT and HALF_OPENED.
+        // Horizontal tabletop adaptation remains posture-driven; actual occlusion always wins.
+        val fold = hinge?.takeIf { it.vertical || it.separating || it.occluding } ?: return split(full)
         // Ignore features outside this app window; never infer a hinge from device identity.
         if (fold.vertical) {
             if (fold.right <= 0 || fold.left >= w || fold.bottom <= 0 || fold.top >= h) return split(full)
