@@ -179,8 +179,11 @@ class WorkflowEntryPolicyTest(unittest.TestCase):
             data.writestr("app-debug.apk", b"APK data")
         blob = archive.getvalue()
         digest = hashlib.sha256(blob).hexdigest()
-        for correct_digest in (True, False):
-            with self.subTest(correct_digest=correct_digest), tempfile.TemporaryDirectory() as temp:
+        for artifact_name, correct_digest in ((signing.BUILD_ARTIFACT, True),
+                                              ("app-debug", True),
+                                              (signing.BUILD_ARTIFACT, False)):
+            with self.subTest(name=artifact_name, correct_digest=correct_digest), \
+                    tempfile.TemporaryDirectory() as temp:
                 event = Path(temp) / "event.json"
                 event.write_text(json.dumps({"repository": {"default_branch": "main"},
                                             "workflow_run": {"id": 123}}))
@@ -188,7 +191,7 @@ class WorkflowEntryPolicyTest(unittest.TestCase):
                        "GITHUB_REPOSITORY": "owner/app", "GITHUB_REPOSITORY_ID": "99",
                        "GITHUB_REF": "refs/heads/main"}
                 artifacts = {"total_count": 1, "artifacts": [{"id": 456,
-                             "name": signing.BUILD_ARTIFACT, "expired": False,
+                             "name": artifact_name, "expired": False,
                              "size_in_bytes": len(blob),
                              "digest": "sha256:" + (digest if correct_digest else "0" * 64)}]}
                 destination = Path(temp) / "prepared"

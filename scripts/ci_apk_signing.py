@@ -115,7 +115,10 @@ def prepare(destination):
     # Re-fetch the complete artifact list for exactly the validated run.
     artifacts = github_json(repository, f"actions/runs/{run_id}/artifacts?per_page=100")
     require(artifacts["total_count"] <= 100, "Unexpected artifact count")
-    matches = [a for a in artifacts["artifacts"] if a["name"] == BUILD_ARTIFACT]
+    # Existing PR runs predate the build-only label. The same source/digest checks
+    # apply to that legacy name; never select ambiguously between two APKs.
+    matches = [a for a in artifacts["artifacts"]
+               if a["name"] in (BUILD_ARTIFACT, "app-debug")]
     require(len(matches) == 1, "Expected exactly one build-only APK artifact")
     artifact = matches[0]
     require(not artifact["expired"] and 0 < artifact["size_in_bytes"] <= MAX_APK_BYTES,

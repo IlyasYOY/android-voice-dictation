@@ -21,6 +21,9 @@ Package: `io.github.ilyasyoy.voicedictation`. Кандидат: 0.15.0 (31).
 1. `Android checks` собирает приложение, lint и тесты как раньше, без постоянного
    ключа. Временный APK — `app-debug-build-only`; это вход для подписания,
    не артефакт для обновления телефона.
+   Для повторного запуска старых PR сборок signer также понимает прежнее имя
+   `app-debug`, с теми же проверками источника и digest. Если найдены сразу два
+   подходящих артефакта, подписание прекращается.
 2. Успешный запуск автоматически вызывает `Sign installable APK` через
    `workflow_run`. Этот listener должен находиться в default branch. GitHub
    использует workflow default branch, а checkout закреплён на его `github.sha`.
