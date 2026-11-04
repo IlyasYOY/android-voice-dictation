@@ -61,13 +61,18 @@ in light/dark and reduced motion. `AudioReactiveScreenTest` uses actual emulator
 MIC capture (silence) and Cancel. Cross-app
 `vividCurrentStatesAboveKeyboardInBothThemes` captures actual accessibility overlay
 above the fixture IME, actual MIC, held localhost request and 503 retained failure.
-These are screenshots, not video or provider proof.
+The complete cross-app attempt is currently blocked by intermittent emulator
+capture failure at Stop before HTTP; it is not a passed end-to-end check.
+`NativeOverlayPaletteScreenTest` instead displays the actual shared `FloatingWindow`
+inside an Activity-owned panel above a real IME, with explicitly synthetic states
+and no microphone/HTTP. Its images must not be described as accessibility-service
+recording evidence. These are screenshots, not video or provider proof.
 
 On the unaccelerated API 28 cloud emulator the screenshot harness settles the UI
 with animations disabled; the synthetic voice screenshot explicitly steps and
 freezes the shared renderer. The fixture editor follows system day/night too.
 Pixel checks avoid API 28's stale accessibility descriptions after color changes.
-An earlier animation-enabled overlay attempt returned a recording error at Stop;
+Overlay attempts with and without animations returned a recording error at Stop;
 standalone Android capture/encoder checks passed. This is not a continuous-speech
 device acceptance pass. Keep normal-motion capture and listening on the phone as
 a merge gate; this change does not relax capture guards or change recording code.
