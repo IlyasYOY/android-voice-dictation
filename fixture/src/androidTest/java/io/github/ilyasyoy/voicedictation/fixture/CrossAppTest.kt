@@ -221,6 +221,49 @@ class CrossAppTest {
         find(label("Cancel")).click()
     }
     private fun assertFieldUnchanged() = assertEquals("Before  after", find(fixtureId("body")).text)
+    /** Real accessibility overlay above the real fixture IME; localhost failure only. */
+    @Test fun vividCurrentStatesAboveKeyboardInBothThemes() {
+        fun evidence(name: String) {
+            SystemClock.sleep(700)
+            screenshot(name)
+            val path=java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "crossapp-evidence/$name.png")
+            device.executeShellCommand("mkdir -p /sdcard/Download/vivid-current")
+            device.executeShellCommand("cp ${path.absolutePath} /sdcard/Download/vivid-current/$name.png")
+        }
+        try {
+            for (theme in listOf("no", "yes")) {
+                device.executeShellCommand("cmd uimode night $theme")
+                focusField("body"); find(fixtureId("body")).click(); focusField("body")
+                find(appId("floating_start"),40_000)
+                evidence("overlay-idle-$theme")
+                startRecording()
+                evidence("overlay-recording-$theme") // real MIC, emulator silence
+                val release=java.util.concurrent.CountDownLatch(1)
+                heldResponse.set(release); failFileNext.set(true)
+                try {
+                    val before=fileRequests.get()
+                    find(appId("floating_stop")).click()
+                    val deadline=SystemClock.elapsedRealtime()+20_000
+                    while(fileRequests.get()==before && SystemClock.elapsedRealtime()<deadline) SystemClock.sleep(50)
+                    assertEquals(before+1,fileRequests.get())
+                    evidence("overlay-processing-$theme")
+                } finally { release.countDown(); heldResponse.set(null) }
+                val error=By.pkg(APP).desc("Review text or recording problem")
+                find(error,40_000)
+                evidence("overlay-error-$theme")
+                assertFieldUnchanged()
+                device.executeShellCommand("settings put global animator_duration_scale 0")
+                evidence("overlay-error-reduced-$theme")
+                device.executeShellCommand("settings put global animator_duration_scale 1")
+                find(error).click(); scrollFind(appId("floating_discard")).click()
+                find(appId("floating_start"),30_000)
+            }
+        } finally {
+            heldResponse.getAndSet(null)?.countDown()
+            device.executeShellCommand("settings put global animator_duration_scale 1")
+            device.executeShellCommand("cmd uimode night no")
+        }
+    }
     @Test fun ePasswordAndNumericFieldsNeverShowBubble() {
         focusField("password")
         assertTrue(device.wait(Until.gone(appId("floating_start")), 10_000))
@@ -504,6 +547,7 @@ class CrossAppTest {
         private val unexpectedRequests = AtomicInteger()
         private val fileRequests = AtomicInteger()
         private val failFileNext=AtomicBoolean()
+        private val heldResponse=AtomicReference<java.util.concurrent.CountDownLatch?>()
         private val fileBytes = AtomicInteger()
         private val lastFileAudio=AtomicReference(ByteArray(0))
         private var configured = false
@@ -524,6 +568,7 @@ class CrossAppTest {
                             check(fileHeader>=0 && begin>=4 && finish>begin)
                             lastFileAudio.set(raw.copyOfRange(begin,finish))
                             fileBytes.addAndGet(request.bodySize.toInt());fileRequests.incrementAndGet()
+                            heldResponse.get()?.let { check(it.await(30,TimeUnit.SECONDS)) }
                             if(failFileNext.compareAndSet(true,false))return MockResponse().setResponseCode(503)
                             return MockResponse().setBody("{\"text\":\"voice test\"}")
                         }

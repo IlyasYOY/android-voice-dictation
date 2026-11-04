@@ -1,6 +1,6 @@
 # Audio-reactive Soft Current
 
-The main control and keyboard overlay consume the same `VoiceLevelSource` and render through `CurrentDrawable`/`CurrentGeometry`. A nine-region spectrum deforms the lower contour for bass, middle contour for mids, and upper contour for treble. Adjacent regions interpolate with smoothstep; they are not visible equalizer bars. Overall RMS controls strength, with small deterministic asymmetric phase offsets subordinate to the sound. State color remains independent. This measures actual microphone sound, including sufficiently loud ambient noise; it does not identify a particular speaker.
+The main control and keyboard overlay consume the same `VoiceLevelSource` and render through `CurrentDrawable`/`CurrentGeometry`. A nine-region spectrum deforms the lower contour for bass, middle contour for mids, and upper contour for treble. Adjacent regions interpolate with smoothstep; they are not visible equalizer bars. Already-smoothed overall RMS and local band energy add to the strength, with smooth deterministic inward/outward phase offsets subordinate to the sound. See [distinct state pigments and stronger motion](vivid-current.md). State color remains independent. This measures actual microphone sound, including sufficiently loud ambient noise; it does not identify a particular speaker.
 
 ## Single recording path
 
