@@ -35,6 +35,9 @@ class AudioReactiveScreenTest {
                 .also { model = it }
         }
         try {
+            // Continuous native animation can prevent Espresso idle on software emulators.
+            // This scenario validates real capture/cancel and state pigment, not motion timing.
+            shell("settings put global animator_duration_scale 0")
             for (theme in listOf("no", "yes")) {
                 shell("cmd uimode night $theme")
                 ActivityScenario.launch(MainActivity::class.java).use {
@@ -52,6 +55,7 @@ class AudioReactiveScreenTest {
             }
         } finally {
             MainActivity.testFactory = null; MainActivity.testNotice = null
+            shell("settings put global animator_duration_scale 1")
             shell("cmd uimode night no")
         }
     }

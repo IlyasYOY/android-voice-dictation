@@ -2,6 +2,8 @@ package io.github.ilyasyoy.voicedictation
 
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -11,6 +13,7 @@ import io.github.ilyasyoy.voicedictation.audio.*
 import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.DictationScreen
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
+import io.github.ilyasyoy.voicedictation.ui.design.CurrentMarkView
 import org.junit.*
 
 /** Actual application UI with explicitly synthetic visual states, no microphone/API calls. */
@@ -28,6 +31,9 @@ class VividCurrentScreenTest {
         shell("mkdir -p /sdcard/Download/vivid-current")
         try {
             for (theme in listOf("no", "yes")) {
+                // The software emulator may never make Espresso idle while native frames run.
+                // Settle UI with scheduling disabled; explicitly step a frozen voice frame below.
+                shell("settings put global animator_duration_scale 0")
                 shell("cmd uimode night $theme")
                 ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                     var state by mutableStateOf(DictationState())
@@ -44,7 +50,23 @@ class VividCurrentScreenTest {
                     )) {
                         compose.runOnIdle { state=next }
                         compose.waitForIdle(); SystemClock.sleep(700)
+                        if (name == "recording-voice") {
+                            shell("settings put global animator_duration_scale 1")
+                            scenario.onActivity { activity ->
+                                fun step(view: View) {
+                                    if (view is CurrentMarkView) {
+                                        view.mark.stop()
+                                        repeat(20) { view.mark.advanceFrame(.033f, System.nanoTime(), true) }
+                                        view.invalidate()
+                                    }
+                                    if (view is ViewGroup) for (i in 0 until view.childCount) step(view.getChildAt(i))
+                                }
+                                step(activity.window.decorView)
+                            }
+                            SystemClock.sleep(300)
+                        }
                         shell("screencap -p /sdcard/Download/vivid-current/main-$name-$theme.png")
+                        shell("settings put global animator_duration_scale 0")
                     }
                     shell("settings put global animator_duration_scale 0")
                     compose.runOnIdle { state=DictationState(phase=Phase.RECORDING, voiceLevels=source) }
