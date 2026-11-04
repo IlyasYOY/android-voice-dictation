@@ -89,6 +89,7 @@ class NativeOverlayPaletteScreenTest {
                     try {
                         for ((name,visual) in listOf("idle" to CurrentVisual.IDLE,"recording" to CurrentVisual.RECORDING,
                             "processing" to CurrentVisual.PROCESSING,"error" to CurrentVisual.ERROR)) {
+                            val drawn=java.util.concurrent.CountDownLatch(1)
                             scenario.onActivity { activity ->
                                 window.render(checkNotNull(imeTop),false,"",activity.getString(R.string.floating_start),
                                     visual==CurrentVisual.RECORDING || visual==CurrentVisual.PROCESSING,false,false,null,
@@ -96,10 +97,20 @@ class NativeOverlayPaletteScreenTest {
                                 val id=if(visual==CurrentVisual.RECORDING)R.id.floating_stop else R.id.floating_start
                                 val image=checkNotNull(overlay).findViewById<ImageButton>(id)
                                 assertEquals(visual,(image.drawable as CurrentDrawable).visual)
+                                val view=checkNotNull(overlay)
+                                val observer=view.viewTreeObserver
+                                observer.addOnDrawListener(object : android.view.ViewTreeObserver.OnDrawListener {
+                                    override fun onDraw() {
+                                        drawn.countDown()
+                                        view.post { if(observer.isAlive)observer.removeOnDrawListener(this) }
+                                    }
+                                })
+                                view.invalidate()
                             }
+                            assertTrue("Native panel must draw before screenshot",drawn.await(10,java.util.concurrent.TimeUnit.SECONDS))
                             SystemClock.sleep(300)
                             shell("screencap -p /sdcard/Download/vivid-current/native-overlay-$name-$theme.png")
-                            if(visual!=CurrentVisual.IDLE) {
+                            run {
                                 val bytes=shell("cat /sdcard/Download/vivid-current/native-overlay-$name-$theme.png")
                                 val image=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size)
                                 try {
@@ -107,11 +118,13 @@ class NativeOverlayPaletteScreenTest {
                                     for(y in 0 until image.height step 2)for(x in 0 until image.width step 2) {
                                         android.graphics.Color.colorToHSV(image.getPixel(x,y),hsv)
                                         val hue=when(visual) {
+                                            CurrentVisual.IDLE -> hsv[1]<.15f && hsv[2] in .4f.. .9f &&
+                                                x>image.width*.7 && y in (checkNotNull(imeTop)-100) until checkNotNull(imeTop)
                                             CurrentVisual.RECORDING -> hsv[0] in 260f..290f
                                             CurrentVisual.PROCESSING -> hsv[0] in 30f..60f
                                             else -> hsv[0]>345f || hsv[0]<10f
                                         }
-                                        if(hue && hsv[1]>.35f && hsv[2]>.35f)colored++
+                                        if(hue && (visual==CurrentVisual.IDLE || hsv[1]>.35f && hsv[2]>.35f))colored++
                                     }
                                     assertTrue("$name pigment must be visible in the actual window screenshot",colored>20)
                                 } finally {image.recycle()}
