@@ -28,6 +28,13 @@ The chosen concept is a color direction, not an exact outline. Library resolved
 follows the explicitly approved gray / purple / amber / red brief; comparison
 with the concept remains pending.
 
+## Owner acceptance
+
+On 2026-11-05 the owner confirmed the visual candidate was good and explicitly
+requested merging PR #16. This records product approval, not a claim that every
+manual scenario below was executed or that the cloud capture limitation passed.
+The checklist remains useful for device and recording regressions.
+
 ## Phone acceptance (screenshots only)
 
 1. Install the signed candidate as an update, retaining history. If the installed
@@ -74,8 +81,9 @@ freezes the shared renderer. The fixture editor follows system day/night too.
 Pixel checks avoid API 28's stale accessibility descriptions after color changes.
 Overlay attempts with and without animations returned a recording error at Stop;
 standalone Android capture/encoder checks passed. This is not a continuous-speech
-device acceptance pass. Keep normal-motion capture and listening on the phone as
-a merge gate; this change does not relax capture guards or change recording code.
+device acceptance pass. Normal-motion capture and listening remain device-specific
+validation; owner approval above covers this visual candidate. This change does
+not relax capture guards or change recording code.
 
 Counts, execution receipts, candidate commit and APK checksum are in the draft PR.
 Test source or compilation alone is not execution.
