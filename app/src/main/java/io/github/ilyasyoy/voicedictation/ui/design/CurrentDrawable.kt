@@ -16,10 +16,10 @@ internal class CurrentDrawable : Drawable(), Animatable {
         set(value) { if (field != value) {
             field = value
             if (value != CurrentVisual.RECORDING) { voice = VoiceLevels.Silence; freshness = 0f }
-            if (!ValueAnimator.areAnimatorsEnabled()) {
-                tint=if(value==CurrentVisual.RECORDING)1f else if(value==CurrentVisual.PROCESSING).65f else 0f
-                attention=if(value==CurrentVisual.ERROR)1f else 0f
-            }
+            colors.copyInto(previousColors)
+            previousInk = ink
+            pigmentProgress = 0f
+            if (!ValueAnimator.areAnimatorsEnabled()) settlePigment()
             invalidateSelf()
         } }
     var levels: VoiceLevelSource = VoiceLevelSource.Silent
@@ -33,8 +33,11 @@ internal class CurrentDrawable : Drawable(), Animatable {
     private var lastFrame = 0L
     private var phase = 0.0
     private var energy = .12f
-    private var tint = 0f
-    private var attention = 0f
+    private val colors = SoftCurrentPalette.NeutralLayers.copyOf()
+    private val previousColors = colors.copyOf()
+    private var ink = SoftCurrentPalette.ink(CurrentVisual.IDLE)
+    private var previousInk = ink
+    private var pigmentProgress = 1f
     private val xs=FloatArray(72)
     private val ys=FloatArray(72)
     private val frame = object : Runnable {
@@ -60,10 +63,11 @@ internal class CurrentDrawable : Drawable(), Animatable {
             }
             // Blend velocity and pigment as well as the outline: state changes never jump to a new frame.
             energy += (target - energy) * (1 - exp(-dt * 4))
-            val pigment = when (visual) { CurrentVisual.RECORDING -> 1f; CurrentVisual.PROCESSING -> .65f; else -> 0f }
-            tint += (pigment - tint) * (1 - exp(-dt * 4))
-            val warm = if (visual == CurrentVisual.ERROR) 1f else 0f
-            attention += (warm - attention) * (1 - exp(-dt * 4))
+            pigmentProgress = 1 - (1 - pigmentProgress) * exp(-dt * 10)
+            if (pigmentProgress > .999f) pigmentProgress = 1f
+            val targetColors = SoftCurrentPalette.layers(visual)
+            for (i in colors.indices) colors[i] = blend(previousColors[i], targetColors[i], pigmentProgress)
+            ink = blend(previousInk, SoftCurrentPalette.ink(visual), pigmentProgress)
             voice = if (visual == CurrentVisual.RECORDING) levels.current() else VoiceLevels.Silence
             freshness = voice.freshness(nowNanos)
             voicePhase += dt * (voice.loudness.safeUnit() * freshness * 7.0)
@@ -71,9 +75,13 @@ internal class CurrentDrawable : Drawable(), Animatable {
         } else {
             voice = VoiceLevels.Silence; freshness = 0f
             // Reduced motion still communicates the actual state through a static, distinct palette.
-            tint = if (visual == CurrentVisual.RECORDING) 1f else if (visual == CurrentVisual.PROCESSING) .65f else 0f
-            attention = if (visual == CurrentVisual.ERROR) 1f else 0f
+            settlePigment()
         }
+    }
+    private fun settlePigment() {
+        SoftCurrentPalette.layers(visual).copyInto(colors)
+        ink = SoftCurrentPalette.ink(visual)
+        pigmentProgress = 1f
     }
     override fun start() {
         if (running || !ValueAnimator.areAnimatorsEnabled()) return
@@ -86,11 +94,11 @@ internal class CurrentDrawable : Drawable(), Animatable {
         return Color.argb(channel(24),channel(16),channel(8),channel(0))
     }
     override fun draw(canvas: Canvas) {
-        if (!ValueAnimator.areAnimatorsEnabled()) { voice = VoiceLevels.Silence; freshness = 0f }
+        if (!ValueAnimator.areAnimatorsEnabled()) { voice = VoiceLevels.Silence; freshness = 0f; settlePigment() }
         val w = min(bounds.width(), bounds.height()).toFloat()
         val x = bounds.exactCenterX(); val y = bounds.exactCenterY()
         paint.style = Paint.Style.FILL
-        SoftCurrentPalette.Layers.forEachIndexed { layer, color ->
+        colors.forEachIndexed { layer, base ->
             // Even the strongest morph plus drift stays inside the control's touch bounds.
             val radius = w * (.40f - layer * .019f)
             for (i in 0 until 72) {
@@ -106,16 +114,14 @@ internal class CurrentDrawable : Drawable(), Animatable {
                 path.quadTo(xs[i],ys[i],(xs[i]+xs[next])/2,(ys[i]+ys[next])/2)
             }
             path.close()
-            val neutral = SoftCurrentPalette.NeutralLayers[layer]
-            val base = blend(blend(neutral,color,tint),SoftCurrentPalette.ErrorLayers[layer],attention)
-            val glow = blend(base,SoftCurrentPalette.Surface,.16f)
+            val glow = blend(base,SoftCurrentPalette.Surface,.07f)
             val travel = (sin(phase*.6)*w*.15f).toFloat()
             paint.shader = LinearGradient(x-w*.45f+travel,y-w*.35f,x+w*.45f+travel,y+w*.4f, intArrayOf(base,glow,base),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
             paint.alpha = opacity
             canvas.drawPath(path,paint)
         }
         paint.shader = null
-        paint.color = blend(blend(0xFF5B5666.toInt(),0xFF542194.toInt(),tint),0xFFFFE8ED.toInt(),attention)
+        paint.color = ink
         paint.alpha = opacity; paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
         paint.strokeWidth = max(1f,w*.006f)
         repeat(4) { line ->
@@ -123,7 +129,7 @@ internal class CurrentDrawable : Drawable(), Animatable {
             for (i in 0..64) {
                 val t=i/64f
                 val px=x+(t-.5f)*w*.48f
-                val py=y+sin(t*PI*2+line*.48+phase*.45)*sin(t*PI)*w*(.075f+energy*.035f+voice.loudness.safeUnit()*freshness*.02f)
+                val py=y+sin(t*PI*2+line*.48+phase*.45)*sin(t*PI)*w*(.075f+energy*.035f+voice.loudness.safeUnit()*freshness*.065f)
                 if (i==0) path.moveTo(px,py.toFloat()) else path.lineTo(px,py.toFloat())
             }
             canvas.drawPath(path,paint)

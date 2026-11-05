@@ -17,6 +17,8 @@ class FixtureActivity : Activity() {
     private var requestedAction: ((Intent) -> Unit)? = null
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); requestedAction?.invoke(intent) }
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES)
+            setTheme(android.R.style.Theme_Material_NoActionBar)
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 32, 12, 12) }
         val viewport = ScrollView(this)

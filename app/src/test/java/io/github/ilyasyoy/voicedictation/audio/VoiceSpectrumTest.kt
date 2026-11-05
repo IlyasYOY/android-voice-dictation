@@ -90,12 +90,44 @@ class VoiceSpectrumTest {
         for (i in 1..7) assertEquals(levels.at(i/8f-.0001f), levels.at(i/8f+.0001f), .001f)
         assertEquals(1f, levels.at(Float.NaN), 0f)
     }
+    @Test fun ordinarySpeechIsVisibleAtOverlayScaleAndLoudSpeechRemainsStronger() {
+        fun excursion(amplitude: Float): Double {
+            val levels = settle(VoiceSpectrum(), tone(940.0, amplitude))
+            return (0..120).maxOf { frame ->
+                val phase = frame * 2 * PI / 120
+                abs(CurrentGeometry.radius(0.0, 0, 0.0, phase, levels, 1f) -
+                    CurrentGeometry.radius(0.0, 0, 0.0, phase, VoiceLevels.Silence, 0f))
+            } * 58 * .4 // actual drawable diameter after overlay padding
+        }
+        val quiet = excursion(.008f)
+        val loud = excursion(.15f)
+        assertTrue("Quiet synthetic vowel has >1dp contour excursion: $quiet", quiet > 1.0)
+        assertTrue("Loud speech has >2dp contour excursion: $loud", loud > 2.0)
+        assertTrue(loud > quiet * 1.7)
+    }
+    @Test fun geometryRemainsSmoothAndUnclippedThroughLoudSpeechCycles() {
+        val levels = VoiceLevels(1f, FloatArray(9) { 1f }, 1)
+        for (layer in 0..5) for (frame in 0..120) for (point in 0..360) {
+            val angle = point * PI / 180
+            val phase = frame * .05
+            val radius = CurrentGeometry.radius(angle, layer, phase*.3, phase, levels, 1f)
+            val next = CurrentGeometry.radius(angle+.001, layer, phase*.3, phase, levels, 1f)
+            assertTrue(radius > .78 && radius < 1.22)
+            assertTrue(abs(next-radius) < .002)
+            assertTrue(radius*.4+.007 < .5) // no clipping at touch-target edges
+        }
+    }
     @Test fun geometryUsesVerticalSpectrumAndStaysWithinBoundsAtEveryAngle() {
         val bass = VoiceLevels(1f, FloatArray(9) { if(it==0)1f else 0f }, 1)
         val treble = VoiceLevels(1f, FloatArray(9) { if(it==8)1f else 0f }, 1)
         fun r(a: Double, level: VoiceLevels) = CurrentGeometry.radius(a, 0, 0.0, .7, level, 1f)
-        assertTrue(r(PI/2, bass) > r(PI/2, treble) + .04)
-        assertTrue(r(-PI/2, treble) > r(-PI/2, bass) + .04)
+        fun response(a: Double, level: VoiceLevels): Double = (0..120).map { frame ->
+            val phase = frame * 2 * PI / 120
+            abs(CurrentGeometry.radius(a, 0, 0.0, phase, level, 1f) -
+                CurrentGeometry.radius(a, 0, 0.0, phase, VoiceLevels.Silence, 0f))
+        }.average()
+        assertTrue(response(PI/2, bass) > response(PI/2, treble) * 2)
+        assertTrue(response(-PI/2, treble) > response(-PI/2, bass) * 2)
         for (i in 0..720) {
             val a = i * PI/360
             val all = VoiceLevels(1f, FloatArray(9) { 1f }, 1)
