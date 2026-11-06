@@ -54,6 +54,10 @@
   <string name="copy">Copy</string>
   <string name="copied">Copied to clipboard</string>
   <string name="setup">OpenAI connection</string>
+  <string name="history_seek">Seek recording</string>
+  <string name="history_seek_back">Back 10 seconds</string>
+  <string name="history_seek_forward">Forward 10 seconds</string>
+  <string name="history_seek_position">%1$s of %2$s</string>
   <string name="openai_billing">View billing</string>
   <string name="openai_billing_browser">Opens OpenAI Billing in your browser.</string>
   <string name="openai_billing_unavailable">Could not open a browser. Install or enable one and try again.</string>

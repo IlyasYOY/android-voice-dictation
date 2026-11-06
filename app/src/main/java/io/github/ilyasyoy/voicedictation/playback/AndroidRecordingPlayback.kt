@@ -43,9 +43,13 @@ private class AndroidPlaybackDriver(context: Context, private val lost: () -> Un
         focused = true; player.start()
     }
     override fun pause() { player.pause(); abandon() }
+    override fun seekTo(position: Int, completed: () -> Unit) {
+        player.setOnSeekCompleteListener { completed() }
+        player.seekTo(position.toLong(), MediaPlayer.SEEK_CLOSEST)
+    }
     private fun abandon() { if (focused) { focused = false; audio.abandonAudioFocusRequest(focus) } }
     override fun release() {
-        try { player.setOnPreparedListener(null); player.setOnCompletionListener(null); player.setOnErrorListener(null); player.release() }
+        try { player.setOnPreparedListener(null); player.setOnCompletionListener(null); player.setOnErrorListener(null); player.setOnSeekCompleteListener(null); player.release() }
         finally { abandon() }
     }
     override val position get() = player.currentPosition

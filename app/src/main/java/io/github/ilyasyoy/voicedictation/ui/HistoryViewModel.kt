@@ -69,6 +69,12 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
         if (owner.state.value.records.any { it.status == SavedRecordingStatus.CAPTURING }) return
         repository?.audio(id)?.let { AndroidRecordingPlayback.claim(playback); playback.toggle(id, it) }
     }
+    fun seek(id: String, fraction: Float) {
+        val records = owner.state.value.records
+        if (records.any { it.status == SavedRecordingStatus.CAPTURING } ||
+            records.none { it.id == id && it.status != SavedRecordingStatus.UPLOADING }) return
+        repository?.audio(id)?.let { AndroidRecordingPlayback.claim(playback); playback.seek(id, it, fraction) }
+    }
     fun retry(id: String) {
         if (processingJob[id]?.isActive == true) return
         playback.stop()
