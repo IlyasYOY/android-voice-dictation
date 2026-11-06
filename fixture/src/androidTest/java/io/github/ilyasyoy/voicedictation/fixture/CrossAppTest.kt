@@ -369,7 +369,7 @@ class CrossAppTest {
         }
         fun probe(command:String) {
             instrumentation.targetContext.startActivity(Intent().setComponent(ComponentName(APP,"$APP.floating.DebugFloatingSetupActivity"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("screen_probe",command))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("screen_probe",command))
             SystemClock.sleep(1500)
         }
         fun wakeEditor() {

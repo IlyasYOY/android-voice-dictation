@@ -11,6 +11,7 @@ import kotlinx.coroutines.*
  * synthetic recorder and deferred transcription. Never uses a microphone, key store or HTTP.
  * Kept outside target instrumentation because am instrument force-stops the bound service.
  */
+@android.annotation.SuppressLint("StaticFieldLeak") // Debug test lease only; fixture finally closes/nulls every owner and view.
 internal object DebugScreenOnProbe {
     private var capture: FloatingCapture? = null
     private var window: FloatingWindow? = null
