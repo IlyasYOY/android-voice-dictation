@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -174,13 +173,13 @@ class WaveformSeekRuntimeTest {
             val wave = compose.onNodeWithTag("history_seek_$id")
             wave.performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(.5f)) }
             compose.waitUntil(20_000) { model.playback.state.value.id == id && !model.playback.state.value.loading && !model.playback.state.value.seeking }
-            val actions = wave.fetchSemanticsNode().config[SemanticsProperties.CustomActions]
+            val actions = wave.fetchSemanticsNode().config[SemanticsActions.CustomActions]
             assertEquals(2, actions.size)
             assertTrue(actions[0].label.contains("10"))
             instrumentation.runOnMainSync { assertTrue(actions[0].action()) }
             compose.waitUntil(15_000) { !model.playback.state.value.seeking }
             assertTrue(kotlin.math.abs(model.playback.state.value.position - 5000) <= 100)
-            val forward = wave.fetchSemanticsNode().config[SemanticsProperties.CustomActions][1]
+            val forward = wave.fetchSemanticsNode().config[SemanticsActions.CustomActions][1]
             instrumentation.runOnMainSync { assertTrue(forward.action()) }
             compose.waitUntil(15_000) { !model.playback.state.value.seeking }
             assertFalse(model.playback.state.value.playing)
