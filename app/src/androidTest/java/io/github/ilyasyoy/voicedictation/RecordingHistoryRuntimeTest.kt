@@ -424,7 +424,10 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_problem").assertTextEquals(context.getString(R.string.error))
                 compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
                 compose.onNodeWithTag("saved_recordings").performClick()
-                compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+                scenario.onActivity { assertEquals("Unsaved synthetic words remain copyable", model.state.value.text) }
+                // Reopening preserves expansion. Clicking the toggle again would collapse the field under test.
+                compose.onNodeWithTag("history_expand_draft").performScrollTo()
+                    .assertContentDescriptionEquals(context.getString(R.string.history_less))
                 compose.onNodeWithTag("transcript").assertTextEquals("Unsaved synthetic words remain copyable")
                 scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
