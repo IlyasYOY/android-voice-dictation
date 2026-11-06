@@ -43,7 +43,9 @@ class MainErrorScreenTest {
             }
             compose.runOnIdle {state=state.copy(problem=Problem.AUTH)}
             compose.onNodeWithTag("retry").performScrollTo().performClick();assertEquals(1,retries)
-            compose.onNodeWithTag("saved_recordings").performClick();assertEquals(1,saved)
+            compose.onNodeWithTag("saved_recordings").performClick()
+            // History reveals after its coroutine moves the sheet, not in the tap callback.
+            compose.waitUntil(10_000) {saved==1};assertEquals(1,saved)
             compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("open_settings").performScrollTo().assertIsEnabled().performClick()
             compose.onNodeWithTag("api_key").assertExists();assertEquals(0,discards)
