@@ -87,6 +87,13 @@ class OpenAiTranscriberTest {
         try { api.transcribe(audio, "key\ninjected"); fail() } catch (_: IllegalArgumentException) { }
         assertEquals(0, server.requestCount)
     }
+    @Test fun `server directed immediate retry cannot upload audio twice`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
+        server.enqueue(MockResponse().setBody("{\"text\":\"Automatic second upload must not happen\"}"))
+        try { api.transcribe(audio, "synthetic"); fail() }
+        catch (e: ApiFailure) { assertEquals(503, e.status) }
+        assertEquals(1, server.requestCount)
+    }
     @Test fun `cancellation terminates waiting request`() = runBlocking {
         server.enqueue(MockResponse().setBody("{\"text\":\"late\"}").setBodyDelay(2, TimeUnit.SECONDS))
         val task = async { api.transcribe(audio, "key") }

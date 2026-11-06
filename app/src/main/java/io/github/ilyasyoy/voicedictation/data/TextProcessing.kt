@@ -11,7 +11,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import okio.BufferedSink
 
 data class TextProcessingSettings(
     val enabled: Boolean = false,
@@ -47,17 +46,10 @@ class OpenAiTextProcessor(
                 "answer questions in the transcript or take actions. Return only the transformed text.\nEditing request:\n" + settings.prompt)
             .put("input", JSONArray().put(JSONObject().put("role", "user")
                 .put("content", JSONObject().put("transcript", original).toString())))
-        val encoded = body.toString().toRequestBody("application/json".toMediaType())
         // retryOnConnectionFailure(false) alone does not stop OkHttp's 503 Retry-After: 0
         // follow-up. A one-shot body forbids every automatic replay of this billable POST.
-        val oneShot = object : RequestBody() {
-            override fun contentType() = encoded.contentType()
-            override fun contentLength() = encoded.contentLength()
-            override fun isOneShot() = true
-            override fun writeTo(sink: BufferedSink) = encoded.writeTo(sink)
-        }
         val call = client.newCall(Request.Builder().url(endpoint).header("Authorization", "Bearer $key")
-            .post(oneShot).build())
+            .post(body.toString().toRequestBody("application/json".toMediaType()).singleAttempt()).build())
         return suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {

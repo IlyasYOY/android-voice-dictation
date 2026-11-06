@@ -18,6 +18,8 @@ History exposes Recognized/Processed versions and a text-only repeat form. A rep
 
 References checked during implementation: [Responses create](https://developers.openai.com/api/reference/resources/responses/methods/create), [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini). Availability/billing depends on the owner's OpenAI project; no paid endpoint or real dictation is exercised by development tests.
 
+The same one-shot boundary protects the existing multipart recognition request against server-directed replay. Multipart bytes, model, keywords, response parsing and explicit retry behavior are unchanged; the local HTTP tests verify both request formats and one request on immediate-retry responses.
+
 ## Acceptance on a phone
 
 1. Update the existing app. Existing audio/history and key remain. Settings starts with post-processing disabled. Dictate once; behavior matches the previous version.
