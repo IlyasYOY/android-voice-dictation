@@ -3,7 +3,7 @@ package io.github.ilyasyoy.voicedictation.ui.design
 import android.content.Context
 import android.view.View
 import android.widget.ImageView
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.*
@@ -30,11 +30,15 @@ internal class CurrentMarkView(context: Context) : ImageView(context) {
 }
 
 @Composable
-internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit, size: Dp = 228.dp, levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) {
-    Box(Modifier.size(size)
+internal fun CurrentControl(label: String, tag: String, visual: CurrentVisual, enabled: Boolean, onClick: () -> Unit,
+    modifier: Modifier = Modifier, size: Dp = 228.dp,
+    levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent,
+    onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null) {
+    Box(modifier.size(size)
         .testTag(tag).semantics { contentDescription = label }
-        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
-            enabled = enabled, role = Role.Button, onClick = onClick)) {
+        .combinedClickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+            enabled = enabled, role = Role.Button, onClick = onClick,
+            onLongClick = onLongClick, onLongClickLabel = onLongClickLabel)) {
         AndroidView(factory = { CurrentMarkView(it) }, update = { it.mark.visual=visual; it.mark.levels=levels; if(it.isAttachedToWindow && it.windowVisibility==View.VISIBLE) it.mark.start() }, modifier = Modifier.fillMaxSize())
     }
 }

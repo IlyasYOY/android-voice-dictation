@@ -73,6 +73,7 @@ class SoftCurrentAcceptanceTest {
                 assertTrue("Full Stop target must fit even with large recording status text: $stopBounds",stopBounds.left>=0.dp && stopBounds.right<=width.dp && stopBounds.top>=0.dp && stopBounds.bottom<=height.dp)
                 capture("recording-$width-font-$font")
                 compose.onNodeWithText("Cancel · keep received text").assertDoesNotExist()
+                compose.onNodeWithTag("stop").performScrollTo().performTouchInput { longClick() }
                 compose.onNodeWithTag("cancel").performScrollTo().performClick()
                 assertTrue(cancelled)
                 assertEquals("Synthetic final words",state.text)
