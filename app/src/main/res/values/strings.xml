@@ -7,7 +7,7 @@
   <string name="text_processing_model">Text model</string>
   <string name="text_processing_choose_model">Choose a model</string>
   <string name="text_processing_prompt">Editing prompt</string>
-  <string name="text_processing_prompt_hint">Apply to the recognized text. Keep personal data out of reusable prompts. Up to 8,000 characters.</string>
+  <string name="text_processing_prompt_hint">Describe how to edit the recognized text. Up to 8,000 characters.</string>
   <string name="text_processing_save">Save processing settings</string>
   <string name="text_processing_settings_error">Could not read or save processing settings. Check storage and save explicitly.</string>
   <string name="text_processing">Processing text…</string>

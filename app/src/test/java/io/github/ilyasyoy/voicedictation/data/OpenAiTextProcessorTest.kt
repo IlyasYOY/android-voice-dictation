@@ -52,6 +52,13 @@ class OpenAiTextProcessorTest {
         try { processor.process("Original", "key\nheader", TextProcessingSettings(true)); fail() } catch (_: IllegalArgumentException) { }
         assertEquals(0, server.requestCount)
     }
+    @Test fun retryAfterZeroCannotReplayABillableTextRequest() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
+        server.enqueue(MockResponse().setBody(response("An automatic replay must not happen")))
+        try { processor.process("Original", "synthetic", TextProcessingSettings(true)); fail() }
+        catch (e: ApiFailure) { assertEquals(503, e.status) }
+        assertEquals(1, server.requestCount)
+    }
     @Test fun cancelAndTimeoutTerminateTheOneAttempt() = runBlocking {
         server.enqueue(MockResponse().setBody(response()).setBodyDelay(1, TimeUnit.SECONDS))
         val task = async { processor.process("Original", "synthetic", TextProcessingSettings(true)) }

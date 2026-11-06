@@ -7,7 +7,7 @@
   <string name="text_processing_model">Текстовая модель</string>
   <string name="text_processing_choose_model">Выбрать модель</string>
   <string name="text_processing_prompt">Промпт для обработки</string>
-  <string name="text_processing_prompt_hint">Применяется к распознанному тексту. Не включайте личные данные в постоянный промпт. До 8 000 символов.</string>
+  <string name="text_processing_prompt_hint">Опишите, как обработать распознанный текст. До 8 000 символов.</string>
   <string name="text_processing_save">Сохранить настройки обработки</string>
   <string name="text_processing_settings_error">Не удалось прочитать или сохранить настройки обработки. Проверьте память и сохраните явно.</string>
   <string name="text_processing">Обработка текста…</string>
