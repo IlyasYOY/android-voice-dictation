@@ -262,6 +262,7 @@ class TextProcessingRuntimeTest {
             compose.onNodeWithTag("transcript").assertTextEquals(edits)
             compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { calls == 1 && repository.record(id)!!.processingStatus == TextProcessingStatus.PROCESSING }
+            compose.onNodeWithTag("text_version_edits_$id").performScrollTo().performClick()
             compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(edits)
             compose.onNodeWithTag("cancel_processing_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.INTERRUPTED }
@@ -280,6 +281,7 @@ class TextProcessingRuntimeTest {
             compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { calls == 3 }; response.complete("New processed version")
             compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.COMPLETE }
+            compose.onNodeWithTag("history_text_$id").performScrollTo().assertTextEquals("New processed version")
             for ((version, expected) in listOf("original" to repository.record(id)!!.transcript,
                 "processed" to "New processed version", "edits" to edits)) {
                 compose.onNodeWithTag("text_version_${version}_$id").performScrollTo().performClick()

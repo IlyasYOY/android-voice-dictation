@@ -326,7 +326,8 @@ private fun ProcessedTranscriptBody(record: SavedRecording, draft: HistoryDraft?
     val distinctEdits = draft != null && draft.text != record.transcript &&
         (record.processedText.isBlank() || draft.text != record.processedText)
     var processed by rememberSaveable(record.id, record.processedText) { mutableStateOf(record.processedText.isNotBlank()) }
-    var editsSelected by rememberSaveable(record.id, record.processedText) { mutableStateOf(distinctEdits) }
+    // A newly completed attempt opens its new result; retained edits remain independently selectable.
+    var editsSelected by rememberSaveable(record.id, record.processedText) { mutableStateOf(false) }
     // Keep the editor while typing back to an identical value; never drop its focus mid-edit.
     val showEdits = distinctEdits || (editsSelected && draft != null)
     val selectedVersion = if (editsSelected && showEdits) 2 else if (processed) 1 else 0
