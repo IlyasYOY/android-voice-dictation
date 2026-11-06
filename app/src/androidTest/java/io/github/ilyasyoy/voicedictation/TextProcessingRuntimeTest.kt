@@ -336,7 +336,9 @@ class TextProcessingRuntimeTest {
             compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { calls == 1 }
             main.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
-            ActivityScenario.launch(SavedRecordingsActivity::class.java).use {
+            // The Class overload clears the app task; preserve the first Activity/request owner.
+            ActivityScenario.launch<SavedRecordingsActivity>(android.content.Intent(context, SavedRecordingsActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)).use {
                 compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
                 compose.onNodeWithTag("history_processing_$id").assertExists()
                 compose.onNodeWithTag("cancel_processing_$id").assertDoesNotExist()
