@@ -108,7 +108,7 @@ class BlobControlsRuntimeTest {
                 val node=compose.onNodeWithTag(tag)
                 assertEquals(context.getString(R.string.current_controls),node.fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
                 node.performSemanticsAction(SemanticsActions.OnLongClick) {it()}
-                compose.onNodeWithTag("cancel").assertExists();assertEquals(0,taps)
+                compose.onNodeWithTag("cancel").assertContentDescriptionEquals(context.getString(R.string.cancel));assertEquals(0,taps)
                 val action=node.fetchSemanticsNode().config[SemanticsActions.CustomActions].single()
                 assertEquals(context.getString(R.string.floating_cancel),action.label)
                 compose.runOnIdle {assertTrue(action.action())}

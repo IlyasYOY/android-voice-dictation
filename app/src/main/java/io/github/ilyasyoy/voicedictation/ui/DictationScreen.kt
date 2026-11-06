@@ -148,6 +148,7 @@ fun DictationScreen(
                 val processing = state.phase in setOf(Phase.TRANSCRIBING)
                 val controlsLabel = stringResource(R.string.current_controls)
                 val cancelLabel = stringResource(R.string.floating_cancel)
+                val cancelDescription = stringResource(R.string.cancel)
                 val cancel: () -> Unit = { controlsOpen = false; onCancel() }
                 CurrentControl(stringResource(if (recording) R.string.stop else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
@@ -179,7 +180,7 @@ fun DictationScreen(
                     color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.testTag("recording_controls")) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(controlsLabel, style = MaterialTheme.typography.labelLarge)
-                        TextButton(cancel, Modifier.testTag("cancel")) { Text(cancelLabel) }
+                        TextButton(cancel, Modifier.testTag("cancel").semantics { contentDescription = cancelDescription }) { Text(cancelLabel) }
                     }
                 }
                 }
