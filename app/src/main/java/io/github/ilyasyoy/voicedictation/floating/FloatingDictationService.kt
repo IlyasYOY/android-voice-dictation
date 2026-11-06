@@ -134,7 +134,7 @@ class FloatingDictationService : AccessibilityService() {
             Phase.ERROR -> getString(R.string.error)
             else -> getString(R.string.floating_start)
         }
-        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true, historyFull = capacityFull, levels = state?.voiceLevels ?: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) }
+        try { window?.render(imeTop, false, state?.text ?: feedback.text, status, active, feedback.text.isNotBlank() || RecordingRecovery.processOwned.state.value.savedCount>0, feedback.needsSetup, DebugFloatingConfiguration.notice(this), active && state?.phase != Phase.RECORDING, feedback.error || state?.problem != null, state?.keyBusy == true, historyFull = capacityFull, levels = state?.voiceLevels ?: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent, keepScreenOn = capture?.keepsScreenOn == true) }
         catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.RENDER, error); closeSession(); window?.hide() }
     }
     private fun microphoneGranted() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -215,7 +215,7 @@ class FloatingDictationService : AccessibilityService() {
                 }
                 if (foreground && microphoneGranted()) getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
                 render()
-            })
+            }, onScreenOn = { window?.setScreenOn(it) })
         capture?.start()
     }
     private fun invalidStart() {
@@ -288,6 +288,7 @@ class FloatingDictationService : AccessibilityService() {
         if (foreground) { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); foreground = false; stopSelf() }
     }
     private fun closeSession(hideWindow: Boolean = true, discardFeedback: Boolean = false, retainCurrent: Boolean = true, retainRecording: Boolean = true) {
+        window?.setScreenOn(false)
         // Stop all resources/clear editor ownership independently of pending user text.
         // A hidden keyboard, Setup, lock or service rebind must never turn recovery into data loss.
         val state = model?.state?.value

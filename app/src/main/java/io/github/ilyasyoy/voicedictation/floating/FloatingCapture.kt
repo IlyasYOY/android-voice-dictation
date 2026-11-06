@@ -18,8 +18,17 @@ internal class FloatingCapture(
     private val environment: () -> FloatingEnvironment,
     private val onInvalid: () -> Unit,
     private val onState: (DictationState) -> Unit,
+    private val onScreenOn: (Boolean) -> Unit = {},
 ) : AutoCloseable {
     private var closed = false
+    var keepsScreenOn = false
+        private set
+    private fun screenOn(keep: Boolean) {
+        val next = keep && !closed
+        if (keepsScreenOn == next) return
+        keepsScreenOn = next
+        onScreenOn(next)
+    }
     private val observer = scope.launch(start = CoroutineStart.LAZY) {
         var launched = false
         session.state.collect { state ->
@@ -28,10 +37,17 @@ internal class FloatingCapture(
                 launched = true
                 // Recheck the captured editor immediately before local audio start; no key/network wait.
                 if (!eligible(environment())) { onInvalid(); return@collect }
+                // Cover local recorder startup too; a failed start settles the request below.
+                screenOn(true)
                 session.start(true)
             }
             // Starting may synchronously replace the collected idle/storage-error state.
-            if (!closed) onState(session.state.value)
+            if (!closed) {
+                val current = session.state.value
+                // One continuous lease across RECORDING -> TRANSCRIBING, including key waits.
+                screenOn(current.audioBusy)
+                onState(current)
+            }
         }
     }
     fun start() { if (!closed) observer.start() }
@@ -42,6 +58,7 @@ internal class FloatingCapture(
         } == true
     override fun close() {
         if (closed) return
-        closed = true; observer.cancel(); session.close()
+        closed = true
+        try { screenOn(false) } finally { observer.cancel(); session.close() }
     }
 }
