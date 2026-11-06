@@ -308,15 +308,22 @@ class TextProcessingRuntimeTest {
                 processingSettings = { TextProcessingSettings(true) }, textProcessor = TextProcessor { _, _, _ -> response.await() })
             }.also { model = it; it.setKey("synthetic") }
         }
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             compose.onNodeWithTag("record").performClick(); compose.onNodeWithTag("stop").performScrollTo().performClick()
             compose.waitUntil(15_000) { model.state.value.phase == Phase.PROCESSING }
             val id = repository.records().single().id
-            compose.onNodeWithTag("saved_recordings").performScrollTo().performClick()
+            // The compact drawer is disabled during automatic work. Exercise the same real
+            // history presentation as a wide pane without replacing its session/request owner.
+            scenario.onActivity { it.setContent { VoiceDictationTheme {
+                val recovery by RecordingRecovery.processOwned.state.collectAsState()
+                val controller: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                HistoryPresentation(true, true, {}, recovery, controller, rememberHistoryUiState())
+            } } }
             compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
             compose.onNodeWithTag("history_processing_$id").assertExists()
             compose.onNodeWithTag("cancel_processing_$id").assertDoesNotExist()
-            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
+            scenario.recreate()
+            assertEquals(Phase.PROCESSING, model.state.value.phase)
             compose.onNodeWithTag("processing").performScrollTo().performSemanticsAction(SemanticsActions.OnLongClick) { it() }
             compose.onNodeWithTag("cancel").performScrollTo().performClick()
             compose.waitUntil(15_000) { !model.state.value.audioBusy }
@@ -337,16 +344,31 @@ class TextProcessingRuntimeTest {
             compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
             compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { calls == 1 }
-            main.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
-            // The Class overload clears the app task; preserve the first Activity/request owner.
-            ActivityScenario.launch<SavedRecordingsActivity>(android.content.Intent(context, SavedRecordingsActivity::class.java)
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)).use {
+            // ActivityScenario's invoker adds CLEAR_TASK even to supplied intents. Launch through
+            // the real first Activity so its ViewModel and in-flight request remain alive.
+            main.onActivity { it.startActivity(android.content.Intent(it, SavedRecordingsActivity::class.java)) }
+            compose.waitUntil(15_000) {
+                var ready = false
+                instrumentation.runOnMainSync {
+                    ready = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).any { it is SavedRecordingsActivity }
+                }
+                ready
+            }
+            try {
+                assertEquals(TextProcessingStatus.PROCESSING, repository.record(id)!!.processingStatus)
                 compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
                 compose.onNodeWithTag("history_processing_$id").assertExists()
                 compose.onNodeWithTag("cancel_processing_$id").assertDoesNotExist()
                 assertEquals(TextProcessingStatus.PROCESSING, repository.record(id)!!.processingStatus)
+            } finally {
+                instrumentation.runOnMainSync {
+                    androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                        .filterIsInstance<SavedRecordingsActivity>().forEach { it.finish() }
+                }
+                instrumentation.waitForIdleSync()
             }
-            main.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
             compose.onNodeWithTag("cancel_processing_$id").performScrollTo().performClick()
             compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.INTERRUPTED }
             assertEquals(1, calls)
