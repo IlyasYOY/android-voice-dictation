@@ -28,12 +28,15 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
     val playback = AndroidRecordingPlayback.create(application)
     private val owner = RecordingRecovery.processOwned
     private val processingJob = mutableMapOf<String, Job>()
+    private val mutableCancellableProcessing = MutableStateFlow<Set<String>>(emptySet())
+    val cancellableProcessing = mutableCancellableProcessing.asStateFlow()
     private val mutableProcessingFailure = MutableStateFlow<String?>(null)
     val processingFailure = mutableProcessingFailure.asStateFlow()
     fun process(id: String) {
         if (processingJob[id]?.isActive == true) return
         playback.stop(); mutableProcessingFailure.value = null
         processingJob[id] = viewModelScope.launch {
+            mutableCancellableProcessing.value += id
             try {
                 val settings = TextProcessingPreferences(getApplication()).read().copy(enabled = true)
                 runProcessing(id, settings)
@@ -45,6 +48,7 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
                     io.github.ilyasyoy.voicedictation.diagnostics.DiagnosticAction.RETRY, error)
                 mutableProcessingFailure.value = id
             }
+            finally { mutableCancellableProcessing.value -= id }
         }
     }
     private suspend fun runProcessing(id: String, settings: TextProcessingSettings): String? {
@@ -69,6 +73,7 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
         if (processingJob[id]?.isActive == true) return
         playback.stop()
         processingJob[id] = viewModelScope.launch {
+            mutableCancellableProcessing.value += id
             try {
                 val context = getApplication<Application>()
                 val settings = runCatching { TextProcessingPreferences(context).read() }
@@ -80,6 +85,7 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutableProcessingFailure.value = id }
+            finally { mutableCancellableProcessing.value -= id }
         }
     }
     fun delete(id: String) { playback.stop(); owner.discard(id) }

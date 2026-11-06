@@ -22,6 +22,8 @@
   <string name="text_processing_repeat">Process text again</string>
   <string name="text_recognized">Recognized</string>
   <string name="text_processed">Processed</string>
+  <string name="text_edits">Edits</string>
+  <string name="text_copy_edits">Copy edits</string>
   <string name="text_processing_previous">Previous successful result. The latest attempt did not replace it.</string>
   <string name="history_drawer_expanded">Expanded</string>
   <string name="history_drawer_collapsed">Collapsed</string>

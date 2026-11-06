@@ -22,6 +22,8 @@
   <string name="text_processing_repeat">Обработать ещё раз</string>
   <string name="text_recognized">Распознано</string>
   <string name="text_processed">Обработано</string>
+  <string name="text_edits">Правки</string>
+  <string name="text_copy_edits">Копировать правки</string>
   <string name="text_processing_previous">Предыдущий успешный результат. Последняя попытка его не заменила.</string>
   <string name="history_drawer_expanded">Развёрнуто</string>
   <string name="history_drawer_collapsed">Свёрнуто</string>

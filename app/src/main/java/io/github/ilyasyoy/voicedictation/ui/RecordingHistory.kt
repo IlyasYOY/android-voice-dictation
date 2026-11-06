@@ -84,6 +84,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
     val processingFailure by controller.processingFailure.collectAsStateWithLifecycle()
+    val cancellableProcessing by controller.cancellableProcessing.collectAsStateWithLifecycle()
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
     LaunchedEffect(recovery.records, draft == null) {
         if (draft == null) storedDraft = runCatching {
@@ -104,6 +105,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
             onProcess = controller::process, onCancelProcessing = controller::cancelProcessing,
+            cancellableProcessing = cancellableProcessing,
             processingFailure = processingFailure,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
@@ -140,7 +142,8 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     ui: HistoryUiState = rememberHistoryUiState(), dismissible: Boolean = true,
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
-    }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null) {
+    }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null,
+    cancellableProcessing: Set<String> = emptySet()) {
     val currentDraft = draft?.takeIf { it.visible }
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
@@ -200,7 +203,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     HistoryMessage(record, state, playback, available,
                         rowDraft, if (rowDraft != null) onDraftEdit else null,
                         onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui,
-                        onProcess, onCancelProcessing, processingFailure == record.id)
+                        onProcess, onCancelProcessing, processingFailure == record.id, record.id in cancellableProcessing)
                 }
             }
         }
@@ -212,7 +215,7 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
     available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
     waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState,
-    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean) {
+    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean, canCancelProcessing: Boolean) {
     val expanded = record.id in ui.expanded
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
     val owned = record.id in state.ownedIds
@@ -283,14 +286,14 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                     if (record.processingStatus == TextProcessingStatus.NONE)
                         TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
                             actions = { actions(text, stringResource(R.string.copy)) })
-                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, actions)
+                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, draft, onEdit, actions)
                     else TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
                         actions = { actions(text, stringResource(R.string.copy)) })
                     if (process != null) {
                         if (record.processingStatus == TextProcessingStatus.PROCESSING) {
                             LinearProgressIndicator(Modifier.fillMaxWidth().testTag("history_processing_${record.id}"))
                             MessageNote(R.string.text_processing)
-                            TextButton({ onCancelProcessing(record.id) }, Modifier.testTag("cancel_processing_${record.id}")) {
+                            if (canCancelProcessing) TextButton({ onCancelProcessing(record.id) }, Modifier.testTag("cancel_processing_${record.id}")) {
                                 Text(stringResource(android.R.string.cancel))
                             }
                         }
@@ -318,24 +321,37 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
 }
 
 @Composable
-private fun ProcessedTranscriptBody(record: SavedRecording, actions: @Composable (String, String) -> Unit) {
+private fun ProcessedTranscriptBody(record: SavedRecording, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
+    actions: @Composable (String, String) -> Unit) {
+    val distinctEdits = draft != null && draft.text != record.transcript &&
+        (record.processedText.isBlank() || draft.text != record.processedText)
     var processed by rememberSaveable(record.id, record.processedText) { mutableStateOf(record.processedText.isNotBlank()) }
+    var editsSelected by rememberSaveable(record.id, record.processedText) { mutableStateOf(distinctEdits) }
+    // Keep the editor while typing back to an identical value; never drop its focus mid-edit.
+    val showEdits = distinctEdits || (editsSelected && draft != null)
+    val selectedVersion = if (editsSelected && showEdits) 2 else if (processed) 1 else 0
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val options = listOf(false to R.string.text_recognized, true to R.string.text_processed)
-        val option: @Composable (Boolean, Int, Modifier) -> Unit = { value, label, modifier ->
-            FilterChip(processed == value, { processed = value }, label = { Text(stringResource(label)) },
-                enabled = !value || record.processedText.isNotBlank(), modifier = modifier
-                    .testTag("text_version_${if (value) "processed" else "original"}_${record.id}"))
+        val options = listOf(0 to R.string.text_recognized, 1 to R.string.text_processed) +
+            if (showEdits) listOf(2 to R.string.text_edits) else emptyList()
+        val option: @Composable (Int, Int, Modifier) -> Unit = { value, label, modifier ->
+            FilterChip(selectedVersion == value, { editsSelected = value == 2; if (value != 2) processed = value == 1 },
+                label = { Text(stringResource(label)) },
+                enabled = value != 1 || record.processedText.isNotBlank(), modifier = modifier
+                    .testTag("text_version_${when(value) { 0 -> "original"; 1 -> "processed"; else -> "edits" }}_${record.id}"))
         }
-        if (LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().selectableGroup()) {
+        if (showEdits || LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().selectableGroup()) {
             options.forEach { (value, label) -> option(value, label, Modifier.fillMaxWidth()) }
         } else Row(Modifier.fillMaxWidth().selectableGroup()) {
             options.forEach { (value, label) -> option(value, label, Modifier.weight(1f)) }
         }
-        val text = if (processed) record.processedText else record.transcript
-        SelectionContainer { Text(text, Modifier.testTag("history_text_${record.id}"), style = MaterialTheme.typography.bodyLarge) }
-        actions(text, stringResource(if (processed) R.string.text_processing_copy_processed else R.string.text_processing_copy_original))
-        if (processed && record.processingStatus != TextProcessingStatus.COMPLETE) Text(
+        val text = when(selectedVersion) { 1 -> record.processedText; 2 -> draft?.text.orEmpty(); else -> record.transcript }
+        if (selectedVersion == 2 && onEdit != null) BasicTextField(text, onEdit, Modifier.fillMaxWidth().testTag("transcript"),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
+        else SelectionContainer { Text(text, Modifier.testTag("history_text_${record.id}"), style = MaterialTheme.typography.bodyLarge) }
+        actions(text, stringResource(when(selectedVersion) { 1 -> R.string.text_processing_copy_processed;
+            2 -> R.string.text_copy_edits; else -> R.string.text_processing_copy_original }))
+        if (selectedVersion == 1 && record.processingStatus != TextProcessingStatus.COMPLETE) Text(
             stringResource(R.string.text_processing_previous), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

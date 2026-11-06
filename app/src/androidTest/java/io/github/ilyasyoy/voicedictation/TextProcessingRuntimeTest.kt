@@ -243,6 +243,112 @@ class TextProcessingRuntimeTest {
             assertEquals("Исправь пунктуацию, сохрани смысл.", TextProcessingPreferences(context).read().prompt)
         }
     }
+    @Test fun linkedEditsRemainAccessibleAfterRepeatCancellationFailureAndSuccess() {
+        lateinit var id: String
+        val edits = "My retained manual edits"
+        instrumentation.runOnMainSync {
+            id = seed(); repository.saveText(RecordingTextSlot.MAIN, edits, id)
+            MainActivity.testFactory = { app -> DictationViewModel { scope -> DictationSessions.create(app, scope, mainDraft = true) } }
+        }
+        var calls = 0; var response = CompletableDeferred<String>()
+        HistoryViewModel.testProcess = { record, settings ->
+            processSavedText(repository, record, settings, { "synthetic" }, TextProcessor { source, _, _ ->
+                assertEquals(repository.record(id)!!.transcript, source); calls++; response.await()
+            })
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").assertTextEquals(edits)
+            compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { calls == 1 && repository.record(id)!!.processingStatus == TextProcessingStatus.PROCESSING }
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(edits)
+            compose.onNodeWithTag("cancel_processing_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.INTERRUPTED }
+            scenario.recreate()
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(edits)
+            compose.onNodeWithTag("history_copy_$id").performScrollTo()
+                .assertContentDescriptionEquals(context.getString(R.string.text_copy_edits)).performClick()
+            scenario.onActivity { assertEquals(edits, context.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
+            response = CompletableDeferred()
+            compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { calls == 2 }
+            response.completeExceptionally(java.io.IOException("synthetic offline"))
+            compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.FAILED }
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(edits)
+            response = CompletableDeferred()
+            compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { calls == 3 }; response.complete("New processed version")
+            compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.COMPLETE }
+            for ((version, expected) in listOf("original" to repository.record(id)!!.transcript,
+                "processed" to "New processed version", "edits" to edits)) {
+                compose.onNodeWithTag("text_version_${version}_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
+                scenario.onActivity { assertEquals(expected, context.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
+            }
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(edits)
+            capture("history-retained-edits-light")
+            assertEquals(edits, repository.savedText(RecordingTextSlot.MAIN))
+            assertEquals(3, calls)
+        }
+    }
+
+    @Test fun automaticRequestHasNoIneffectiveHistoryCancelAndStillCancelsFromBlob() {
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
+        val response = CompletableDeferred<String>(); lateinit var model: DictationViewModel
+        MainActivity.testFactory = {
+            DictationViewModel { scope -> DictationSession(scope, object : AudioRecorder {
+                lateinit var file: java.io.File
+                override fun start(onLimit: () -> Unit) { file = repository.allocate().apply { writeText("synthetic") } }
+                override fun stop() = file.also { repository.finalized(it) }
+                override fun cancel() = Unit
+            }, Transcriber { _, _ -> "Original retained on cancellation" }, recordings = StoredRecordingRetention(repository, true),
+                processingSettings = { TextProcessingSettings(true) }, textProcessor = TextProcessor { _, _, _ -> response.await() })
+            }.also { model = it; it.setKey("synthetic") }
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag("record").performClick(); compose.onNodeWithTag("stop").performScrollTo().performClick()
+            compose.waitUntil(15_000) { model.state.value.phase == Phase.PROCESSING }
+            val id = repository.records().single().id
+            compose.onNodeWithTag("saved_recordings").performScrollTo().performClick()
+            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("history_processing_$id").assertExists()
+            compose.onNodeWithTag("cancel_processing_$id").assertDoesNotExist()
+            compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
+            compose.onNodeWithTag("processing").performScrollTo().performSemanticsAction(SemanticsActions.OnLongClick) { it() }
+            compose.onNodeWithTag("cancel").performScrollTo().performClick()
+            compose.waitUntil(15_000) { !model.state.value.audioBusy }
+            assertEquals(TextProcessingStatus.INTERRUPTED, repository.record(id)!!.processingStatus)
+            assertEquals("Original retained on cancellation", repository.record(id)!!.transcript)
+        }
+    }
+
+    @Test fun anotherHistoryActivityDoesNotAdvertiseCancellationForTheFirstOwnersRequest() {
+        lateinit var id: String
+        instrumentation.runOnMainSync { id = seed() }
+        val response = CompletableDeferred<String>(); var calls = 0
+        HistoryViewModel.testProcess = { record, settings ->
+            processSavedText(repository, record, settings, { "synthetic" }, TextProcessor { _, _, _ -> calls++; response.await() })
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { main ->
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { calls == 1 }
+            main.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            ActivityScenario.launch(SavedRecordingsActivity::class.java).use {
+                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_processing_$id").assertExists()
+                compose.onNodeWithTag("cancel_processing_$id").assertDoesNotExist()
+                assertEquals(TextProcessingStatus.PROCESSING, repository.record(id)!!.processingStatus)
+            }
+            main.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.onNodeWithTag("cancel_processing_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { repository.record(id)!!.processingStatus == TextProcessingStatus.INTERRUPTED }
+            assertEquals(1, calls)
+        }
+    }
+
     @Test fun latestLinkedMessageHasNoOverflowAndCopiesOnlyTheSelectedVersion() {
         lateinit var id: String
         lateinit var model: DictationViewModel
