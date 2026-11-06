@@ -243,6 +243,89 @@ class TextProcessingRuntimeTest {
             assertEquals("Исправь пунктуацию, сохрани смысл.", TextProcessingPreferences(context).read().prompt)
         }
     }
+    @Test fun latestLinkedMessageHasNoOverflowAndCopiesOnlyTheSelectedVersion() {
+        lateinit var id: String
+        lateinit var model: DictationViewModel
+        val original = "Давайте перенесём встречу по дизайн-ревью на четверг утром."
+        val processed = "Перенесём дизайн-ревью на утро четверга."
+        instrumentation.runOnMainSync {
+            seed(); seed(); id = seed()
+            val token = checkNotNull(repository.beginProcessing(id, TextProcessingSettings(true)))
+            check(repository.completeProcessing(token, processed))
+            repository.saveText(RecordingTextSlot.MAIN, processed, id)
+            MainActivity.testFactory = { app -> DictationViewModel { scope ->
+                DictationSessions.create(app, scope, mainDraft = true)
+            }.also { model = it } }
+        }
+        for (dark in listOf(false, true)) {
+            shell("cmd uimode night ${if (dark) "yes" else "no"}")
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                assertEquals(id, model.draftSourceId())
+                assertEquals(processed, model.state.value.text)
+                compose.onNodeWithTag("saved_recordings").performClick()
+                compose.onNodeWithTag("history_draft").assertDoesNotExist()
+                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+                compose.onNodeWithText("Clear current text").assertDoesNotExist()
+                compose.onNodeWithText("Current text").assertDoesNotExist()
+                compose.onNodeWithTag("history_copy_$id").performScrollTo()
+                    .assertContentDescriptionEquals(context.getString(R.string.text_processing_copy_processed)).performClick()
+                scenario.onActivity { assertEquals(processed, context.getSystemService(ClipboardManager::class.java)
+                    .primaryClip!!.getItemAt(0).text.toString()) }
+                compose.onNodeWithTag("history_delete_$id").performScrollTo().assertIsDisplayed()
+                capture("history-linked-processed-${if (dark) "dark" else "light"}")
+                compose.onNodeWithTag("text_version_original_$id").performScrollTo().performClick()
+                compose.onNodeWithTag("history_copy_$id").performScrollTo()
+                    .assertContentDescriptionEquals(context.getString(R.string.text_processing_copy_original)).performClick()
+                scenario.onActivity { assertEquals(original, context.getSystemService(ClipboardManager::class.java)
+                    .primaryClip!!.getItemAt(0).text.toString()) }
+                compose.onNodeWithTag("history_delete_$id").performScrollTo().performClick()
+                compose.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+                assertEquals(processed, repository.record(id)!!.processedText)
+                assertEquals(original, repository.record(id)!!.transcript)
+                assertEquals(processed, repository.savedText(RecordingTextSlot.MAIN))
+                scenario.recreate()
+                compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+                compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+                capture("history-collapsed-${if (dark) "dark" else "light"}")
+            }
+        }
+    }
+
+    @Test fun footerKeepsTimeAndDeleteApartAtNarrowWidthsAndLargeFontOnBothThemes() {
+        val id = "synthetic-footer"
+        for (dark in listOf(false, true)) {
+            shell("cmd uimode night ${if (dark) "yes" else "no"}")
+            var font by mutableFloatStateOf(1f)
+            var width by mutableIntStateOf(320)
+            val row = SavedRecording(id, 1, 1, SavedRecordingStatus.PENDING, 28)
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { it.setContent {
+                    val density = LocalDensity.current.density
+                    CompositionLocalProvider(LocalDensity provides Density(density, font)) { VoiceDictationTheme {
+                        Box(Modifier.width(width.dp).fillMaxHeight()) {
+                            RecordingHistory(RecordingRecoveryState(records = listOf(row)), PlaybackState(),
+                                { true }, {}, {}, {}, {}, {})
+                        }
+                    } }
+                } }
+                for (w in listOf(320, 240)) for (scale in listOf(1f, 2f)) {
+                    compose.runOnIdle { width = w; font = scale }
+                    val delete = compose.onNodeWithTag("history_delete_$id").performScrollTo().assertIsDisplayed()
+                    val time = compose.onNodeWithTag("history_time_$id").assertIsDisplayed()
+                    val d = delete.getUnclippedBoundsInRoot(); val t = time.getUnclippedBoundsInRoot()
+                    assertTrue("Time needs space before Delete: $t / $d", d.left - t.right >= 16.dp)
+                    assertTrue(d.right - d.left >= 48.dp && d.bottom - d.top >= 48.dp)
+                    delete.assertContentDescriptionEquals(
+                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+                            .format(java.util.Date(1)) + ", " + context.getString(R.string.history_delete))
+                    compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+                    if (w == 240 && scale == 2f) capture("history-footer-large-font-${if (dark) "dark" else "light"}")
+                }
+            }
+        }
+    }
+
     @Test fun alignedIconActionsAndDirectDeleteStayAccessibleAtLargeFontOnBothThemes() {
         val id = "synthetic-action-row"
         for (dark in listOf(false, true)) {

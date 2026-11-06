@@ -133,7 +133,9 @@ class DictationScreenTest {
         compose.onNodeWithTag("transcript").performScrollTo().performTextReplacement("Edited thought")
         click("history_copy_$id")
         scenario.onActivity { assertEquals("Edited thought", it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-        assertNoPendingAudio(); click("history_menu_$id"); compose.onNodeWithTag("clear").performClick(); assertEquals("", model.state.value.text)
+        assertNoPendingAudio()
+        compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+        assertEquals("Edited thought", model.state.value.text)
         click("history_close")
         click("forget"); assertEquals("", model.state.value.key)
     }

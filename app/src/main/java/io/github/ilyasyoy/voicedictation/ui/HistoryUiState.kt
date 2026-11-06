@@ -14,7 +14,6 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     val wordFormScroll = ScrollState(0)
     var draftExpanded by mutableStateOf(false)
     var deleteId by mutableStateOf<String?>(null)
-    var menuId by mutableStateOf<String?>(null)
     var limitOpen by mutableStateOf(false)
     var wordsSelected by mutableStateOf(false)
     var wordInput by mutableStateOf(TextFieldValue())
@@ -24,12 +23,12 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     var wordFocus by mutableStateOf<String?>(null)
     fun toggle(id: String) { if (!expanded.remove(id)) expanded.add(id) }
     fun closeTransient() {
-        deleteId = null; limitOpen = false; menuId = null; wordMenu = null; wordFocus = null
+        deleteId = null; limitOpen = false; wordMenu = null; wordFocus = null
     }
     companion object {
         val Saver = listSaver<HistoryUiState, Any>(
             save = { listOf("history-ui-v4", it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
-                it.draftExpanded, it.deleteId.orEmpty(), it.menuId.orEmpty(), it.limitOpen,
+                it.draftExpanded, it.deleteId.orEmpty(), "", it.limitOpen, // Preserve the obsolete menu slot for older saved states.
                 it.wordsSelected, it.wordInput.text, it.wordInput.selection.start, it.wordInput.selection.end,
                 it.editingWord.orEmpty(), it.wordEdit.text, it.wordEdit.selection.start, it.wordEdit.selection.end,
                 it.wordList.firstVisibleItemIndex, it.wordList.firstVisibleItemScrollOffset, it.wordFocus.orEmpty()) + it.expanded.toList() },
@@ -52,7 +51,7 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
             return HistoryUiState(LazyListState(position(0), position(1)),
                 if (words) LazyListState(position(14), position(15)) else LazyListState()).apply {
                 draftExpanded = values.getOrNull(2) as? Boolean ?: false
-                deleteId = text(3).ifEmpty { null }; menuId = text(4).ifEmpty { null }
+                deleteId = text(3).ifEmpty { null }
                 limitOpen = values.getOrNull(5) as? Boolean ?: false
                 if (words) {
                     wordsSelected = values.getOrNull(6) as? Boolean ?: false

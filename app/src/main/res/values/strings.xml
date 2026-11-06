@@ -114,9 +114,7 @@
     <item quantity="one">%1$d saved</item>
     <item quantity="other">%1$d saved</item>
   </plurals>
-  <string name="history_more">Message options</string>
-  <string name="history_draft">Current text</string>
-  <string name="history_clear_draft">Clear current text</string>
+  <string name="history_delete_text_confirm">Delete this saved text?</string>
   <string name="history_empty_hint">Your recordings and transcripts will appear here.</string>
   <string name="history_play">Play</string>
   <string name="history_pause">Pause</string>

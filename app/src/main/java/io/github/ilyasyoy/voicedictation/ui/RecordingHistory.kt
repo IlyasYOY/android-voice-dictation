@@ -43,6 +43,9 @@ internal data class HistoryDraft(val text: String, val sourceId: String?, val vi
     override fun toString() = "HistoryDraft(textLength=${text.length}, sourceId=$sourceId, visible=$visible)"
 }
 
+// Repository IDs are UUIDs; this reserved presentation ID only confirms deletion of old unlinked text.
+private const val SAVED_TEXT_DELETE_ID = "unlinked-text"
+
 /** Standalone floating recovery still uses the same host and message content. */
 @Composable
 internal fun RecordingHistorySheet(onDismiss: () -> Unit, onRecordsChanged: () -> Unit = {},
@@ -75,7 +78,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
     onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
-    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.deleteId == SAVED_TEXT_DELETE_ID || ui.limitOpen
     val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
@@ -90,7 +93,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     val dismiss = { controller.background(); ui.closeTransient(); onDismiss() }
     val content: @Composable () -> Unit = {
         if (visible) {
-        HistoryPanel(ui, onWordsSelected = { controller.background(); ui.menuId = null },
+        HistoryPanel(ui, onWordsSelected = { controller.background() },
             modifier = Modifier.fillMaxHeight(),
             words = { VocabularyPanel(ui, it) }, history = { modifier -> Box(modifier) {
         RecordingHistory(recovery, playing,
@@ -138,6 +141,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
     }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null) {
+    val currentDraft = draft?.takeIf { it.visible }
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
     if (deleteRecord != null) HistorySafeDialog(onDismiss = { ui.deleteId = null },
@@ -147,7 +151,14 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 enabled = !state.retrying && deleteRecord.id !in state.ownedIds,
                 modifier = Modifier.testTag("history_confirm_delete")) { Text(stringResource(R.string.saved_delete)) }
         })
-    val currentDraft = draft?.takeIf { it.visible }
+    if (deleteId == SAVED_TEXT_DELETE_ID && currentDraft?.sourceId == null && currentDraft != null && onDraftClear != null)
+        HistorySafeDialog(onDismiss = { ui.deleteId = null },
+            content = { Text(stringResource(R.string.history_delete_text_confirm)) }, buttons = {
+                TextButton({ ui.deleteId = null }) { Text(stringResource(android.R.string.cancel)) }
+                TextButton({ onDraftClear(); ui.deleteId = null }, Modifier.testTag("history_confirm_delete_text")) {
+                    Text(stringResource(R.string.history_delete))
+                }
+            })
     val dismissLabel = stringResource(R.string.history_close)
     val historyLabel = stringResource(R.string.history_title)
     Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp)
@@ -164,8 +175,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 Text(stringResource(R.string.error), color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(8.dp).testTag("history_problem").semantics { liveRegion = LiveRegionMode.Polite })
             }
-            if (currentDraft != null && currentDraft.sourceId == null) item("current-text") {
-                DraftMessage(currentDraft, onDraftEdit, onDraftClear, onCopy, ui)
+            if (currentDraft != null && currentDraft.sourceId == null) item("retained-text") {
+                SavedTextMessage(currentDraft, onDraftEdit,
+                    if (onDraftClear != null) ({ ui.deleteId = SAVED_TEXT_DELETE_ID }) else null, onCopy, ui)
             }
             if (state.records.isEmpty() && (currentDraft == null || currentDraft.sourceId != null)) item("empty") {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,7 +198,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     val rowDraft = currentDraft?.takeIf { it.sourceId == record.id }
                     val available = audioAvailable(record.id)
                     HistoryMessage(record, state, playback, available,
-                        rowDraft, if (rowDraft != null) onDraftEdit else null, if (rowDraft != null) onDraftClear else null,
+                        rowDraft, if (rowDraft != null) onDraftEdit else null,
                         onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui,
                         onProcess, onCancelProcessing, processingFailure == record.id)
                 }
@@ -197,20 +209,17 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
 
 @Composable
 private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState, playback: PlaybackState,
-    available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
+    available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
     waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState,
     onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean) {
     val expanded = record.id in ui.expanded
-    val menu = ui.menuId == record.id
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
     val owned = record.id in state.ownedIds
     val active = playback.id == record.id
     val busy = record.status in setOf(SavedRecordingStatus.CAPTURING, SavedRecordingStatus.UPLOADING)
     val timestamp = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.createdAt))
     val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(record.createdAt))
-    val moreLabel = stringResource(R.string.history_more)
-    val largeText = LocalDensity.current.fontScale > 1.3f
     val canRetry = record.kind == SavedRecordingKind.RECORD && available && record.status in
         setOf(SavedRecordingStatus.PENDING, SavedRecordingStatus.FAILED, SavedRecordingStatus.INTERRUPTED)
     val playLabel = stringResource(if (active && playback.loading) R.string.history_loading else if (active && playback.playing) R.string.history_pause else R.string.history_play)
@@ -292,31 +301,15 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)
                 if (record.id in state.receivedTexts) MessageNote(R.string.saved_unsaved_text, error = true)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    if (status != null && largeText) Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        MessageStatus(status, record.status == SavedRecordingStatus.FAILED)
-                        Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Box(Modifier.weight(1f).padding(start = 8.dp)) { if (status != null) MessageStatus(status, false) }
-                        Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (status != null) MessageStatus(status, false)
+                        Text(time, Modifier.testTag("history_time_${record.id}"), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (onClear == null) {
-                        val deleteLabel = stringResource(R.string.history_delete)
-                        FilledTonalIconButton(onDelete, enabled = !state.retrying && !owned && !busy,
-                            modifier = Modifier.size(48.dp).testTag("history_delete_${record.id}")
-                                .semantics { contentDescription = timestamp + ", " + deleteLabel }) { DeleteGlyph() }
-                    } else Box {
-                        IconButton({ ui.menuId = record.id }, Modifier.size(48.dp).testTag("history_menu_${record.id}")
-                            .semantics { contentDescription = timestamp + ", " + moreLabel }) {
-                            Text("⋮", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { })
-                        }
-                        DropdownMenu(menu, { ui.menuId = null }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                                onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
-                            DropdownMenuItem(text = { Text(stringResource(R.string.history_delete)) }, enabled = !state.retrying && !owned && !busy,
-                                onClick = { ui.menuId = null; onDelete() }, modifier = Modifier.testTag("history_delete_${record.id}"))
-                        }
-                    }
+                    DeleteControl(onDelete, !state.retrying && !owned && !busy, "history_delete_${record.id}",
+                        timestamp + ", " + stringResource(R.string.history_delete))
                 }
             }
         }
@@ -348,29 +341,28 @@ private fun ProcessedTranscriptBody(record: SavedRecording, actions: @Composable
 }
 
 @Composable
-private fun DraftMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?, onCopy: (String) -> Unit, ui: HistoryUiState) {
+private fun SavedTextMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onDelete: (() -> Unit)?, onCopy: (String) -> Unit, ui: HistoryUiState) {
     val expanded = ui.draftExpanded
-    val menu = ui.menuId == "draft"
-    val options = stringResource(R.string.history_more)
     Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(.96f).testTag("history_draft").animateContentSize()) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.history_draft), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.saved_text_only), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                 TranscriptToggle(expanded, { ui.draftExpanded = !expanded }, "history_expand_draft")
-                if (onClear != null) Box {
-                    IconButton({ ui.menuId = "draft" }, Modifier.testTag("history_menu_draft").semantics { contentDescription = options }) {
-                        Text("⋮", modifier = Modifier.clearAndSetSemantics { })
-                    }
-                    DropdownMenu(menu, { ui.menuId = null }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                            onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
-                    }
-                }
             }
             if (expanded) TranscriptBody(draft.text, onEdit, { onCopy(draft.text) }, "history_text_draft", "copy")
+            if (onDelete != null) Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), contentAlignment = Alignment.CenterEnd) {
+                DeleteControl(onDelete, true, "history_delete_draft", stringResource(R.string.history_delete))
+            }
         }
     }
+}
+
+@Composable
+private fun DeleteControl(onDelete: () -> Unit, enabled: Boolean, tag: String, label: String) {
+    IconButton(onDelete, enabled = enabled,
+        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+        modifier = Modifier.size(48.dp).testTag(tag).semantics { contentDescription = label }) { DeleteGlyph() }
 }
 
 @Composable

@@ -116,9 +116,7 @@
     <item quantity="many">%1$d записей</item>
     <item quantity="other">%1$d записи</item>
   </plurals>
-  <string name="history_more">Действия с сообщением</string>
-  <string name="history_draft">Текущий текст</string>
-  <string name="history_clear_draft">Очистить текущий текст</string>
+  <string name="history_delete_text_confirm">Удалить этот сохранённый текст?</string>
   <string name="history_empty_hint">Здесь появятся ваши записи и расшифровки.</string>
   <string name="history_play">Слушать</string>
   <string name="history_pause">Пауза</string>

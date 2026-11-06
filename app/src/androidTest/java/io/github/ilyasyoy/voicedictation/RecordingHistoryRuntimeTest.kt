@@ -362,7 +362,7 @@ class RecordingHistoryRuntimeTest {
         }
     }
 
-    @Test fun unlinkedDraftRemainsEditableAndClearDoesNotDeleteRecordings() {
+    @Test fun oldUnlinkedTextRemainsEditableAndConfirmedDeleteDoesNotDeleteRecordings() {
         lateinit var model: DictationViewModel
         lateinit var id: String
         instrumentation.runOnMainSync {
@@ -381,8 +381,15 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
             compose.onNodeWithTag("transcript").assertTextEquals("Edited unlinked synthetic text")
             capture("12-unlinked-text-after-recreation")
-            compose.onNodeWithTag("history_menu_draft").performScrollTo().performClick()
-            compose.onNodeWithTag("clear").performClick()
+            compose.onNodeWithText("Current text").assertDoesNotExist()
+            compose.onNodeWithTag("history_menu_draft").assertDoesNotExist()
+            compose.onNodeWithTag("history_delete_draft").performScrollTo().performClick()
+            assertEquals("Edited unlinked synthetic text", repository.savedText(RecordingTextSlot.MAIN))
+            compose.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+            assertEquals("Edited unlinked synthetic text", repository.savedText(RecordingTextSlot.MAIN))
+            compose.onNodeWithTag("history_delete_draft").performScrollTo().performClick()
+            scenario.recreate()
+            compose.onNodeWithTag("history_confirm_delete_text").performClick()
             compose.runOnIdle { assertEquals("", model.state.value.text) }
             assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
             assertEquals(transcript, repository.record(id)?.transcript)

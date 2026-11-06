@@ -11,14 +11,14 @@ class HistoryUiStateTest {
         val state = HistoryUiState(androidx.compose.foundation.lazy.LazyListState(3, 7), androidx.compose.foundation.lazy.LazyListState(4, 9)).apply {
             wordsSelected = true; wordInput = TextFieldValue("unfinished", TextRange(3)); editingWord = "original"
             wordEdit = TextFieldValue("edit draft"); wordFocus = "edit"; expanded.add("message")
-            deleteId = "message"; menuId = "message"; wordMenu = "original"; limitOpen = true
+            deleteId = "message"; wordMenu = "original"; limitOpen = true
         }
         state.closeTransient()
         assertTrue(state.wordsSelected); assertEquals("unfinished", state.wordInput.text); assertEquals(TextRange(3), state.wordInput.selection)
         assertEquals("edit draft", state.wordEdit.text); assertEquals("original", state.editingWord)
         assertEquals(listOf("message"), state.expanded.toList()); assertEquals(3, state.list.firstVisibleItemIndex)
         assertEquals(4, state.wordList.firstVisibleItemIndex)
-        assertNull(state.deleteId); assertNull(state.menuId); assertNull(state.wordMenu); assertNull(state.wordFocus); assertFalse(state.limitOpen)
+        assertNull(state.deleteId); assertNull(state.wordMenu); assertNull(state.wordFocus); assertFalse(state.limitOpen)
     }
     @Test fun `old empty and expanded history states restore safely without Words`() {
         val empty = HistoryUiState.restoreSaved(listOf(0, 0, false, "", "", false))
