@@ -73,6 +73,7 @@ class FoldActivityTest {
                 compose.onNodeWithTag("stop").assertIsDisplayed()
                 assertSame(retained, model); assertEquals(Phase.RECORDING, model.state.value.phase)
                 assertEquals(1, starts); assertEquals(baselineCancels, cancels)
+                compose.onNodeWithTag("stop").performScrollTo().performTouchInput { longClick() }
                 compose.onNodeWithTag("cancel").performScrollTo().performClick()
                 compose.waitUntil { !model.state.value.audioBusy }
                 assertEquals(0, uploads)

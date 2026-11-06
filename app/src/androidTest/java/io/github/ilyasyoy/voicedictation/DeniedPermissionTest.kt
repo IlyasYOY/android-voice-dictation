@@ -62,6 +62,7 @@ class DeniedPermissionTest {
                 val allowAction=allow ?: device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)allow|while using the app"))),10_000)
                 assertNotNull(allowAction); allowAction!!.click()
                 compose.waitUntil(30_000) { model.state.value.phase == Phase.RECORDING }
+                compose.onNodeWithTag("stop").performScrollTo().performTouchInput { longClick() }
                 compose.onNodeWithTag("cancel").performScrollTo().performClick()
                 assertTrue(File(context.cacheDir, "dictation").listFiles().orEmpty().isEmpty())
             }

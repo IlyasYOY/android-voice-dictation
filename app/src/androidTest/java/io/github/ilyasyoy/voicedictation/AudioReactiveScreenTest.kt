@@ -47,6 +47,7 @@ class AudioReactiveScreenTest {
                     compose.waitUntil(10_000) { model.state.value.phase == Phase.RECORDING && model.state.value.voiceLevels.current().measuredAtNanos > 0L }
                     compose.onNodeWithTag("stop").assertIsDisplayed()
                     capture("main-recording-$theme")
+                    compose.onNodeWithTag("stop").performScrollTo().performTouchInput { longClick() }
                     compose.onNodeWithTag("cancel").performClick()
                     compose.waitUntil(10_000) { !model.state.value.audioBusy }
                     assertSame(VoiceLevels.Silence,model.state.value.voiceLevels.current())

@@ -195,7 +195,9 @@ class DictationScreenTest {
         assertEquals(1,server.requestCount)
     }
     @Test fun cancelAndBackgroundStopRealMicrophone() {
-        key(); click("record"); waitPhase(Phase.RECORDING); click("cancel"); waitPhase(Phase.IDLE); assertNoPendingAudio()
+        key(); click("record"); waitPhase(Phase.RECORDING)
+        compose.onNodeWithTag("stop").performTouchInput { longClick() }
+        click("cancel"); waitPhase(Phase.IDLE); assertNoPendingAudio()
         click("record"); waitPhase(Phase.RECORDING)
         scenario.moveToState(Lifecycle.State.CREATED); assertEquals(1,RecordingRecovery.processOwned.count); assertEquals(Phase.IDLE,model.state.value.phase)
         scenario.moveToState(Lifecycle.State.RESUMED); assertEquals(0, server.requestCount)

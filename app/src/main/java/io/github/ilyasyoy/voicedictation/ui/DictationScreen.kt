@@ -25,6 +25,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -48,6 +50,9 @@ fun DictationScreen(
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    // As on the overlay, hold reveals Cancel without stopping or uploading. A finished
+    // session must never leave an old control panel open for the next recording.
+    var controlsOpen by remember(state.audioBusy) { mutableStateOf(false) }
     val scroll = rememberScrollState()
     LaunchedEffect(settingsOpen) { scroll.scrollTo(0); onSettingsVisibilityChanged(settingsOpen) }
     DisposableEffect(Unit) { onDispose { onSettingsVisibilityChanged(false) } }
@@ -141,13 +146,25 @@ fun DictationScreen(
                     onHistory = onSavedRecordings, onLimit = { settingsOpen = true })
                 val recording = state.phase == Phase.RECORDING
                 val processing = state.phase in setOf(Phase.TRANSCRIBING)
+                val controlsLabel = stringResource(R.string.current_controls)
+                val cancelLabel = stringResource(R.string.floating_cancel)
+                val cancel: () -> Unit = { controlsOpen = false; onCancel() }
                 CurrentControl(stringResource(if (recording) R.string.stop else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
                     when { recording -> CurrentVisual.RECORDING; state.keyBusy -> CurrentVisual.CONNECTING; processing -> CurrentVisual.PROCESSING; state.problem != null -> CurrentVisual.ERROR; capacityFull -> CurrentVisual.ATTENTION; else -> CurrentVisual.IDLE },
-                    if (recording) true else !capacityFull && !processing,
-                    if (recording) onStop else onRecord, controlSize, levels = state.voiceLevels)
+                    state.audioBusy || !capacityFull,
+                    { controlsOpen = false; if (recording) onStop() else if (!processing) onRecord() },
+                    size = controlSize, levels = state.voiceLevels,
+                    modifier = Modifier.semantics {
+                        if (state.audioBusy) customActions = listOf(CustomAccessibilityAction(cancelLabel) { cancel(); true })
+                    },
+                    onLongClick = if (state.audioBusy) ({ controlsOpen = !controlsOpen }) else null,
+                    onLongClickLabel = if (state.audioBusy) controlsLabel else null)
                 Column(Modifier.fillMaxWidth().heightIn(min = if (capacityFull) 0.dp else 104.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.audioBusy) Text(stringResource(if (recording) R.string.current_bubble_hint else R.string.current_hold_hint),
+                    Modifier.testTag("controls_hint"), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.problem != null) {
                     Text(stringResource(R.string.error), Modifier.testTag("problem")
                         .semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
@@ -158,8 +175,12 @@ fun DictationScreen(
                     else -> R.string.error
                 }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (recording) Text(state.elapsed, Modifier.testTag("timer"), style = MaterialTheme.typography.titleLarge)
-                if (state.audioBusy) TextButton(onCancel, Modifier.testTag("cancel")) {
-                    Text(stringResource(R.string.cancel))
+                if (state.audioBusy && controlsOpen) Surface(shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.testTag("recording_controls")) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(controlsLabel, style = MaterialTheme.typography.labelLarge)
+                        TextButton(cancel, Modifier.testTag("cancel")) { Text(cancelLabel) }
+                    }
                 }
                 }
                 if (state.safetyStopped && state.problem == null) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
