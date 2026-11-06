@@ -54,6 +54,9 @@
   <string name="copy">Copy</string>
   <string name="copied">Copied to clipboard</string>
   <string name="setup">OpenAI connection</string>
+  <string name="openai_billing">View billing</string>
+  <string name="openai_billing_browser">Opens OpenAI Billing in your browser.</string>
+  <string name="openai_billing_unavailable">Could not open a browser. Install or enable one and try again.</string>
   <string name="api_key">OpenAI API key</string>
   <string name="forget">Forget key</string>
   <string name="cost_notice">Stop sends the recording for transcription using gpt-transcribe. API charges may apply. No automatic retries.</string>

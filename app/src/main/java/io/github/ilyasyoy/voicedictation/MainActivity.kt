@@ -135,7 +135,8 @@ class MainActivity : ComponentActivity() {
                     onSettingsVisibilityChanged = { settingsOpen = it },
                     onExportLogs = ::exportLogs, logExportState = logExportState,
                     textProcessingSettings = processingSettings, onSaveTextProcessing = processingController::save,
-                    textModelList = textModels, onRefreshTextModels = processingController::refreshModels)
+                    textModelList = textModels, onRefreshTextModels = processingController::refreshModels,
+                    onOpenBilling = { OpenAiBilling.open { startActivity(it) } })
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },

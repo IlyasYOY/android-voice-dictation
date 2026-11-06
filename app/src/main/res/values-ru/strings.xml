@@ -54,6 +54,9 @@
   <string name="copy">Скопировать</string>
   <string name="copied">Скопировано в буфер обмена</string>
   <string name="setup">Подключение OpenAI</string>
+  <string name="openai_billing">Посмотреть баланс</string>
+  <string name="openai_billing_browser">Откроется Billing OpenAI во внешнем браузере.</string>
+  <string name="openai_billing_unavailable">Не удалось открыть браузер. Установите или включите его и повторите.</string>
   <string name="api_key">API-ключ OpenAI</string>
   <string name="forget">Забыть ключ</string>
   <string name="cost_notice">Стоп отправляет запись на распознавание через gpt-transcribe. Возможны расходы API. Автоматических повторов нет.</string>

@@ -49,11 +49,13 @@ fun DictationScreen(
     onSaveTextProcessing: ((io.github.ilyasyoy.voicedictation.data.TextProcessingSettings) -> Boolean)? = null,
     textModelList: io.github.ilyasyoy.voicedictation.data.TextModelListState = io.github.ilyasyoy.voicedictation.data.TextModelListState(),
     onRefreshTextModels: (() -> Unit)? = null,
+    onOpenBilling: () -> Boolean = { false },
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var billingFailed by rememberSaveable { mutableStateOf(false) }
     // As on the overlay, hold reveals Cancel without stopping or uploading. A finished
     // session must never leave an old control panel open for the next recording.
     var controlsOpen by remember(state.audioBusy) { mutableStateOf(false) }
@@ -141,6 +143,17 @@ fun DictationScreen(
                 if (state.key.isNotEmpty() || state.hasSavedKey || !state.keyStoreKnown || state.problem == Problem.STORAGE) TextButton({ focus.clearFocus(); keyboard?.hide(); onForget() }, Modifier.testTag("forget"), enabled = !state.busy) {
                     Text(stringResource(R.string.forget))
                 }
+                OutlinedButton({
+                    focus.clearFocus(); keyboard?.hide()
+                    billingFailed = !onOpenBilling()
+                }, Modifier.fillMaxWidth().testTag("open_billing")) {
+                    Text(stringResource(R.string.openai_billing))
+                }
+                Text(stringResource(R.string.openai_billing_browser), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (billingFailed) Text(stringResource(R.string.openai_billing_unavailable),
+                    Modifier.testTag("billing_error").semantics { liveRegion = LiveRegionMode.Polite },
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.privacy), style = MaterialTheme.typography.bodySmall)                        }
                     }
                     OutlinedButton(onFloatingSetup, Modifier.fillMaxWidth().testTag("floating_setup"), enabled = !state.audioBusy) { Text(stringResource(R.string.floating_setup)) }
