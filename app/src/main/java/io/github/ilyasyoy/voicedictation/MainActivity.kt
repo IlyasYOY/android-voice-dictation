@@ -87,6 +87,9 @@ class MainActivity : ComponentActivity() {
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
                 val historyUi = rememberHistoryUiState()
                 val historyController: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                val processingController: TextProcessingSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                val processingSettings by processingController.state.collectAsStateWithLifecycle()
+                val textModels by processingController.models.collectAsStateWithLifecycle()
                 HistoryPlaybackLifecycle(historyController)
                 val state by model.state.collectAsStateWithLifecycle()
                 val logExportState by logExport.state.collectAsStateWithLifecycle()
@@ -130,7 +133,9 @@ class MainActivity : ComponentActivity() {
                     onSetup = if (setupUi.missing != 0) ({ historyOpen = false; model.clearSetupKey(); setupFlow?.manual(); Unit }) else null,
                     onPasteKey = if (setupFlow != null) ({ historyOpen = false; pasteSetupKey(true) }) else null, pasteProblem = pasteProblem,
                     onSettingsVisibilityChanged = { settingsOpen = it },
-                    onExportLogs = ::exportLogs, logExportState = logExportState)
+                    onExportLogs = ::exportLogs, logExportState = logExportState,
+                    textProcessingSettings = processingSettings, onSaveTextProcessing = processingController::save,
+                    textModelList = textModels, onRefreshTextModels = processingController::refreshModels)
                 }, history = { wide, region, windowWidth, windowHeight ->
                 HistoryPresentation(wide, historyOpen,
                     onDismiss = { historyOpen = false; model.refreshDraft() },

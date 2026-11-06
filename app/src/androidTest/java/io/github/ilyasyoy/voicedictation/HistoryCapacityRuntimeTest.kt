@@ -80,8 +80,7 @@ class HistoryCapacityRuntimeTest {
             assertEquals("A synthetic saved result.", context.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
             capture("03-full-history-existing-actions")
             for (id in listOf(failed, success)) {
-                compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-                compose.onNodeWithTag("history_delete_$id").performClick()
+                compose.openHistoryDelete("$id")
                 compose.onNodeWithTag("history_confirm_delete").performClick()
             }
             assertTrue(store.records().isEmpty()); assertTrue(store.capacity().canStart)

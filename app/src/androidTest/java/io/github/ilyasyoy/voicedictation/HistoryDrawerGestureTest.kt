@@ -143,8 +143,7 @@ class HistoryDrawerGestureTest {
                 })
             }
         } } }
-        compose.onNodeWithTag("history_menu_drawer-row").performClick()
-        compose.onNodeWithTag("history_delete_drawer-row").performClick()
+        compose.openHistoryDelete("drawer-row")
         pressBack()
         compose.onNodeWithTag("history_confirm_delete").assertDoesNotExist()
         compose.runOnIdle { assertTrue(open); assertEquals(0, mainBacks) }

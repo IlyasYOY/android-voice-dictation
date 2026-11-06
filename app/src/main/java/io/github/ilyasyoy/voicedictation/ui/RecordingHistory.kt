@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -40,6 +42,9 @@ import java.io.File
 internal data class HistoryDraft(val text: String, val sourceId: String?, val visible: Boolean = text.isNotBlank()) {
     override fun toString() = "HistoryDraft(textLength=${text.length}, sourceId=$sourceId, visible=$visible)"
 }
+
+// Repository IDs are UUIDs; this reserved presentation ID only confirms deletion of old unlinked text.
+private const val SAVED_TEXT_DELETE_ID = "unlinked-text"
 
 /** Standalone floating recovery still uses the same host and message content. */
 @Composable
@@ -73,11 +78,13 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
     onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
-    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.deleteId == SAVED_TEXT_DELETE_ID || ui.limitOpen
     val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
+    val processingFailure by controller.processingFailure.collectAsStateWithLifecycle()
+    val cancellableProcessing by controller.cancellableProcessing.collectAsStateWithLifecycle()
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
     LaunchedEffect(recovery.records, draft == null) {
         if (draft == null) storedDraft = runCatching {
@@ -87,7 +94,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     val dismiss = { controller.background(); ui.closeTransient(); onDismiss() }
     val content: @Composable () -> Unit = {
         if (visible) {
-        HistoryPanel(ui, onWordsSelected = { controller.background(); ui.menuId = null },
+        HistoryPanel(ui, onWordsSelected = { controller.background() },
             modifier = Modifier.fillMaxHeight(),
             words = { VocabularyPanel(ui, it) }, history = { modifier -> Box(modifier) {
         RecordingHistory(recovery, playing,
@@ -97,6 +104,9 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
+            onProcess = controller::process, onCancelProcessing = controller::cancelProcessing,
+            cancellableProcessing = cancellableProcessing,
+            processingFailure = processingFailure,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
         } else Box(Modifier.fillMaxSize()) // Keep sheet geometry, without decoding hidden history waveforms.
@@ -132,7 +142,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     ui: HistoryUiState = rememberHistoryUiState(), dismissible: Boolean = true,
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
-    }) {
+    }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null,
+    cancellableProcessing: Set<String> = emptySet()) {
+    val currentDraft = draft?.takeIf { it.visible }
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
     if (deleteRecord != null) HistorySafeDialog(onDismiss = { ui.deleteId = null },
@@ -142,7 +154,14 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 enabled = !state.retrying && deleteRecord.id !in state.ownedIds,
                 modifier = Modifier.testTag("history_confirm_delete")) { Text(stringResource(R.string.saved_delete)) }
         })
-    val currentDraft = draft?.takeIf { it.visible }
+    if (deleteId == SAVED_TEXT_DELETE_ID && currentDraft?.sourceId == null && currentDraft != null && onDraftClear != null)
+        HistorySafeDialog(onDismiss = { ui.deleteId = null },
+            content = { Text(stringResource(R.string.history_delete_text_confirm)) }, buttons = {
+                TextButton({ ui.deleteId = null }) { Text(stringResource(android.R.string.cancel)) }
+                TextButton({ onDraftClear(); ui.deleteId = null }, Modifier.testTag("history_confirm_delete_text")) {
+                    Text(stringResource(R.string.history_delete))
+                }
+            })
     val dismissLabel = stringResource(R.string.history_close)
     val historyLabel = stringResource(R.string.history_title)
     Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp)
@@ -159,8 +178,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                 Text(stringResource(R.string.error), color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(8.dp).testTag("history_problem").semantics { liveRegion = LiveRegionMode.Polite })
             }
-            if (currentDraft != null && currentDraft.sourceId == null) item("current-text") {
-                DraftMessage(currentDraft, onDraftEdit, onDraftClear, onCopy, ui)
+            if (currentDraft != null && currentDraft.sourceId == null) item("retained-text") {
+                SavedTextMessage(currentDraft, onDraftEdit,
+                    if (onDraftClear != null) ({ ui.deleteId = SAVED_TEXT_DELETE_ID }) else null, onCopy, ui)
             }
             if (state.records.isEmpty() && (currentDraft == null || currentDraft.sourceId != null)) item("empty") {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -181,8 +201,9 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     val rowDraft = currentDraft?.takeIf { it.sourceId == record.id }
                     val available = audioAvailable(record.id)
                     HistoryMessage(record, state, playback, available,
-                        rowDraft, if (rowDraft != null) onDraftEdit else null, if (rowDraft != null) onDraftClear else null,
-                        onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui)
+                        rowDraft, if (rowDraft != null) onDraftEdit else null,
+                        onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui,
+                        onProcess, onCancelProcessing, processingFailure == record.id, record.id in cancellableProcessing)
                 }
             }
         }
@@ -191,19 +212,17 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
 
 @Composable
 private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState, playback: PlaybackState,
-    available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
+    available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
-    waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState) {
+    waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState,
+    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean, canCancelProcessing: Boolean) {
     val expanded = record.id in ui.expanded
-    val menu = ui.menuId == record.id
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
     val owned = record.id in state.ownedIds
     val active = playback.id == record.id
     val busy = record.status in setOf(SavedRecordingStatus.CAPTURING, SavedRecordingStatus.UPLOADING)
     val timestamp = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.createdAt))
     val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(record.createdAt))
-    val moreLabel = stringResource(R.string.history_more)
-    val largeText = LocalDensity.current.fontScale > 1.3f
     val canRetry = record.kind == SavedRecordingKind.RECORD && available && record.status in
         setOf(SavedRecordingStatus.PENDING, SavedRecordingStatus.FAILED, SavedRecordingStatus.INTERRUPTED)
     val playLabel = stringResource(if (active && playback.loading) R.string.history_loading else if (active && playback.playing) R.string.history_pause else R.string.history_play)
@@ -257,29 +276,43 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (expanded || (canRetry && text.isNotBlank())) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
+                if (expanded || (canRetry && text.isNotBlank())) {
+                    val process = if (record.transcript.isNotBlank() && record.status == SavedRecordingStatus.COMPLETE && onProcess != null)
+                        ({ onProcess(record.id) }) else null
+                    val actions: @Composable (String, String) -> Unit = { value, label ->
+                        TranscriptActions(value, label, { onCopy(value) }, "history_copy_${record.id}", process,
+                            "process_text_${record.id}", !owned && !state.retrying)
+                    }
+                    if (record.processingStatus == TextProcessingStatus.NONE)
+                        TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
+                            actions = { actions(text, stringResource(R.string.copy)) })
+                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, draft, onEdit, actions)
+                    else TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
+                        actions = { actions(text, stringResource(R.string.copy)) })
+                    if (process != null) {
+                        if (record.processingStatus == TextProcessingStatus.PROCESSING) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth().testTag("history_processing_${record.id}"))
+                            MessageNote(R.string.text_processing)
+                            if (canCancelProcessing) TextButton({ onCancelProcessing(record.id) }, Modifier.testTag("cancel_processing_${record.id}")) {
+                                Text(stringResource(android.R.string.cancel))
+                            }
+                        }
+                    }
+                }
+                if (record.processingStatus in setOf(TextProcessingStatus.FAILED, TextProcessingStatus.INTERRUPTED) || processingFailure)
+                    MessageNote(R.string.text_processing_failed, error = true)
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)
                 if (record.id in state.receivedTexts) MessageNote(R.string.saved_unsaved_text, error = true)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    if (status != null && largeText) Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        MessageStatus(status, record.status == SavedRecordingStatus.FAILED)
-                        Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Box(Modifier.weight(1f).padding(start = 8.dp)) { if (status != null) MessageStatus(status, false) }
-                        Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Box {
-                        IconButton({ ui.menuId = record.id }, Modifier.size(48.dp).testTag("history_menu_${record.id}")
-                            .semantics { contentDescription = timestamp + ", " + moreLabel }) {
-                            Text("⋮", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { })
-                        }
-                        DropdownMenu(menu, { ui.menuId = null }) {
-                            if (onClear != null) DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                                onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
-                            DropdownMenuItem(text = { Text(stringResource(R.string.history_delete)) }, enabled = !state.retrying && !owned && !busy,
-                                onClick = { ui.menuId = null; onDelete() }, modifier = Modifier.testTag("history_delete_${record.id}"))
-                        }
+                Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (status != null) MessageStatus(status, false)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(time, Modifier.weight(1f).testTag("history_time_${record.id}"), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        DeleteControl(onDelete, !state.retrying && !owned && !busy, "history_delete_${record.id}",
+                            timestamp + ", " + stringResource(R.string.history_delete))
                     }
                 }
             }
@@ -288,29 +321,66 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
 }
 
 @Composable
-private fun DraftMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?, onCopy: (String) -> Unit, ui: HistoryUiState) {
+private fun ProcessedTranscriptBody(record: SavedRecording, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
+    actions: @Composable (String, String) -> Unit) {
+    val distinctEdits = draft != null && draft.text != record.transcript &&
+        (record.processedText.isBlank() || draft.text != record.processedText)
+    var processed by rememberSaveable(record.id, record.processedText) { mutableStateOf(record.processedText.isNotBlank()) }
+    // A newly completed attempt opens its new result; retained edits remain independently selectable.
+    var editsSelected by rememberSaveable(record.id, record.processedText) { mutableStateOf(false) }
+    // Keep the editor while typing back to an identical value; never drop its focus mid-edit.
+    val showEdits = onEdit != null || distinctEdits || (editsSelected && draft != null)
+    val selectedVersion = if (editsSelected && showEdits) 2 else if (processed) 1 else 0
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val options = listOf(0 to R.string.text_recognized, 1 to R.string.text_processed) +
+            if (showEdits) listOf(2 to R.string.text_edits) else emptyList()
+        val option: @Composable (Int, Int, Modifier) -> Unit = { value, label, modifier ->
+            FilterChip(selectedVersion == value, { editsSelected = value == 2; if (value != 2) processed = value == 1 },
+                label = { Text(stringResource(label)) },
+                enabled = value != 1 || record.processedText.isNotBlank(), modifier = modifier
+                    .testTag("text_version_${when(value) { 0 -> "original"; 1 -> "processed"; else -> "edits" }}_${record.id}"))
+        }
+        if (showEdits || LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().selectableGroup()) {
+            options.forEach { (value, label) -> option(value, label, Modifier.fillMaxWidth()) }
+        } else Row(Modifier.fillMaxWidth().selectableGroup()) {
+            options.forEach { (value, label) -> option(value, label, Modifier.weight(1f)) }
+        }
+        val text = when(selectedVersion) { 1 -> record.processedText; 2 -> draft?.text.orEmpty(); else -> record.transcript }
+        if (selectedVersion == 2 && onEdit != null) BasicTextField(text, onEdit, Modifier.fillMaxWidth().testTag("transcript"),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
+        else SelectionContainer { Text(text, Modifier.testTag("history_text_${record.id}"), style = MaterialTheme.typography.bodyLarge) }
+        actions(text, stringResource(when(selectedVersion) { 1 -> R.string.text_processing_copy_processed;
+            2 -> R.string.text_copy_edits; else -> R.string.text_processing_copy_original }))
+        if (selectedVersion == 1 && record.processingStatus != TextProcessingStatus.COMPLETE) Text(
+            stringResource(R.string.text_processing_previous), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SavedTextMessage(draft: HistoryDraft, onEdit: ((String) -> Unit)?, onDelete: (() -> Unit)?, onCopy: (String) -> Unit, ui: HistoryUiState) {
     val expanded = ui.draftExpanded
-    val menu = ui.menuId == "draft"
-    val options = stringResource(R.string.history_more)
     Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(.96f).testTag("history_draft").animateContentSize()) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.history_draft), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.saved_text_only), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                 TranscriptToggle(expanded, { ui.draftExpanded = !expanded }, "history_expand_draft")
-                if (onClear != null) Box {
-                    IconButton({ ui.menuId = "draft" }, Modifier.testTag("history_menu_draft").semantics { contentDescription = options }) {
-                        Text("⋮", modifier = Modifier.clearAndSetSemantics { })
-                    }
-                    DropdownMenu(menu, { ui.menuId = null }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
-                            onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
-                    }
-                }
             }
             if (expanded) TranscriptBody(draft.text, onEdit, { onCopy(draft.text) }, "history_text_draft", "copy")
+            if (onDelete != null) Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), contentAlignment = Alignment.CenterEnd) {
+                DeleteControl(onDelete, true, "history_delete_draft", stringResource(R.string.history_delete))
+            }
         }
     }
+}
+
+@Composable
+private fun DeleteControl(onDelete: () -> Unit, enabled: Boolean, tag: String, label: String) {
+    IconButton(onDelete, enabled = enabled,
+        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+        modifier = Modifier.size(48.dp).testTag(tag).semantics { contentDescription = label }) { DeleteGlyph() }
 }
 
 @Composable
@@ -330,6 +400,58 @@ private fun TranscriptToggle(expanded: Boolean, onToggle: () -> Unit, tag: Strin
 }
 
 @Composable
+private fun TranscriptActions(text: String, copyLabel: String, onCopy: () -> Unit, copyTag: String,
+    onProcess: (() -> Unit)? = null, processTag: String = "process_text", processEnabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalIconButton(onCopy, enabled = text.isNotBlank(), modifier = Modifier.size(48.dp).testTag(copyTag)
+            .semantics { contentDescription = copyLabel }) {
+            val color = LocalContentColor.current
+            Canvas(Modifier.size(20.dp)) {
+                drawRoundRect(color, Offset(size.width * .32f, size.height * .32f), Size(size.width * .58f, size.height * .58f),
+                    CornerRadius(2.dp.toPx()), style = Stroke(2.dp.toPx()))
+                drawPath(Path().apply {
+                    moveTo(size.width * .65f, size.height * .12f); lineTo(size.width * .12f, size.height * .12f)
+                    lineTo(size.width * .12f, size.height * .65f)
+                }, color, style = Stroke(2.dp.toPx()))
+            }
+        }
+        onProcess?.let { process ->
+            val label = stringResource(R.string.text_processing_repeat)
+            FilledIconButton(process, enabled = processEnabled,
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                modifier = Modifier.size(48.dp).testTag(processTag).semantics { contentDescription = label }) { RetryGlyph() }
+        }
+    }
+}
+
+@Composable
+private fun DeleteGlyph() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        val stroke = Stroke(2.dp.toPx())
+        drawRoundRect(color, Offset(size.width * .25f, size.height * .3f), Size(size.width * .5f, size.height * .6f), CornerRadius(1.dp.toPx()), style = stroke)
+        drawLine(color, Offset(size.width * .12f, size.height * .25f), Offset(size.width * .88f, size.height * .25f), stroke.width)
+        drawLine(color, Offset(size.width * .38f, size.height * .1f), Offset(size.width * .62f, size.height * .1f), stroke.width)
+    }
+}
+
+@Composable
+private fun RetryGlyph() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        drawArc(color, -40f, 280f, false, Offset(size.width * .15f, size.height * .15f),
+            Size(size.width * .7f, size.height * .7f), style = Stroke(2.dp.toPx()))
+        drawPath(Path().apply {
+            moveTo(size.width * .8f, size.height * .05f)
+            lineTo(size.width * .8f, size.height * .3f)
+            lineTo(size.width * .55f, size.height * .3f)
+        }, color, style = Stroke(2.dp.toPx()))
+    }
+}
+
+@Composable
 private fun RetryControl(id: String, pending: Boolean, saveReceived: Boolean, enabled: Boolean, onRetry: () -> Unit) {
     val label = stringResource(if (saveReceived) R.string.saved_save_received
         else if (pending) R.string.history_transcribe else R.string.history_retry)
@@ -339,29 +461,20 @@ private fun RetryControl(id: String, pending: Boolean, saveReceived: Boolean, en
             contentColor = MaterialTheme.colorScheme.error)
     FilledIconButton(onRetry, enabled = enabled, colors = colors,
         modifier = Modifier.size(48.dp).testTag("history_retry_$id").semantics { contentDescription = label }) {
-        val color = LocalContentColor.current
-        Canvas(Modifier.size(20.dp)) {
-            drawArc(color, -40f, 280f, false, Offset(size.width * .15f, size.height * .15f),
-                Size(size.width * .7f, size.height * .7f), style = Stroke(2.dp.toPx()))
-            drawPath(Path().apply {
-                moveTo(size.width * .8f, size.height * .05f)
-                lineTo(size.width * .8f, size.height * .3f)
-                lineTo(size.width * .55f, size.height * .3f)
-            }, color, style = Stroke(2.dp.toPx()))
-        }
+        RetryGlyph()
     }
 }
 
 @Composable
-private fun TranscriptBody(text: String, onEdit: ((String) -> Unit)?, onCopy: () -> Unit, textTag: String, copyTag: String) {
+private fun TranscriptBody(text: String, onEdit: ((String) -> Unit)?, onCopy: () -> Unit, textTag: String, copyTag: String,
+    actions: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         if (onEdit != null) BasicTextField(text, onEdit, Modifier.fillMaxWidth().testTag("transcript"),
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
         else SelectionContainer { Text(text, Modifier.testTag(textTag), style = MaterialTheme.typography.bodyLarge) }
-        TextButton(onCopy, Modifier.testTag(copyTag), enabled = text.isNotBlank(), contentPadding = PaddingValues(horizontal = 0.dp)) {
-            Text(stringResource(R.string.copy), style = MaterialTheme.typography.labelMedium)
-        }
+        if (actions != null) actions()
+        else TranscriptActions(text, stringResource(R.string.copy), onCopy, copyTag)
     }
 }
 

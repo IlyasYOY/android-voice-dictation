@@ -45,6 +45,10 @@ fun DictationScreen(
     onSetup: (() -> Unit)? = null, onPasteKey: (() -> Unit)? = null, pasteProblem: Boolean = false,
     onSettingsVisibilityChanged: (Boolean) -> Unit = {},
     onExportLogs: () -> Unit = {}, logExportState: ExportState = ExportState.IDLE,
+    textProcessingSettings: io.github.ilyasyoy.voicedictation.data.TextProcessingSettings? = null,
+    onSaveTextProcessing: ((io.github.ilyasyoy.voicedictation.data.TextProcessingSettings) -> Boolean)? = null,
+    textModelList: io.github.ilyasyoy.voicedictation.data.TextModelListState = io.github.ilyasyoy.voicedictation.data.TextModelListState(),
+    onRefreshTextModels: (() -> Unit)? = null,
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
@@ -97,6 +101,7 @@ fun DictationScreen(
                     }
                 }
                 if (settingsOpen) {
+                    if (onSaveTextProcessing != null) TextProcessingSettingsCard(textProcessingSettings, !state.busy, onSaveTextProcessing, textModelList, onRefreshTextModels)
                     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.titleMedium)
@@ -145,10 +150,10 @@ fun DictationScreen(
                 if (capacityFull && !state.audioBusy) HistoryCapacityNotice(historyCapacity,
                     onHistory = onSavedRecordings, onLimit = { settingsOpen = true })
                 val recording = state.phase == Phase.RECORDING
-                val processing = state.phase in setOf(Phase.TRANSCRIBING)
+                val processing = state.phase in setOf(Phase.TRANSCRIBING, Phase.PROCESSING)
                 val controlsLabel = stringResource(R.string.current_controls)
                 val cancelLabel = stringResource(R.string.floating_cancel)
-                val cancelDescription = stringResource(R.string.cancel)
+                val cancelDescription = stringResource(if (state.phase == Phase.PROCESSING) R.string.text_processing_cancel else R.string.cancel)
                 val cancel: () -> Unit = { controlsOpen = false; onCancel() }
                 CurrentControl(stringResource(if (recording) R.string.stop else if (processing) R.string.current_processing else R.string.record),
                     if (recording) "stop" else if (processing) "processing" else "record",
@@ -167,12 +172,13 @@ fun DictationScreen(
                     Modifier.testTag("controls_hint"), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.problem != null) {
-                    Text(stringResource(R.string.error), Modifier.testTag("problem")
+                    Text(stringResource(if (state.processingFailed) R.string.text_processing_failed else R.string.error), Modifier.testTag("problem")
                         .semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
                 }
                 if (state.phase !in setOf(Phase.IDLE, Phase.RESULT, Phase.ERROR)) Text(stringResource(when (state.phase) {
                     Phase.RECORDING -> R.string.recording
                     Phase.TRANSCRIBING -> R.string.transcribing
+                    Phase.PROCESSING -> R.string.text_processing
                     else -> R.string.error
                 }), Modifier.testTag("status"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (recording) Text(state.elapsed, Modifier.testTag("timer"), style = MaterialTheme.typography.titleLarge)
@@ -186,6 +192,10 @@ fun DictationScreen(
                 }
                 if (state.safetyStopped && state.problem == null) Text(stringResource(R.string.safety_stopped), Modifier.testTag("safety_stopped"))
                 if (state.canRetry) Button(onRetry, Modifier.testTag("retry"), enabled = state.validKey && !state.keyBusy) { Text(stringResource(R.string.retry)) }
+                if (state.processingFailed) {
+                    OutlinedButton(onSavedRecordings, Modifier.testTag("processing_recovery")) { Text(stringResource(R.string.text_processing_retry_history)) }
+                    TextButton(onCopy, Modifier.testTag("copy_original"), enabled = state.originalText.isNotBlank()) { Text(stringResource(R.string.text_processing_copy_original)) }
+                }
 
             }
         }

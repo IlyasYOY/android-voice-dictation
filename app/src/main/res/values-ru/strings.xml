@@ -1,5 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="text_processing_cancel">Отменить обработку и сохранить распознанный текст</string>
+  <string name="text_processing_title">Постобработка текста</string>
+  <string name="text_processing_notice">После распознавания отправляет отдельный текстовый запрос в OpenAI с сохранённым ключом. Каждая попытка может оплачиваться дополнительно. Аудио повторно не отправляется.</string>
+  <string name="text_processing_enable">Включить после распознавания</string>
+  <string name="text_processing_model">Текстовая модель</string>
+  <string name="text_processing_prompt">Промпт для обработки</string>
+  <string name="text_processing_prompt_hint">Опишите, как обработать распознанный текст. До 8 000 символов.</string>
+  <string name="text_processing_save">Сохранить настройки обработки</string>
+  <string name="text_processing_settings_error">Не удалось прочитать или сохранить настройки обработки. Проверьте память и сохраните явно.</string>
+  <string name="text_processing">Обработка текста…</string>
+  <string name="text_processing_failed">Ошибка</string>
+  <string name="text_models_refresh">Обновить список моделей</string>
+  <string name="text_models_failed">Не удалось обновить модели. Выбор сохранён.</string>
+  <string name="text_models_updated">Список моделей обновлён.</string>
+  <string name="text_models_missing">Выбранной модели нет в этом списке. Выбор сохранён.</string>
+  <string name="text_models_notice">Обновление отправляет отдельный запрос в OpenAI с сохранённым ключом. Показаны поддерживаемые текстовые модели.</string>
+  <string name="text_processing_retry_history">Повторить в истории</string>
+  <string name="text_processing_copy_original">Копировать распознанное</string>
+  <string name="text_processing_copy_processed">Копировать обработанное</string>
+  <string name="text_processing_repeat">Обработать ещё раз</string>
+  <string name="text_recognized">Распознано</string>
+  <string name="text_processed">Обработано</string>
+  <string name="text_edits">Правки</string>
+  <string name="text_copy_edits">Копировать правки</string>
+  <string name="text_processing_previous">Предыдущий успешный результат. Последняя попытка его не заменила.</string>
   <string name="history_drawer_expanded">Развёрнуто</string>
   <string name="history_drawer_collapsed">Свёрнуто</string>
   <string name="words_title">Слова</string>
@@ -93,9 +118,7 @@
     <item quantity="many">%1$d записей</item>
     <item quantity="other">%1$d записи</item>
   </plurals>
-  <string name="history_more">Действия с сообщением</string>
-  <string name="history_draft">Текущий текст</string>
-  <string name="history_clear_draft">Очистить текущий текст</string>
+  <string name="history_delete_text_confirm">Удалить этот сохранённый текст?</string>
   <string name="history_empty_hint">Здесь появятся ваши записи и расшифровки.</string>
   <string name="history_play">Слушать</string>
   <string name="history_pause">Пауза</string>

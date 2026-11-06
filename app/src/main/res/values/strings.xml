@@ -1,5 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="text_processing_cancel">Cancel text processing and keep recognized text</string>
+  <string name="text_processing_title">Text post-processing</string>
+  <string name="text_processing_notice">Uses your saved OpenAI key for a separate text request after recognition. Each attempt may have an additional API cost. Audio is not uploaded again.</string>
+  <string name="text_processing_enable">Enable after recognition</string>
+  <string name="text_processing_model">Text model</string>
+  <string name="text_processing_prompt">Editing prompt</string>
+  <string name="text_processing_prompt_hint">Describe how to edit the recognized text. Up to 8,000 characters.</string>
+  <string name="text_processing_save">Save processing settings</string>
+  <string name="text_processing_settings_error">Could not read or save processing settings. Check storage and save explicitly.</string>
+  <string name="text_processing">Processing text…</string>
+  <string name="text_processing_failed">Error</string>
+  <string name="text_models_refresh">Refresh model list</string>
+  <string name="text_models_failed">Could not refresh models. Selection kept.</string>
+  <string name="text_models_updated">Model list updated.</string>
+  <string name="text_models_missing">Selected model is absent from this list. Selection kept.</string>
+  <string name="text_models_notice">Refresh sends a separate request to OpenAI with your saved key. Only supported text models are listed.</string>
+  <string name="text_processing_retry_history">Retry in History</string>
+  <string name="text_processing_copy_original">Copy recognized text</string>
+  <string name="text_processing_copy_processed">Copy processed text</string>
+  <string name="text_processing_repeat">Process text again</string>
+  <string name="text_recognized">Recognized</string>
+  <string name="text_processed">Processed</string>
+  <string name="text_edits">Edits</string>
+  <string name="text_copy_edits">Copy edits</string>
+  <string name="text_processing_previous">Previous successful result. The latest attempt did not replace it.</string>
   <string name="history_drawer_expanded">Expanded</string>
   <string name="history_drawer_collapsed">Collapsed</string>
   <string name="words_title">Words</string>
@@ -91,9 +116,7 @@
     <item quantity="one">%1$d saved</item>
     <item quantity="other">%1$d saved</item>
   </plurals>
-  <string name="history_more">Message options</string>
-  <string name="history_draft">Current text</string>
-  <string name="history_clear_draft">Clear current text</string>
+  <string name="history_delete_text_confirm">Delete this saved text?</string>
   <string name="history_empty_hint">Your recordings and transcripts will appear here.</string>
   <string name="history_play">Play</string>
   <string name="history_pause">Pause</string>

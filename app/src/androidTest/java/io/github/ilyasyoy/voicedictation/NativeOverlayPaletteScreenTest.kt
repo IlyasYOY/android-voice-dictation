@@ -91,7 +91,12 @@ class NativeOverlayPaletteScreenTest {
                             "processing" to CurrentVisual.PROCESSING,"error" to CurrentVisual.ERROR)) {
                             val drawn=java.util.concurrent.CountDownLatch(1)
                             scenario.onActivity { activity ->
-                                window.render(checkNotNull(imeTop),false,"",activity.getString(R.string.floating_start),
+                                val message = activity.getString(when (visual) {
+                                    CurrentVisual.PROCESSING -> R.string.text_processing
+                                    CurrentVisual.ERROR -> R.string.text_processing_failed
+                                    else -> R.string.floating_start
+                                })
+                                window.render(checkNotNull(imeTop),false,"",message,
                                     visual==CurrentVisual.RECORDING || visual==CurrentVisual.PROCESSING,false,false,null,
                                     processing=visual==CurrentVisual.PROCESSING,error=visual==CurrentVisual.ERROR)
                                 val id=if(visual==CurrentVisual.RECORDING)R.id.floating_stop else R.id.floating_start

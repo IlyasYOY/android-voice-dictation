@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.ilyasyoy.voicedictation"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "0.17.0"
+        versionCode = 38
+        versionName = "0.18.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

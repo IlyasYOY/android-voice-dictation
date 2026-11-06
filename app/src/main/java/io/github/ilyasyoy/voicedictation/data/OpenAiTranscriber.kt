@@ -59,7 +59,7 @@ class OpenAiTranscriber(
             .apply { words.forEach { addFormDataPart("keywords[]", it) } }
             .build()
         val call = client.newCall(Request.Builder().url(endpoint)
-            .header("Authorization", "Bearer $key").post(body).build())
+            .header("Authorization", "Bearer $key").post(body.singleAttempt()).build())
         return suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {

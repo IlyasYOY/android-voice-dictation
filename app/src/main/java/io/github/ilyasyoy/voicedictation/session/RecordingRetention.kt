@@ -23,6 +23,9 @@ interface RecordingRetention {
     fun clearDraft() = saveDraft("")
     fun draftSourceId():String? = null
     fun draftSourceAvailable():Boolean = true
+    fun beginProcessing(settings: io.github.ilyasyoy.voicedictation.data.TextProcessingSettings) = Unit
+    fun completedProcessing(text: String) = Unit
+    fun endProcessing(interrupted: Boolean = false) = Unit
 }
 
 internal object TemporaryRecordingRetention : RecordingRetention {
@@ -41,6 +44,18 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     private val repository get()=open()
     private val attempts = mutableMapOf<File, RecordingUpload>()
     private var sourceId:String?=null
+    private var processing: io.github.ilyasyoy.voicedictation.data.TextProcessingAttempt? = null
+    override fun beginProcessing(settings: io.github.ilyasyoy.voicedictation.data.TextProcessingSettings) = stored {
+        processing = checkNotNull(repository.beginProcessing(checkNotNull(sourceId), settings))
+    }
+    override fun completedProcessing(text: String) = stored {
+        check(repository.completeProcessing(checkNotNull(processing), text)); processing = null
+    }
+    override fun endProcessing(interrupted: Boolean) = stored {
+        val token = processing
+        processing = null
+        if (token != null) repository.endProcessing(token, interrupted)
+    }
     override fun draftSourceId():String? = sourceId
     override fun draftSourceAvailable():Boolean = stored {
         sourceId?.let { repository.record(it)?.status !in setOf(null, io.github.ilyasyoy.voicedictation.data.SavedRecordingStatus.DELETING) } ?: true

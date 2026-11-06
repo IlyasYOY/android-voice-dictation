@@ -14,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 internal enum class SavedRecordingStatus { CAPTURING, PENDING, UPLOADING, FAILED, INTERRUPTED, COMPLETE, DELETING, UNAVAILABLE }
 internal enum class SavedRecordingFailure { KEY, AUTH, NETWORK, SERVICE, STORAGE }
 internal enum class RecordingTextSlot { MAIN, FLOATING }
+internal enum class TextProcessingStatus { NONE, PROCESSING, COMPLETE, FAILED, INTERRUPTED }
+internal data class TextProcessingAttempt(val id: String, val attempt: Long)
 /** LEGACY_TEXT is read-only compatibility for already saved text; new capture creates RECORD only. */
 internal enum class SavedRecordingKind(val storedValue: String) { RECORD("RECORD"), LEGACY_TEXT("LIVE");
     companion object { fun fromStored(value: String) = entries.first { it.storedValue == value } }
@@ -38,6 +40,11 @@ internal data class SavedRecording(
     val legacyName: String? = null,
     val kind: SavedRecordingKind = SavedRecordingKind.RECORD,
     val partial: Boolean = false,
+    val processedText: String = "",
+    val processingStatus: TextProcessingStatus = TextProcessingStatus.NONE,
+    val processingModel: String = "",
+    val processingPrompt: String = "",
+    val processingAttempt: Long = 0,
 ) {
     override fun toString()="SavedRecording(id=$id, status=$status, transcriptLength=${transcript.length}, kind=$kind)"
 }
@@ -76,6 +83,7 @@ internal class RecordingRepository(
     private var countLimit = HistoryCapacity.DEFAULT_LIMIT
     private var limitReadable = true
     private val uploading = mutableSetOf<RecordingUpload>()
+    private val processing = mutableSetOf<TextProcessingAttempt>()
     private val received=mutableMapOf<String,String>() // Copy remains possible if disk commit fails.
     private val observers = CopyOnWriteArrayList<() -> Unit>()
     var migrationPending=false
@@ -98,6 +106,10 @@ internal class RecordingRepository(
             rows[record.id] = record
         }
         rows.values.toList().forEach { record ->
+            if (record.processingStatus == TextProcessingStatus.PROCESSING) {
+                val restored = record.copy(processingStatus = TextProcessingStatus.INTERRUPTED, updatedAt = clock())
+                try { save(restored) } catch (_: Exception) { rows[record.id] = restored }
+            }
             when (record.status) {
                 SavedRecordingStatus.CAPTURING, SavedRecordingStatus.UPLOADING -> {
                     val restored=record.copy(status = SavedRecordingStatus.INTERRUPTED, updatedAt = clock())
@@ -147,7 +159,7 @@ internal class RecordingRepository(
     @Synchronized fun record(id: String): SavedRecording? = rows[id]
     @Synchronized fun receivedText(id:String):String?=received[id]
     @Synchronized fun receivedTexts():Map<String,String> = received.toMap()
-    @Synchronized fun ownedIds():Set<String> = reserved.toSet()
+    @Synchronized fun ownedIds():Set<String> = reserved.toSet() + processing.map { it.id }
     @Synchronized fun savedText(slot: RecordingTextSlot): String = savedDraft(slot).text
     @Synchronized fun savedDraft(slot: RecordingTextSlot): SavedRecordingDraft {
         val file = File(root, "${slot.name.lowercase()}-text.properties")
@@ -280,9 +292,41 @@ internal class RecordingRepository(
         token in uploading && it.attempt == token.attempt && it.status == SavedRecordingStatus.UPLOADING
     }
 
+    /** Original transcript is already durably COMPLETE before the second request is claimed. */
+    @Synchronized fun beginProcessing(id: String, settings: TextProcessingSettings): TextProcessingAttempt? {
+        require(settings.valid)
+        val record = rows[id]?.takeIf { it.transcript.isNotBlank() &&
+            it.status == SavedRecordingStatus.COMPLETE && processing.none { token -> token.id == id } } ?: return null
+        val token = TextProcessingAttempt(id, record.processingAttempt + 1)
+        save(record.copy(processingStatus = TextProcessingStatus.PROCESSING, processingModel = settings.model,
+            processingPrompt = settings.prompt, processingAttempt = token.attempt, updatedAt = clock()))
+        processing += token
+        changed()
+        return token
+    }
+    private fun processingOwned(token: TextProcessingAttempt) = rows[token.id]?.takeIf {
+        token in processing && it.processingAttempt == token.attempt && it.processingStatus == TextProcessingStatus.PROCESSING
+    }
+    @Synchronized fun completeProcessing(token: TextProcessingAttempt, text: String): Boolean {
+        require(text.isNotBlank())
+        val record = processingOwned(token) ?: return false
+        save(record.copy(processedText = text, processingStatus = TextProcessingStatus.COMPLETE, updatedAt = clock()))
+        processing -= token; changed()
+        return true
+    }
+    @Synchronized fun endProcessing(token: TextProcessingAttempt, interrupted: Boolean = false) {
+        val record = processingOwned(token) ?: return
+        val next = record.copy(processingStatus = if (interrupted) TextProcessingStatus.INTERRUPTED else TextProcessingStatus.FAILED,
+            updatedAt = clock())
+        try { save(next) } finally {
+            // Even failed storage cannot authorize a late response or keep a dead owner reserved.
+            rows[token.id] = next; processing -= token; changed()
+        }
+    }
+
     @Synchronized fun discard(id: String): Boolean {
         val record = rows[id] ?: return false
-        if (id in reserved || uploading.any { it.id == id }) return false
+        if (id in reserved || uploading.any { it.id == id } || processing.any { it.id == id }) return false
         save(record.copy(status = SavedRecordingStatus.DELETING, updatedAt = clock()))
         erase(id)
         return true
@@ -341,6 +385,9 @@ internal class RecordingRepository(
             setProperty("status", record.status.name); setProperty("seconds", record.durationSeconds.toString())
             setProperty("transcript", record.transcript); setProperty("attempt", record.attempt.toString())
             setProperty("kind",record.kind.storedValue);setProperty("partial",record.partial.toString())
+            setProperty("processedText", record.processedText); setProperty("processingStatus", record.processingStatus.name)
+            setProperty("processingModel", record.processingModel); setProperty("processingPrompt", record.processingPrompt)
+            setProperty("processingAttempt", record.processingAttempt.toString())
             record.failure?.let { setProperty("failure", it.name) }; record.legacyName?.let { setProperty("legacyName", it) }
         }
         commit.write(metadata(record.id), values)
@@ -353,7 +400,9 @@ internal class RecordingRepository(
         return SavedRecording(directory.name, p.getProperty("createdAt").toLong(), p.getProperty("updatedAt").toLong(),
             SavedRecordingStatus.valueOf(p.getProperty("status")), p.getProperty("seconds").toInt(), p.getProperty("transcript"),
             p.getProperty("failure")?.let(SavedRecordingFailure::valueOf), p.getProperty("attempt").toLong(), p.getProperty("legacyName"),
-            SavedRecordingKind.fromStored(p.getProperty("kind","RECORD")),p.getProperty("partial","false").toBooleanStrict())
+            SavedRecordingKind.fromStored(p.getProperty("kind","RECORD")),p.getProperty("partial","false").toBooleanStrict(),
+            p.getProperty("processedText", ""), TextProcessingStatus.valueOf(p.getProperty("processingStatus", "NONE")),
+            p.getProperty("processingModel", ""), p.getProperty("processingPrompt", ""), p.getProperty("processingAttempt", "0").toLong())
     }
     companion object { private fun validId(id: String) = runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) }
 }

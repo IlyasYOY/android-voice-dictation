@@ -103,12 +103,10 @@ class RecordingHistoryRuntimeTest {
             capture("04-history-expanded")
             compose.onNodeWithTag("history_copy_$success").performScrollTo().performClick()
             scenario.onActivity { assertEquals(transcript,it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-            compose.onNodeWithTag("history_menu_$success").performScrollTo().performClick()
-            compose.onNodeWithTag("history_delete_$success").performClick()
+            compose.openHistoryDelete("$success")
             compose.onNodeWithText("Cancel").performClick()
             assertNotNull(repository.record(success))
-            compose.onNodeWithTag("history_menu_$success").performScrollTo().performClick()
-            compose.onNodeWithTag("history_delete_$success").performClick()
+            compose.openHistoryDelete("$success")
             compose.onNodeWithTag("history_confirm_delete").performClick()
             compose.waitUntil {repository.record(success)==null}
             compose.onNodeWithTag("history_retry_$pending").performScrollTo().assertIsEnabled()
@@ -133,8 +131,7 @@ class RecordingHistoryRuntimeTest {
         }
         ActivityScenario.launch(MainActivity::class.java).use {scenario ->
             compose.onNodeWithTag("saved_recordings").performClick()
-            compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-            compose.onNodeWithTag("history_delete_$id").performClick()
+            compose.openHistoryDelete("$id")
             compose.onNodeWithTag("history_confirm_delete").performClick()
             compose.runOnIdle {assertEquals("",model.state.value.text)}
             compose.onNodeWithTag("history_sheet").assertExists()
@@ -173,9 +170,8 @@ class RecordingHistoryRuntimeTest {
                 compose.waitUntil(15000) {repository.record(id)?.status==SavedRecordingStatus.UPLOADING}
                 compose.onNodeWithTag("history_retry_$id").assertDoesNotExist()
                 compose.onNodeWithTag("history_busy_$id").assertIsNotEnabled()
-                compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-                compose.onNodeWithTag("history_delete_$id").assertIsNotEnabled()
-                androidx.test.uiautomator.UiDevice.getInstance(instrumentation).pressBack()
+                compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+                compose.onNodeWithTag("history_delete_$id").performScrollTo().assertIsNotEnabled()
                 compose.waitUntil(15000) {server.requestCount==1}
                 capture("07-history-processing")
                 release.countDown()
@@ -242,8 +238,7 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
                 assertEquals(text,copied)
                 capture("06-history-long-text-font-$font")
-                compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-                compose.onNodeWithTag("history_delete_$id").performClick()
+                compose.openHistoryDelete("$id")
                 compose.onNodeWithTag("history_confirm_delete").performClick();assertTrue(deleted)
             }
         }
@@ -353,8 +348,7 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
             compose.onNodeWithTag("transcript").assertTextEquals("Replacement in the same message")
             capture("10-linked-text-after-recreation")
-            compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-            compose.onNodeWithTag("history_delete_$id").performClick()
+            compose.openHistoryDelete("$id")
             compose.onNodeWithTag("history_confirm_delete").performClick()
             compose.runOnIdle { assertEquals("", model.state.value.text) }
             assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
@@ -368,7 +362,7 @@ class RecordingHistoryRuntimeTest {
         }
     }
 
-    @Test fun unlinkedDraftRemainsEditableAndClearDoesNotDeleteRecordings() {
+    @Test fun oldUnlinkedTextRemainsEditableAndConfirmedDeleteDoesNotDeleteRecordings() {
         lateinit var model: DictationViewModel
         lateinit var id: String
         instrumentation.runOnMainSync {
@@ -387,8 +381,15 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
             compose.onNodeWithTag("transcript").assertTextEquals("Edited unlinked synthetic text")
             capture("12-unlinked-text-after-recreation")
-            compose.onNodeWithTag("history_menu_draft").performScrollTo().performClick()
-            compose.onNodeWithTag("clear").performClick()
+            compose.onNodeWithText("Current text").assertDoesNotExist()
+            compose.onNodeWithTag("history_menu_draft").assertDoesNotExist()
+            compose.onNodeWithTag("history_delete_draft").performScrollTo().performClick()
+            assertEquals("Edited unlinked synthetic text", repository.savedText(RecordingTextSlot.MAIN))
+            compose.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+            assertEquals("Edited unlinked synthetic text", repository.savedText(RecordingTextSlot.MAIN))
+            compose.onNodeWithTag("history_delete_draft").performScrollTo().performClick()
+            scenario.recreate()
+            compose.onNodeWithTag("history_confirm_delete_text").performClick()
             compose.runOnIdle { assertEquals("", model.state.value.text) }
             assertEquals("", repository.savedText(RecordingTextSlot.MAIN))
             assertEquals(transcript, repository.record(id)?.transcript)
@@ -423,7 +424,10 @@ class RecordingHistoryRuntimeTest {
                 compose.onNodeWithTag("history_problem").assertTextEquals(context.getString(R.string.error))
                 compose.onNodeWithTag("history_content").performSemanticsAction(SemanticsActions.Dismiss) { it() }
                 compose.onNodeWithTag("saved_recordings").performClick()
-                compose.onNodeWithTag("history_expand_draft").performScrollTo().performClick()
+                scenario.onActivity { assertEquals("Unsaved synthetic words remain copyable", model.state.value.text) }
+                // Reopening preserves expansion. Clicking the toggle again would collapse the field under test.
+                compose.onNodeWithTag("history_expand_draft").performScrollTo()
+                    .assertContentDescriptionEquals(context.getString(R.string.history_less))
                 compose.onNodeWithTag("transcript").assertTextEquals("Unsaved synthetic words remain copyable")
                 scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)

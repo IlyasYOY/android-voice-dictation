@@ -98,7 +98,8 @@ class RecordingRepositoryTest {
     @Test fun metadataContainsOnlyTheClosedSchemaAndNoCredentialOrEditorState() {
         val store=repository();val audio=capture(store);store.complete(checkNotNull(store.beginUpload(audio)),"result")
         val properties=Properties().apply {File(audio.parentFile,"record.properties").inputStream().use {load(it)}}
-        assertEquals(setOf("format","id","createdAt","updatedAt","status","seconds","transcript","attempt","kind","partial"),properties.stringPropertyNames())
+        assertEquals(setOf("format","id","createdAt","updatedAt","status","seconds","transcript","attempt","kind","partial",
+            "processedText","processingStatus","processingModel","processingPrompt","processingAttempt"),properties.stringPropertyNames())
         assertThrows(IllegalArgumentException::class.java) {store.audio("../../outside")}
     }
     @Test fun deletionKeepsItsTombstoneUntilAudioIsDurablyGoneAndRestartFinishes() {

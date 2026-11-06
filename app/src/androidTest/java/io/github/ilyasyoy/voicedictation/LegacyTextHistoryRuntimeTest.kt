@@ -44,8 +44,7 @@ class LegacyTextHistoryRuntimeTest {
                 compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
                 compose.onNodeWithTag("history_text_$id").assertTextEquals(text)
                 compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick();assertEquals(text,copied)
-                compose.onNodeWithTag("history_menu_$id").performScrollTo().performClick()
-                compose.onNodeWithTag("history_delete_$id").performClick()
+                compose.openHistoryDelete("$id")
                 compose.onNodeWithTag("history_confirm_delete").performClick()
                 compose.waitForIdle();assertTrue(store.records().isEmpty());assertEquals(0,store.capacity().used)
             }

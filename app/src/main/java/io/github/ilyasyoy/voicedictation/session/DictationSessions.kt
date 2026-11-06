@@ -35,12 +35,20 @@ internal object DictationSessions {
         prepare(app)
         return DictationSession(scope, DeferredAudioRecorder {prepare(app);AndroidAudioRecorder(app)}, fileTranscriber ?: fileTranscription(app),
             keyStore ?: keys(app),
-            StoredRecordingRetention({AndroidRecordingStorage.repository(app)},mainDraft))
+            StoredRecordingRetention({AndroidRecordingStorage.repository(app)},mainDraft),
+            processingSettings = { TextProcessingPreferences(app).read() })
     }
 
     suspend fun transcribeRetained(context: Context, audio: File): String {
         val key=keys(context).load() ?: throw MissingSavedKey()
         return fileTranscription(context).transcribe(audio,key)
+    }
+    suspend fun processRetained(context: Context, id: String, settings: TextProcessingSettings): String? =
+        processSavedText(AndroidRecordingStorage.repository(context), id, settings,
+            loadKey = { keys(context).load() ?: throw MissingSavedKey() }, processor = OpenAiTextProcessor())
+    suspend fun textModels(context: Context): List<String> {
+        val key = keys(context).load() ?: throw MissingSavedKey()
+        return OpenAiTextModels().list(key)
     }
 }
 
