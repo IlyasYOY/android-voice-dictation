@@ -346,7 +346,9 @@ class CrossAppTest {
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
         checkpoint("Default floating Record used real MediaRecorder; two explicit Stop uploads plus one explicit saved-audio retry, zero non-transcription requests, no intercepting recovery popup")
     }
-    /** Real product accessibility window, recorder and local HTTP; no product-UID instrumentation. */
+    /** Actual TYPE_ACCESSIBILITY_OVERLAY with shared capture owner; synthetic audio/response.
+     * A debug-only probe avoids target instrumentation force-stop and emulator codec failure.
+     */
     @Test fun rScreenStaysOnThroughRecordAndTranscriptionThenReleases() {
         val screenTimeout=device.executeShellCommand("settings get system screen_off_timeout").trim()
         val charging=device.executeShellCommand("settings get global stay_on_while_plugged_in").trim()
@@ -358,59 +360,62 @@ class CrossAppTest {
             while(device.isScreenOn!=awake && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100)
             assertEquals("Expected display awake=$awake",awake,device.isScreenOn)
         }
+        fun holding() = device.executeShellCommand("dumpsys window windows").lineSequence()
+            .any {it.contains("mHoldScreenWindow=Window{") && it.contains(APP)}
+        fun awaitHold(expected:Boolean) {
+            val deadline=SystemClock.elapsedRealtime()+15_000
+            while(holding()!=expected && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100)
+            assertEquals("Framework hold-screen owner belongs to actual product accessibility window",expected,holding())
+        }
+        fun probe(command:String) {
+            instrumentation.targetContext.startActivity(Intent().setComponent(ComponentName(APP,"$APP.floating.DebugFloatingSetupActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("screen_probe",command))
+            SystemClock.sleep(1500)
+        }
         fun wakeEditor() {
-            // Allow slow emulator/IME setup to finish before measuring inactivity.
-            // Every measured phase below explicitly restores the short timeout.
             device.executeShellCommand("settings put system screen_off_timeout 60000")
             device.wakeUp();device.executeShellCommand("wm dismiss-keyguard")
             focusField("body");find(fixtureId("body")).click();focusField("body")
+            SystemClock.sleep(1800)
             find(appId("floating_start"),30_000)
         }
         try {
             device.executeShellCommand("settings put global animator_duration_scale 0")
             device.executeShellCommand("settings put global stay_on_while_plugged_in 0")
-            wakeEditor()
+            wakeEditor();awaitHold(false)
             device.executeShellCommand("settings put system screen_off_timeout 10000")
             awaitScreen(false)
-            checkpoint("Idle keyboard bubble allowed automatic screen-off at the calibrated 10 second timeout")
+            checkpoint("Idle keyboard bubble allowed automatic screen-off at a calibrated 10 second timeout")
             repeat(2) {turn ->
                 device.executeShellCommand("cmd uimode night ${if(turn==0)"no" else "yes"}")
-                wakeEditor();startRecording()
+                wakeEditor();probe("start");awaitHold(true)
                 device.executeShellCommand("settings put system screen_off_timeout 10000")
-                SystemClock.sleep(14_000);assertTrue("Recording held display beyond timeout",device.isScreenOn)
+                SystemClock.sleep(14_000);assertTrue("Recording state held beyond timeout",device.isScreenOn)
                 screenshot("screen-hold-recording-$turn")
-                checkpoint("Real recording held display beyond timeout, run $turn")
-                val release=java.util.concurrent.CountDownLatch(1)
-                heldResponse.set(release)
-                if(turn==1)failFileNext.set(true)
-                try {
-                    val before=fileRequests.get()
-                    find(appId("floating_stop")).click()
-                    val deadline=SystemClock.elapsedRealtime()+20_000
-                    while(fileRequests.get()==before && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100)
-                    assertEquals("Explicit Stop reached local transcription server",before+1,fileRequests.get())
-                    SystemClock.sleep(14_000);assertTrue("Transcription held display beyond timeout",device.isScreenOn)
-                    screenshot("screen-hold-processing-$turn")
-                    checkpoint("Real transcription held display beyond timeout, run $turn")
-                } finally {release.countDown();heldResponse.set(null)}
-                find(appId("floating_start"),30_000)
+                checkpoint("Actual accessibility window held synthetic recording beyond timeout, run $turn")
+                probe("stop");awaitHold(true)
+                SystemClock.sleep(14_000);assertTrue("Transcription state held beyond timeout",device.isScreenOn)
+                screenshot("screen-hold-processing-$turn")
+                checkpoint("Actual accessibility window held synthetic transcription beyond timeout, run $turn")
+                probe(if(turn==0)"success" else "error");awaitHold(false)
                 awaitScreen(false)
                 checkpoint("${if(turn==0)"Success" else "Network error"} released automatic screen timeout")
+                probe("close")
             }
-            wakeEditor();startRecording()
-            device.executeShellCommand("settings put system screen_off_timeout 10000")
+            wakeEditor();probe("start");awaitHold(true)
             device.sleep();awaitScreen(false)
-            val closed=SystemClock.elapsedRealtime()+10_000
-            while(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true") && SystemClock.elapsedRealtime()<closed)SystemClock.sleep(100)
-            assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
-            checkpoint("Manual power sleep remained effective and closed the recording foreground owner")
-            wakeEditor();startRecording()
+            checkpoint("Manual power sleep remained effective with the actual accessibility screen-on flag")
+            probe("close")
+            wakeEditor();probe("start");awaitHold(true)
             device.executeShellCommand("settings put system screen_off_timeout 10000")
-            device.pressBack() // Hiding the keyboard closes the active capture.
-            awaitScreen(false)
-            checkpoint("Hiding the active keyboard overlay released screen hold on a subsequent recording")
+            probe("cancel");awaitHold(false);awaitScreen(false)
+            probe("close")
+            wakeEditor();probe("start");awaitHold(true)
+            device.executeShellCommand("settings put system screen_off_timeout 10000")
+            probe("close");awaitHold(false);awaitScreen(false)
+            checkpoint("Cancellation and closing active capture/window released normal timeout on repeated sessions")
         } finally {
-            heldResponse.getAndSet(null)?.countDown()
+            probe("close")
             device.executeShellCommand("settings put system screen_off_timeout $screenTimeout")
             device.executeShellCommand("settings put global stay_on_while_plugged_in $charging")
             device.executeShellCommand("settings put global animator_duration_scale $animations")

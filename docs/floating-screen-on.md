@@ -25,3 +25,11 @@ Install the signed candidate over the existing app without uninstalling or clear
 7. Press the physical power button during recording and again during processing. It must turn the screen off; do not expect the operation to continue while locked. After unlocking, inspect any retained recording before starting again.
 
 Screenshots can show the UI states but cannot demonstrate elapsed timeout behavior. Automated runtime evidence and the owner checks above cover that behavior; no videos are required.
+
+## Cloud validation scope
+
+`FloatingScreenOnTest` covers recorder startup, recording, a pending key operation, transcription, success, cancellation, start/upload failures, invalid environment, idempotent close and late old responses during a subsequent session.
+
+The focused `CrossAppTest#rScreenStaysOnThroughRecordAndTranscriptionThenReleases` runs from the separate fixture UID. After the existing explicit fixture/accessibility opt-in, a debug-only probe creates the actual `FloatingWindow` with the bound AccessibilityService context and the shared `FloatingCapture` owner. Audio and the deferred response are synthetic; this is neither an Activity panel nor proof of microphone/network operation. The test checks Android's actual hold-screen window, a calibrated 10-second idle timeout, both busy phases beyond that timeout, repeated sessions, success/error/cancel/close release and manual power sleep. Emulator settings are restored in `finally`. The probe and its command path are absent from release builds.
+
+The unaccelerated API28 emulator's real-recorder attempt reached RECORDING, then ended with a RECORDING/codec failure within seconds, before a long timeout could be assessed. Existing capture safeguards were preserved. Product-UID instrumentation also could not attach the already enabled service after target force-stop; the external fixture avoids that limitation. Phone/OEM acceptance and a full microphone-to-transcript timeout scenario remain required.
