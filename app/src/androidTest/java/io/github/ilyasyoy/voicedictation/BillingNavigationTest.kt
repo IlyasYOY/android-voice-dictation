@@ -132,6 +132,9 @@ class BillingNavigationTest {
             textProcessingSettings = TextProcessingSettings(), onSaveTextProcessing = { true }, onOpenBilling = open)
     }
     private fun capture(name: String) {
+        compose.onNode(hasText("Opens OpenAI Billing", substring = true) or
+            hasText("Откроется Billing OpenAI", substring = true)).performScrollTo()
+        compose.onNodeWithTag("open_billing").assertIsDisplayed()
         compose.mainClock.advanceTimeBy(400); compose.waitForIdle()
         for (command in listOf("mkdir -p /sdcard/Download/billing-evidence", "screencap -p /sdcard/Download/billing-evidence/$name.png")) {
             instrumentation.uiAutomation.executeShellCommand(command).use {
