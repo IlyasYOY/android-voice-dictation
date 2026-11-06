@@ -54,6 +54,7 @@ class WaveformSeekRuntimeTest {
             AndroidRecordingPlayback.interrupt()
             repository.records().forEach { repository.discard(it.id) }
         }
+        compose.mainClock.autoAdvance = true
         shell("settings put global animator_duration_scale $animation")
     }
     private fun seed(milliseconds: Int): String {
@@ -93,14 +94,26 @@ class WaveformSeekRuntimeTest {
             }
             compose.waitForIdle()
             assertEquals(paused, model.playback.state.value.position)
-            compose.onNodeWithTag("history_play_$first").performClick()
+            wave.performTouchInput { swipeUp(durationMillis = 300) }
+            assertEquals(paused, model.playback.state.value.position)
+            compose.onNodeWithTag("history_play_$first").performScrollTo().performClick()
             compose.waitUntil(15_000) { model.playback.state.value.playing }
+            // Real playback produces continuous progress. Drive frames explicitly rather than
+            // asking Espresso to wait for an animation/progress stream to stop by itself.
+            compose.mainClock.autoAdvance = false
+            compose.mainClock.advanceTimeBy(32)
             wave.performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(.25f)) }
             compose.waitUntil(15_000) { !model.playback.state.value.seeking && model.playback.state.value.position < 30_000 }
             assertTrue(model.playback.state.value.playing)
+            compose.mainClock.advanceTimeBy(32)
+            wave.performTouchInput { swipe(Offset(width * .25f, height / 2f), Offset(width * .4f, height / 2f), 300) }
+            compose.waitUntil(15_000) { !model.playback.state.value.seeking && model.playback.state.value.position >= 36_000 }
+            assertTrue(model.playback.state.value.playing)
+            compose.mainClock.advanceTimeBy(250)
             capture("seek-playing", first)
             compose.onNodeWithTag("history_play_$first").performClick()
             assertFalse(model.playback.state.value.playing)
+            compose.mainClock.autoAdvance = true
             wave.performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(1f)) }
             compose.waitUntil(15_000) { !model.playback.state.value.seeking }
             assertEquals(model.playback.state.value.duration, model.playback.state.value.position)
