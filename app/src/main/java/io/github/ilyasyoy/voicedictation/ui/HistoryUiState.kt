@@ -17,6 +17,8 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     var menuId by mutableStateOf<String?>(null)
     var limitOpen by mutableStateOf(false)
     var wordsSelected by mutableStateOf(false)
+    var processingId by mutableStateOf<String?>(null)
+    var processingDraft by mutableStateOf(io.github.ilyasyoy.voicedictation.data.TextProcessingSettings(true))
     var wordInput by mutableStateOf(TextFieldValue())
     var editingWord by mutableStateOf<String?>(null)
     var wordEdit by mutableStateOf(TextFieldValue())
@@ -24,20 +26,22 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
     var wordFocus by mutableStateOf<String?>(null)
     fun toggle(id: String) { if (!expanded.remove(id)) expanded.add(id) }
     fun closeTransient() {
-        deleteId = null; limitOpen = false; menuId = null; wordMenu = null; wordFocus = null
+        deleteId = null; limitOpen = false; menuId = null; wordMenu = null; wordFocus = null; processingId = null
     }
     companion object {
         val Saver = listSaver<HistoryUiState, Any>(
-            save = { listOf("history-ui-v2", it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
+            save = { listOf("history-ui-v3", it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
                 it.draftExpanded, it.deleteId.orEmpty(), it.menuId.orEmpty(), it.limitOpen,
                 it.wordsSelected, it.wordInput.text, it.wordInput.selection.start, it.wordInput.selection.end,
                 it.editingWord.orEmpty(), it.wordEdit.text, it.wordEdit.selection.start, it.wordEdit.selection.end,
-                it.wordList.firstVisibleItemIndex, it.wordList.firstVisibleItemScrollOffset, it.wordFocus.orEmpty()) + it.expanded.toList() },
+                it.wordList.firstVisibleItemIndex, it.wordList.firstVisibleItemScrollOffset, it.wordFocus.orEmpty(),
+                it.processingId.orEmpty(), it.processingDraft.model, it.processingDraft.prompt) + it.expanded.toList() },
             restore = ::restoreSaved)
 
         /** Old installed versions saved six header fields followed by expanded IDs, without a version. */
         internal fun restoreSaved(saved: List<Any>): HistoryUiState {
-            val versioned = saved.firstOrNull() == "history-ui-v2"
+            val processing = saved.firstOrNull() == "history-ui-v3"
+            val versioned = processing || saved.firstOrNull() == "history-ui-v2"
             if (!versioned && saved.firstOrNull() !is Int) return HistoryUiState()
             val values = if (versioned) saved.drop(1) else saved
             // Recognize the unreleased initial Words shape too; never cast an expanded legacy ID to Boolean.
@@ -58,7 +62,11 @@ internal class HistoryUiState(val list: LazyListState = LazyListState(), val wor
                     wordInput = input(7, 8, 9); editingWord = text(10).ifEmpty { null }
                     wordEdit = input(11, 12, 13); wordFocus = text(16).takeIf { it == "add" || it == "edit" }
                 }
-                expanded.addAll(values.drop(if (words) 17 else 6).filterIsInstance<String>())
+                if (processing) {
+                    processingId = text(17).ifEmpty { null }
+                    processingDraft = io.github.ilyasyoy.voicedictation.data.TextProcessingSettings(true, text(18), text(19))
+                }
+                expanded.addAll(values.drop(if (processing) 20 else if (words) 17 else 6).filterIsInstance<String>())
             }
         }
     }

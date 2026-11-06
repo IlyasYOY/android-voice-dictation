@@ -1,5 +1,7 @@
 # Android Voice Dictation
 
+[Постобработка текста](docs/text-postprocessing.md): необязательный второй запрос с сохранённым OpenAI key, выбором модели и промптом в настройках. Исходный и обработанный текст сохраняются отдельно; повтор из истории использует исходник, не загружает аудио и не вставляет текст в прежнее поле.
+
 [Local diagnostics](docs/diagnostics.md): Settings → **Save logs ZIP**, retained for up to 7 days / 1 MiB. Manual export only; no dictation content or credentials.
 
 [Custom vocabulary / Words](docs/custom-vocabulary.md): saved recognition hints in a History/Words tab inside the existing history panel, with inline Add/Edit/Delete. Terms are sent with each explicit transcription; editing the list sends nothing.

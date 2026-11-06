@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="text_processing_cancel">Cancel text processing and keep recognized text</string>
+  <string name="text_processing_title">Text post-processing</string>
+  <string name="text_processing_notice">Uses your saved OpenAI key for a separate text request after recognition. Each attempt may have an additional API cost. Audio is not uploaded again.</string>
+  <string name="text_processing_enable">Enable after recognition</string>
+  <string name="text_processing_model">Text model</string>
+  <string name="text_processing_choose_model">Choose a model</string>
+  <string name="text_processing_prompt">Editing prompt</string>
+  <string name="text_processing_prompt_hint">Apply to the recognized text. Keep personal data out of reusable prompts. Up to 8,000 characters.</string>
+  <string name="text_processing_save">Save processing settings</string>
+  <string name="text_processing_settings_error">Could not read or save processing settings. Check storage and save explicitly.</string>
+  <string name="text_processing">Processing text…</string>
+  <string name="text_processing_failed">Recognition succeeded. Text processing did not finish. The original is saved in History; copy it or try processing again. Nothing was inserted.</string>
+  <string name="text_processing_retry_history">Retry in History</string>
+  <string name="text_processing_copy_original">Copy recognized text</string>
+  <string name="text_processing_copy_processed">Copy processed text</string>
+  <string name="text_processing_repeat">Process text again</string>
+  <string name="text_processing_once">For this attempt only. Starts from the recognized text; global settings stay unchanged. Results stay in History and are not inserted into a previous field.</string>
+  <string name="text_processing_run">Process text</string>
+  <string name="text_recognized">Recognized</string>
+  <string name="text_processed">Processed</string>
+  <string name="text_processing_previous">Previous successful result. The latest attempt did not replace it.</string>
   <string name="history_drawer_expanded">Expanded</string>
   <string name="history_drawer_collapsed">Collapsed</string>
   <string name="words_title">Words</string>

@@ -34,6 +34,8 @@ class HistoryUiStateTest {
             wordsSelected = true; wordInput = TextFieldValue("unfinished", TextRange(2, 5))
             editingWord = "Ильяс"; wordEdit = TextFieldValue("Ильяс новый", TextRange(4)); wordFocus = "edit"
             expanded.add("retained-message")
+            processingId = "retained-message"
+            processingDraft = io.github.ilyasyoy.voicedictation.data.TextProcessingSettings(true, "gpt-4.1", "Only this repeat")
         }
         val scope = object : SaverScope { override fun canBeSaved(value: Any) = true }
         val saved = with(HistoryUiState.Saver) { scope.save(state) }!!
@@ -43,6 +45,7 @@ class HistoryUiStateTest {
         assertEquals("Ильяс", restored.editingWord); assertEquals("edit", restored.wordFocus)
         assertEquals(3, restored.wordList.firstVisibleItemIndex); assertEquals(24, restored.wordList.firstVisibleItemScrollOffset)
         assertEquals(2, restored.list.firstVisibleItemIndex); assertEquals(listOf("retained-message"), restored.expanded.toList())
+        assertEquals("retained-message", restored.processingId); assertEquals(state.processingDraft, restored.processingDraft)
     }
     @Test fun `truncated future and malformed shapes never crash restore`() {
         for (values in listOf(emptyList(), listOf("future-v3"), listOf(0), listOf(-4, -5, "bad", 8, false, "bad"),

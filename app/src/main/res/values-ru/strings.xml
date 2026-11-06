@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="text_processing_cancel">Отменить обработку и сохранить распознанный текст</string>
+  <string name="text_processing_title">Постобработка текста</string>
+  <string name="text_processing_notice">После распознавания отправляет отдельный текстовый запрос в OpenAI с сохранённым ключом. Каждая попытка может оплачиваться дополнительно. Аудио повторно не отправляется.</string>
+  <string name="text_processing_enable">Включить после распознавания</string>
+  <string name="text_processing_model">Текстовая модель</string>
+  <string name="text_processing_choose_model">Выбрать модель</string>
+  <string name="text_processing_prompt">Промпт для обработки</string>
+  <string name="text_processing_prompt_hint">Применяется к распознанному тексту. Не включайте личные данные в постоянный промпт. До 8 000 символов.</string>
+  <string name="text_processing_save">Сохранить настройки обработки</string>
+  <string name="text_processing_settings_error">Не удалось прочитать или сохранить настройки обработки. Проверьте память и сохраните явно.</string>
+  <string name="text_processing">Обработка текста…</string>
+  <string name="text_processing_failed">Распознавание завершено. Обработка текста не завершилась. Исходник сохранён в истории: скопируйте его или повторите обработку. Текст не вставлен.</string>
+  <string name="text_processing_retry_history">Повторить в истории</string>
+  <string name="text_processing_copy_original">Копировать распознанное</string>
+  <string name="text_processing_copy_processed">Копировать обработанное</string>
+  <string name="text_processing_repeat">Обработать ещё раз</string>
+  <string name="text_processing_once">Только для этой попытки. Обработка начинается с распознанного текста и не меняет общие настройки. Результат останется в истории и не вставится в прежнее поле.</string>
+  <string name="text_processing_run">Обработать</string>
+  <string name="text_recognized">Распознано</string>
+  <string name="text_processed">Обработано</string>
+  <string name="text_processing_previous">Предыдущий успешный результат. Последняя попытка его не заменила.</string>
   <string name="history_drawer_expanded">Развёрнуто</string>
   <string name="history_drawer_collapsed">Свёрнуто</string>
   <string name="words_title">Слова</string>

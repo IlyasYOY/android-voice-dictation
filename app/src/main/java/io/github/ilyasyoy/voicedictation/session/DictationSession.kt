@@ -28,6 +28,8 @@ class DictationSession(
     private val transcriber: Transcriber,
     private val keyStore: ApiKeyStore = NoKeyStore,
     private val recordings: RecordingRetention = TemporaryRecordingRetention,
+    private val processingSettings: () -> TextProcessingSettings = { TextProcessingSettings() },
+    private val textProcessor: TextProcessor = OpenAiTextProcessor(),
 ) : AutoCloseable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private var closed = false
@@ -44,6 +46,7 @@ class DictationSession(
     private var request: Job? = null
     private var ticker: Job? = null
     private var generation = 0
+    private var processingOptions = TextProcessingSettings()
     private fun update(block: (DictationState) -> DictationState) {
         if (closed) return
         val previous = mutableState.value
@@ -53,7 +56,7 @@ class DictationSession(
             Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.PROCESS, DiagnosticCode.valueOf(next.problem.name))
         if (next.phase != previous.phase) when (next.phase) {
             Phase.RECORDING -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.RECORD)
-            Phase.TRANSCRIBING -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.PROCESS)
+            Phase.TRANSCRIBING, Phase.PROCESSING -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.PROCESS)
             Phase.RESULT -> Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.STOP)
             else -> Unit
         }
@@ -145,6 +148,7 @@ class DictationSession(
         catch (_: HistoryCapacityReached) { capacityReached(); return }
         catch (_: Exception) { error(Problem.LOCAL_STORAGE); return }
         update { it.copy(problem = null, seconds = 0, canRetry = false, safetyStopped = false) }
+        update { it.copy(originalText = "", processedText = "", processingFailed = false) }
         val current = ++generation
         try {
             recorder.start { scope.launch { if (current == generation) safetyStop() } }
@@ -168,6 +172,7 @@ class DictationSession(
     }
     private fun releaseWork() {
         ++generation
+        runCatching { recordings.endProcessing(interrupted = true) }
         request?.cancel(); request = null
         ticker?.cancel(); ticker = null
     }
@@ -204,7 +209,12 @@ class DictationSession(
         val current = ++generation
         update { it.copy(phase = Phase.TRANSCRIBING, problem = null, canRetry = false) }
         request = scope.launch {
+            var recognized = false
             try {
+                // Snapshot once per explicit Stop/retry. Edits in Settings cannot mutate an in-flight request.
+                // An unreadable optional setting cannot stop recognition, but must not silently
+                // authorize paid processing or insert the raw fallback. Defer its error until saved.
+                val options = runCatching { processingSettings().also { check(it.valid) } }
                 // Stop ends local capture first. A local credential read may finish later; it never
                 // delays Record start. This is the one Stop-requested attempt, not reconnect retry.
                 val received=recordings.receivedText(audio)
@@ -221,14 +231,32 @@ class DictationSession(
                 if (current == generation) {
                     if (text.isBlank()) throw InvalidTranscript()
                     // A local commit failure must still leave the received words available to Copy.
-                    update { it.copy(text=text) }
+                    update { it.copy(text=text, originalText=text, processingFailed=false, processedText="") }
                     recordings.completed(audio,text); pendingAudio=null
-                    update { it.copy(text = text, phase = Phase.RESULT, canRetry = false) }
+                    recognized = true
                     persistDraft(text)
+                    processingOptions = options.getOrThrow()
+                    if (processingOptions.enabled) {
+                        // Never publish RESULT (the overlay insertion trigger) for the intermediate words.
+                        recordings.beginProcessing(processingOptions)
+                        update { it.copy(phase = Phase.PROCESSING) }
+                        val processed = textProcessor.process(text, key, processingOptions)
+                        if (current != generation || closed) return@launch
+                        if (processed.isBlank()) throw InvalidTranscript()
+                        recordings.completedProcessing(processed)
+                        update { it.copy(text = processed, processedText = processed) }
+                        persistDraft(processed)
+                    }
+                    update { it.copy(phase = Phase.RESULT, canRetry = false) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (current == generation) {
                 val problem=problem(e)
+                if (recognized) {
+                    runCatching { recordings.endProcessing() }
+                    update { it.copy(phase = Phase.ERROR, problem = problem, canRetry = false, processingFailed = true) }
+                    return@launch
+                }
                 val retained=runCatching { recordings.failed(audio,problem) }.isSuccess
                 error(if(retained)problem else Problem.LOCAL_STORAGE,retry=audio.exists())
             } }
@@ -254,7 +282,7 @@ class DictationSession(
         persistDraft(state.value.text)
         releaseWork()
         runCatching { recorder.cancel() }.onFailure { Diagnostics.failure(DiagnosticArea.RECORDER, DiagnosticAction.CANCEL, it) }; val removed=discardAudio()
-        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed && !unpersistedDraft)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false) }
+        update { it.copy(phase = if (it.text.isBlank()) Phase.IDLE else Phase.RESULT, problem = if(removed && !unpersistedDraft)null else Problem.LOCAL_STORAGE, canRetry = false, safetyStopped = false, processingFailed = false) }
     }
     private fun discardAudio(): Boolean {
         val audio=pendingAudio ?: return true
@@ -266,7 +294,7 @@ class DictationSession(
         if (closed) return
         cancel()
         savedKey = null
-        mutableState.value = state.value.copy(key = "", keySaved = false, hasSavedKey = false, keyBusy = false, text = "")
+        mutableState.value = state.value.copy(key = "", keySaved = false, hasSavedKey = false, keyBusy = false, text = "", originalText = "", processedText = "")
         Diagnostics.record(DiagnosticArea.SESSION, DiagnosticAction.CLOSE)
         closed = true
         scope.cancel()

@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -73,11 +75,12 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
     onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
-    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId || it.id == ui.processingId } || ui.limitOpen
     val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
     val repository = controller.repository
+    val processingFailure by controller.processingFailure.collectAsStateWithLifecycle()
     var storedDraft by remember { mutableStateOf<HistoryDraft?>(null) }
     LaunchedEffect(recovery.records, draft == null) {
         if (draft == null) storedDraft = runCatching {
@@ -97,6 +100,10 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
+            onProcess = { id -> recovery.records.firstOrNull { it.id == id }?.let {
+                ui.processingDraft = controller.processingDefaults(it); ui.processingId = id
+            } }, onCancelProcessing = controller::cancelProcessing,
+            processingFailure = processingFailure,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
         } else Box(Modifier.fillMaxSize()) // Keep sheet geometry, without decoding hidden history waveforms.
@@ -107,6 +114,13 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
         onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
         onDismiss = { ui.limitOpen = false })
+    recovery.records.firstOrNull { it.id == ui.processingId }?.let { record ->
+        androidx.compose.runtime.key(record.id) {
+            RepeatProcessingDialog(ui.processingDraft, onDismiss = { ui.processingId = null },
+                onProcess = { controller.process(record.id, it); ui.processingId = null },
+                onDraftChange = { ui.processingDraft = it })
+        }
+    }
 }
 
 /** Stateless host shared with headless component verification; identical bounds/IME policy for both tabs. */
@@ -132,7 +146,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     ui: HistoryUiState = rememberHistoryUiState(), dismissible: Boolean = true,
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
-    }) {
+    }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null) {
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
     if (deleteRecord != null) HistorySafeDialog(onDismiss = { ui.deleteId = null },
@@ -182,7 +196,8 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     val available = audioAvailable(record.id)
                     HistoryMessage(record, state, playback, available,
                         rowDraft, if (rowDraft != null) onDraftEdit else null, if (rowDraft != null) onDraftClear else null,
-                        onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui)
+                        onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui,
+                        onProcess, onCancelProcessing, processingFailure == record.id)
                 }
             }
         }
@@ -193,7 +208,8 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
 private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState, playback: PlaybackState,
     available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?, onClear: (() -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
-    waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState) {
+    waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState,
+    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean) {
     val expanded = record.id in ui.expanded
     val menu = ui.menuId == record.id
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
@@ -257,7 +273,24 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (expanded || (canRetry && text.isNotBlank())) TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
+                if (expanded || (canRetry && text.isNotBlank())) {
+                    if (record.processingStatus == TextProcessingStatus.NONE)
+                        TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
+                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, onCopy)
+                    else TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
+                    if (record.transcript.isNotBlank() && record.status == SavedRecordingStatus.COMPLETE && onProcess != null) {
+                        if (record.processingStatus == TextProcessingStatus.PROCESSING) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth().testTag("history_processing_${record.id}"))
+                            MessageNote(R.string.text_processing)
+                            TextButton({ onCancelProcessing(record.id) }, Modifier.testTag("cancel_processing_${record.id}")) {
+                                Text(stringResource(android.R.string.cancel))
+                            }
+                        } else TextButton({ onProcess(record.id) }, enabled = !owned && !state.retrying,
+                            modifier = Modifier.testTag("process_text_${record.id}")) { Text(stringResource(R.string.text_processing_repeat)) }
+                    }
+                }
+                if (record.processingStatus in setOf(TextProcessingStatus.FAILED, TextProcessingStatus.INTERRUPTED) || processingFailure)
+                    MessageNote(R.string.text_processing_failed, error = true)
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)
                 if (record.id in state.receivedTexts) MessageNote(R.string.saved_unsaved_text, error = true)
@@ -284,6 +317,29 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProcessedTranscriptBody(record: SavedRecording, onCopy: (String) -> Unit) {
+    var processed by rememberSaveable(record.id, record.processedText) { mutableStateOf(record.processedText.isNotBlank()) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().selectableGroup()) {
+            val options = listOf(false to R.string.text_recognized, true to R.string.text_processed)
+            options.forEach { (value, label) ->
+                FilterChip(processed == value, { processed = value }, label = { Text(stringResource(label)) },
+                    enabled = !value || record.processedText.isNotBlank(), modifier = Modifier.weight(1f)
+                        .testTag("text_version_${if (value) "processed" else "original"}_${record.id}"))
+            }
+        }
+        val text = if (processed) record.processedText else record.transcript
+        SelectionContainer { Text(text, Modifier.testTag("history_text_${record.id}"), style = MaterialTheme.typography.bodyLarge) }
+        TextButton({ onCopy(text) }, Modifier.testTag("history_copy_${record.id}")) {
+            Text(stringResource(if (processed) R.string.text_processing_copy_processed else R.string.text_processing_copy_original))
+        }
+        if (processed && record.processingStatus != TextProcessingStatus.COMPLETE) Text(
+            stringResource(R.string.text_processing_previous), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

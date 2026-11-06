@@ -1,6 +1,6 @@
 package io.github.ilyasyoy.voicedictation.session
 
-enum class Phase { IDLE, RECORDING, TRANSCRIBING, RESULT, ERROR }
+enum class Phase { IDLE, RECORDING, TRANSCRIBING, PROCESSING, RESULT, ERROR }
 enum class Problem { KEY, STORAGE, LOCAL_STORAGE, PERMISSION, RECORDING, NETWORK, AUTH, QUOTA, SERVER, RESPONSE }
 data class DictationState(
     val phase: Phase = Phase.IDLE,
@@ -17,8 +17,11 @@ data class DictationState(
     val canRetry: Boolean = false,
     val safetyStopped: Boolean = false,
     val capacityBlocked: Boolean = false,
+    val originalText: String = "",
+    val processedText: String = "",
+    val processingFailed: Boolean = false,
 ) {
-    val audioBusy get() = phase in setOf(Phase.RECORDING, Phase.TRANSCRIBING)
+    val audioBusy get() = phase in setOf(Phase.RECORDING, Phase.TRANSCRIBING, Phase.PROCESSING)
     val busy get() = audioBusy || keyBusy
     val validKey get() = key.isNotEmpty() && key.all { it.code in 33..126 }
     override fun toString() = "DictationState(phase=$phase, key=<redacted>, textLength=${text.length}, problem=$problem)"

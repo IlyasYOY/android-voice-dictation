@@ -131,6 +131,7 @@ class FloatingDictationService : AccessibilityService() {
         val status = if (capacityFull && !active) getString(R.string.history_full) else feedback.message ?: when (state?.phase) {
             Phase.RECORDING -> getString(R.string.recording) + " · " + state.elapsed
             Phase.TRANSCRIBING -> getString(R.string.transcribing)
+            Phase.PROCESSING -> getString(R.string.text_processing)
             Phase.ERROR -> getString(R.string.error)
             else -> getString(R.string.floating_start)
         }
@@ -206,9 +207,9 @@ class FloatingDictationService : AccessibilityService() {
                 DebugFloatingConfiguration.trace(this, "state=${state.phase}, loadingKey=${state.keyBusy}, problem=${state.problem}")
                 if (state.phase == Phase.ERROR) {
                     if(state.canRetry) session.takeRetryRecording()?.let { RecordingRecovery.processOwned.retain(it,RecordingRetryFailure.from(state.problem)) }
-                    offerRecovery(state.text,getString(R.string.error), error = true)
+                    offerRecovery(state.text,getString(if (state.processingFailed) R.string.text_processing_failed else R.string.error), error = true)
                 }
-                if (state.phase == Phase.TRANSCRIBING) endForeground()
+                if (state.phase in setOf(Phase.TRANSCRIBING, Phase.PROCESSING)) endForeground()
                 if (state.phase == Phase.RESULT) {
                     endForeground()
                     if (finishRequested && !insertionAttempted) insert(state.text)
