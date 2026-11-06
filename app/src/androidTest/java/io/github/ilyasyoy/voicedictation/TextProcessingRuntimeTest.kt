@@ -243,6 +243,42 @@ class TextProcessingRuntimeTest {
             assertEquals("Исправь пунктуацию, сохрани смысл.", TextProcessingPreferences(context).read().prompt)
         }
     }
+    @Test fun firstManualCorrectionIsAvailableWhenSavedTextMatchesOriginalOrProcessed() {
+        lateinit var id: String; lateinit var model: DictationViewModel
+        instrumentation.runOnMainSync {
+            id = seed()
+            val token = checkNotNull(repository.beginProcessing(id, TextProcessingSettings(true)))
+            repository.endProcessing(token, false)
+            repository.saveText(RecordingTextSlot.MAIN, repository.record(id)!!.transcript, id)
+            MainActivity.testFactory = { app -> DictationViewModel { scope ->
+                DictationSessions.create(app, scope, mainDraft = true)
+            }.also { model = it } }
+        }
+        val original = repository.record(id)!!.transcript
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.onNodeWithTag("saved_recordings").performClick()
+            compose.onNodeWithTag("history_expand_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("text_version_edits_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals(original)
+                .performTextReplacement("First correction to recognized words")
+            assertEquals(original, repository.record(id)!!.transcript)
+            scenario.onActivity {
+                val token = checkNotNull(repository.beginProcessing(id, TextProcessingSettings(true)))
+                check(repository.completeProcessing(token, "Fresh processed version"))
+                repository.saveText(RecordingTextSlot.MAIN, "Fresh processed version", id); model.refreshDraft()
+            }
+            compose.onNodeWithTag("history_text_$id").performScrollTo().assertTextEquals("Fresh processed version")
+            compose.onNodeWithTag("text_version_edits_$id").performScrollTo().performClick()
+            compose.onNodeWithTag("transcript").performScrollTo().assertTextEquals("Fresh processed version")
+                .performTextReplacement("First correction to processed words")
+            compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
+            scenario.onActivity { assertEquals("First correction to processed words", context.getSystemService(ClipboardManager::class.java)
+                .primaryClip!!.getItemAt(0).text.toString()) }
+            assertEquals("Fresh processed version", repository.record(id)!!.processedText)
+            assertEquals(original, repository.record(id)!!.transcript)
+        }
+    }
+
     @Test fun linkedEditsRemainAccessibleAfterRepeatCancellationFailureAndSuccess() {
         lateinit var id: String
         val edits = "My retained manual edits"
