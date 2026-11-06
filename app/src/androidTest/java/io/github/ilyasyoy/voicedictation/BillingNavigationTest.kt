@@ -35,7 +35,10 @@ class BillingNavigationTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private var launches = 0
+    private var animation = "1"
     @Before fun before() {
+        animation = shell("settings get global animator_duration_scale")
+        shell("settings put global animator_duration_scale 0")
         MainActivity.testFactory = { DictationViewModel(AndroidAudioRecorder(it),
             Transcriber { _, _ -> error("No provider call authorized") }, keyStore = object : ApiKeyStore {
                 override suspend fun load() = "synthetic-billing-test-key"
@@ -43,7 +46,10 @@ class BillingNavigationTest {
                 override suspend fun forget() = error("Navigation must not forget a key")
             }) }
     }
-    @After fun after() { MainActivity.testFactory = null }
+    @After fun after() {
+        MainActivity.testFactory = null
+        shell("settings put global animator_duration_scale $animation")
+    }
 
     @Test fun settingsLaunchesOnlyThePublicBillingUrlAndKeepsSettingsOnReturn() {
         ActivityScenario.launch(MainActivity::class.java).use {
@@ -132,5 +138,8 @@ class BillingNavigationTest {
                 ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
             }
         }
+    }
+    private fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
+        ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().readText().trim()
     }
 }
