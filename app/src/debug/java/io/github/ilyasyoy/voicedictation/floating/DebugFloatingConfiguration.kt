@@ -37,6 +37,9 @@ class DebugFloatingSetupActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent.getStringExtra("screen_probe")?.let { command ->
+            DebugScreenOnProbe.command(this,command);finish();return
+        }
         val port = intent.getIntExtra("port", 0)
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 40, 24, 24) }
         layout.addView(TextView(this).apply { setText(io.github.ilyasyoy.voicedictation.R.string.fixture_disclosure) })

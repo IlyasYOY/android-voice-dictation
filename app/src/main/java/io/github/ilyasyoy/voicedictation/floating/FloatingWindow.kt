@@ -154,7 +154,7 @@ internal class FloatingWindow(
             insets
         }
     }
-    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false, levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent) {
+    fun render(imeTop: Int, expanded: Boolean, text: String, message: String, recording: Boolean, canCopy: Boolean, needsSetup: Boolean, notice: String?, processing: Boolean = false, error: Boolean = false, connecting: Boolean = false, historyFull: Boolean = false, levels: io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource = io.github.ilyasyoy.voicedictation.audio.VoiceLevelSource.Silent, keepScreenOn: Boolean = false) {
         this.imeTop = imeTop; active = recording; hasRecovery = canCopy || historyFull; requiresSetup = needsSetup
         // The service survives configuration changes; every reused view must follow the current palette.
         for (view in listOf(heading, status, preview, copyButton, closeButton, setupButton, cancelButton, discardButton)) view.setTextColor(ink)
@@ -188,6 +188,7 @@ internal class FloatingWindow(
         discardButton.visibility = if(panel)View.VISIBLE else View.GONE
         if (!clamp()) { hide(); return }
         if(!attached) { wm.addView(root,params); attached=true; ViewCompat.requestApplyInsets(root) } else update()
+        setScreenOn(keepScreenOn)
         mark.start()
     }
     private fun safeArea(): FloatingArea? {
@@ -230,5 +231,9 @@ internal class FloatingWindow(
         return true
     }
     private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
-    fun hide() { mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; dragging=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
+    /** ViewRoot maps this to FLAG_KEEP_SCREEN_ON only while the overlay is visible.
+     * No CPU wake lock, screen-timeout setting, brightness override, or keyguard bypass.
+     */
+    fun setScreenOn(keep: Boolean) { root.keepScreenOn = keep && attached }
+    fun hide() { setScreenOn(false); mark.stop(); handler.removeCallbacks(hold); controlsOpen=false; dragging=false; if(attached)runCatching { wm.removeView(root) }; attached=false }
 }

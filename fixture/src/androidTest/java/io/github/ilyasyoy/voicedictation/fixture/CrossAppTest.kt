@@ -346,6 +346,83 @@ class CrossAppTest {
         assertFalse(device.executeShellCommand("dumpsys activity services $APP").contains("isForeground=true"))
         checkpoint("Default floating Record used real MediaRecorder; two explicit Stop uploads plus one explicit saved-audio retry, zero non-transcription requests, no intercepting recovery popup")
     }
+    /** Actual TYPE_ACCESSIBILITY_OVERLAY with shared capture owner; synthetic audio/response.
+     * A debug-only probe avoids target instrumentation force-stop and emulator codec failure.
+     */
+    @Test fun rScreenStaysOnThroughRecordAndTranscriptionThenReleases() {
+        val screenTimeout=device.executeShellCommand("settings get system screen_off_timeout").trim()
+        val charging=device.executeShellCommand("settings get global stay_on_while_plugged_in").trim()
+        val animations=device.executeShellCommand("settings get global animator_duration_scale").trim()
+        val night=device.executeShellCommand("cmd uimode night").substringAfter(":").trim()
+        check(night in setOf("no","yes","auto"))
+        fun awaitScreen(awake:Boolean) {
+            val deadline=SystemClock.elapsedRealtime()+25_000
+            while(device.isScreenOn!=awake && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100)
+            assertEquals("Expected display awake=$awake",awake,device.isScreenOn)
+        }
+        fun holding() = device.executeShellCommand("dumpsys window windows").lineSequence()
+            .any {it.contains("mHoldScreenWindow=Window{") && it.contains(APP)}
+        fun awaitHold(expected:Boolean) {
+            val deadline=SystemClock.elapsedRealtime()+15_000
+            while(holding()!=expected && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100)
+            assertEquals("Framework hold-screen owner belongs to actual product accessibility window",expected,holding())
+        }
+        fun probe(command:String) {
+            instrumentation.targetContext.startActivity(Intent().setComponent(ComponentName(APP,"$APP.floating.DebugFloatingSetupActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("screen_probe",command))
+            SystemClock.sleep(1500)
+        }
+        fun wakeEditor() {
+            device.executeShellCommand("settings put system screen_off_timeout 60000")
+            device.wakeUp();device.executeShellCommand("wm dismiss-keyguard")
+            focusField("body");find(fixtureId("body")).click();focusField("body")
+            SystemClock.sleep(1800)
+            find(appId("floating_start"),30_000)
+        }
+        try {
+            device.executeShellCommand("settings put global animator_duration_scale 0")
+            device.executeShellCommand("settings put global stay_on_while_plugged_in 0")
+            wakeEditor();awaitHold(false)
+            device.executeShellCommand("settings put system screen_off_timeout 10000")
+            awaitScreen(false)
+            checkpoint("Idle keyboard bubble allowed automatic screen-off at a calibrated 10 second timeout")
+            repeat(2) {turn ->
+                device.executeShellCommand("cmd uimode night ${if(turn==0)"no" else "yes"}")
+                wakeEditor();probe("start");awaitHold(true)
+                device.executeShellCommand("settings put system screen_off_timeout 10000")
+                SystemClock.sleep(14_000);assertTrue("Recording state held beyond timeout",device.isScreenOn)
+                screenshot("screen-hold-recording-$turn")
+                checkpoint("Actual accessibility window held synthetic recording beyond timeout, run $turn")
+                probe("stop");awaitHold(true)
+                SystemClock.sleep(14_000);assertTrue("Transcription state held beyond timeout",device.isScreenOn)
+                screenshot("screen-hold-processing-$turn")
+                checkpoint("Actual accessibility window held synthetic transcription beyond timeout, run $turn")
+                probe(if(turn==0)"success" else "error");awaitHold(false)
+                awaitScreen(false)
+                checkpoint("${if(turn==0)"Success" else "Network error"} released automatic screen timeout")
+                probe("close")
+            }
+            wakeEditor();probe("start");awaitHold(true)
+            device.sleep();awaitScreen(false)
+            checkpoint("Manual power sleep remained effective with the actual accessibility screen-on flag")
+            probe("close")
+            wakeEditor();probe("start");awaitHold(true)
+            device.executeShellCommand("settings put system screen_off_timeout 10000")
+            probe("cancel");awaitHold(false);awaitScreen(false)
+            probe("close")
+            wakeEditor();probe("start");awaitHold(true)
+            device.executeShellCommand("settings put system screen_off_timeout 10000")
+            probe("close");awaitHold(false);awaitScreen(false)
+            checkpoint("Cancellation and closing active capture/window released normal timeout on repeated sessions")
+        } finally {
+            probe("close")
+            device.executeShellCommand("settings put system screen_off_timeout $screenTimeout")
+            device.executeShellCommand("settings put global stay_on_while_plugged_in $charging")
+            device.executeShellCommand("settings put global animator_duration_scale $animations")
+            device.executeShellCommand("cmd uimode night $night")
+            device.wakeUp();device.executeShellCommand("wm dismiss-keyguard")
+        }
+    }
     @Test fun sHistoryCapacityBlocksNewMicrophoneAndResolvesWithoutEditingTheTarget() {
         launch("$APP.floating.DebugFloatingSetupActivity", server.port)
         launch("$APP.MainActivity")
