@@ -301,15 +301,16 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                 if (playback.failedId == record.id) MessageNote(R.string.history_playback_error, error = true)
                 if (record.status == SavedRecordingStatus.INTERRUPTED && record.kind == SavedRecordingKind.RECORD) MessageNote(R.string.history_interrupted_audio)
                 if (record.id in state.receivedTexts) MessageNote(R.string.saved_unsaved_text, error = true)
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (status != null) MessageStatus(status, false)
-                        Text(time, Modifier.testTag("history_time_${record.id}"), style = MaterialTheme.typography.labelSmall,
+                Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (status != null) MessageStatus(status, false)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(time, Modifier.weight(1f).testTag("history_time_${record.id}"), style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        DeleteControl(onDelete, !state.retrying && !owned && !busy, "history_delete_${record.id}",
+                            timestamp + ", " + stringResource(R.string.history_delete))
                     }
-                    DeleteControl(onDelete, !state.retrying && !owned && !busy, "history_delete_${record.id}",
-                        timestamp + ", " + stringResource(R.string.history_delete))
                 }
             }
         }
