@@ -47,6 +47,8 @@ fun DictationScreen(
     onExportLogs: () -> Unit = {}, logExportState: ExportState = ExportState.IDLE,
     textProcessingSettings: io.github.ilyasyoy.voicedictation.data.TextProcessingSettings? = null,
     onSaveTextProcessing: ((io.github.ilyasyoy.voicedictation.data.TextProcessingSettings) -> Boolean)? = null,
+    textModelList: io.github.ilyasyoy.voicedictation.data.TextModelListState = io.github.ilyasyoy.voicedictation.data.TextModelListState(),
+    onRefreshTextModels: (() -> Unit)? = null,
 ) {
     val capacityFull = historyCapacity?.full ?: state.capacityBlocked
     val focus = LocalFocusManager.current
@@ -99,7 +101,7 @@ fun DictationScreen(
                     }
                 }
                 if (settingsOpen) {
-                    if (onSaveTextProcessing != null) TextProcessingSettingsCard(textProcessingSettings, !state.busy, onSaveTextProcessing)
+                    if (onSaveTextProcessing != null) TextProcessingSettingsCard(textProcessingSettings, !state.busy, onSaveTextProcessing, textModelList, onRefreshTextModels)
                     Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.titleMedium)

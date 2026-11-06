@@ -75,7 +75,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     onDraftEdit: ((String) -> Unit)? = null, onDraftClear: (() -> Unit)? = null,
     sheetRegion: HistoryRegion? = null, windowWidth: Float = 0f, windowHeight: Float = 0f,
     onOpenForDialog: () -> Unit = {}, embedded: Boolean = false) {
-    val pendingDialog = recovery.records.any { it.id == ui.deleteId || it.id == ui.processingId } || ui.limitOpen
+    val pendingDialog = recovery.records.any { it.id == ui.deleteId } || ui.limitOpen
     val visible = wide || LocalHistoryContentVisible.current || pendingDialog
     LaunchedEffect(wide, pendingDialog, open) { if (!wide && pendingDialog && !open) onOpenForDialog() }
     val playing by controller.playback.state.collectAsStateWithLifecycle()
@@ -100,9 +100,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onClose = dismiss, draft = draft ?: storedDraft, draftProblem = draftProblem,
             onDraftEdit = onDraftEdit, onDraftClear = onDraftClear, onHistoryLimit = { ui.limitOpen = true },
             ui = ui, dismissible = !wide,
-            onProcess = { id -> recovery.records.firstOrNull { it.id == id }?.let {
-                ui.processingDraft = controller.processingDefaults(it); ui.processingId = id
-            } }, onCancelProcessing = controller::cancelProcessing,
+            onProcess = controller::process, onCancelProcessing = controller::cancelProcessing,
             processingFailure = processingFailure,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
@@ -114,13 +112,6 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
     if ((wide || open || pendingDialog) && ui.limitOpen) HistoryLimitDialog(recovery.capacity,
         onSave = { limit -> runCatching { checkNotNull(repository).setHistoryLimit(limit) }.isSuccess },
         onDismiss = { ui.limitOpen = false })
-    recovery.records.firstOrNull { it.id == ui.processingId }?.let { record ->
-        androidx.compose.runtime.key(record.id) {
-            RepeatProcessingDialog(ui.processingDraft, onDismiss = { ui.processingId = null },
-                onProcess = { controller.process(record.id, it); ui.processingId = null },
-                onDraftChange = { ui.processingDraft = it })
-        }
-    }
 }
 
 /** Stateless host shared with headless component verification; identical bounds/IME policy for both tabs. */
@@ -274,19 +265,26 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (expanded || (canRetry && text.isNotBlank())) {
+                    val process = if (record.transcript.isNotBlank() && record.status == SavedRecordingStatus.COMPLETE && onProcess != null)
+                        ({ onProcess(record.id) }) else null
+                    val actions: @Composable (String, String) -> Unit = { value, label ->
+                        TranscriptActions(value, label, { onCopy(value) }, "history_copy_${record.id}", process,
+                            "process_text_${record.id}", !owned && !state.retrying)
+                    }
                     if (record.processingStatus == TextProcessingStatus.NONE)
-                        TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
-                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, onCopy)
-                    else TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}")
-                    if (record.transcript.isNotBlank() && record.status == SavedRecordingStatus.COMPLETE && onProcess != null) {
+                        TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
+                            actions = { actions(text, stringResource(R.string.copy)) })
+                    else if (record.transcript.isNotBlank()) ProcessedTranscriptBody(record, actions)
+                    else TranscriptBody(text, onEdit, { onCopy(text) }, "history_text_${record.id}", "history_copy_${record.id}",
+                        actions = { actions(text, stringResource(R.string.copy)) })
+                    if (process != null) {
                         if (record.processingStatus == TextProcessingStatus.PROCESSING) {
                             LinearProgressIndicator(Modifier.fillMaxWidth().testTag("history_processing_${record.id}"))
                             MessageNote(R.string.text_processing)
                             TextButton({ onCancelProcessing(record.id) }, Modifier.testTag("cancel_processing_${record.id}")) {
                                 Text(stringResource(android.R.string.cancel))
                             }
-                        } else TextButton({ onProcess(record.id) }, enabled = !owned && !state.retrying,
-                            modifier = Modifier.testTag("process_text_${record.id}")) { Text(stringResource(R.string.text_processing_repeat)) }
+                        }
                     }
                 }
                 if (record.processingStatus in setOf(TextProcessingStatus.FAILED, TextProcessingStatus.INTERRUPTED) || processingFailure)
@@ -302,13 +300,18 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                         Box(Modifier.weight(1f).padding(start = 8.dp)) { if (status != null) MessageStatus(status, false) }
                         Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Box {
+                    if (onClear == null) {
+                        val deleteLabel = stringResource(R.string.history_delete)
+                        FilledTonalIconButton(onDelete, enabled = !state.retrying && !owned && !busy,
+                            modifier = Modifier.size(48.dp).testTag("history_delete_${record.id}")
+                                .semantics { contentDescription = timestamp + ", " + deleteLabel }) { DeleteGlyph() }
+                    } else Box {
                         IconButton({ ui.menuId = record.id }, Modifier.size(48.dp).testTag("history_menu_${record.id}")
                             .semantics { contentDescription = timestamp + ", " + moreLabel }) {
                             Text("⋮", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { })
                         }
                         DropdownMenu(menu, { ui.menuId = null }) {
-                            if (onClear != null) DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
+                            DropdownMenuItem(text = { Text(stringResource(R.string.history_clear_draft)) },
                                 onClick = { ui.menuId = null; onClear() }, modifier = Modifier.testTag("clear"))
                             DropdownMenuItem(text = { Text(stringResource(R.string.history_delete)) }, enabled = !state.retrying && !owned && !busy,
                                 onClick = { ui.menuId = null; onDelete() }, modifier = Modifier.testTag("history_delete_${record.id}"))
@@ -321,22 +324,23 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
 }
 
 @Composable
-private fun ProcessedTranscriptBody(record: SavedRecording, onCopy: (String) -> Unit) {
+private fun ProcessedTranscriptBody(record: SavedRecording, actions: @Composable (String, String) -> Unit) {
     var processed by rememberSaveable(record.id, record.processedText) { mutableStateOf(record.processedText.isNotBlank()) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().selectableGroup()) {
-            val options = listOf(false to R.string.text_recognized, true to R.string.text_processed)
-            options.forEach { (value, label) ->
-                FilterChip(processed == value, { processed = value }, label = { Text(stringResource(label)) },
-                    enabled = !value || record.processedText.isNotBlank(), modifier = Modifier.weight(1f)
-                        .testTag("text_version_${if (value) "processed" else "original"}_${record.id}"))
-            }
+        val options = listOf(false to R.string.text_recognized, true to R.string.text_processed)
+        val option: @Composable (Boolean, Int, Modifier) -> Unit = { value, label, modifier ->
+            FilterChip(processed == value, { processed = value }, label = { Text(stringResource(label)) },
+                enabled = !value || record.processedText.isNotBlank(), modifier = modifier
+                    .testTag("text_version_${if (value) "processed" else "original"}_${record.id}"))
+        }
+        if (LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().selectableGroup()) {
+            options.forEach { (value, label) -> option(value, label, Modifier.fillMaxWidth()) }
+        } else Row(Modifier.fillMaxWidth().selectableGroup()) {
+            options.forEach { (value, label) -> option(value, label, Modifier.weight(1f)) }
         }
         val text = if (processed) record.processedText else record.transcript
         SelectionContainer { Text(text, Modifier.testTag("history_text_${record.id}"), style = MaterialTheme.typography.bodyLarge) }
-        TextButton({ onCopy(text) }, Modifier.testTag("history_copy_${record.id}")) {
-            Text(stringResource(if (processed) R.string.text_processing_copy_processed else R.string.text_processing_copy_original))
-        }
+        actions(text, stringResource(if (processed) R.string.text_processing_copy_processed else R.string.text_processing_copy_original))
         if (processed && record.processingStatus != TextProcessingStatus.COMPLETE) Text(
             stringResource(R.string.text_processing_previous), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -386,6 +390,58 @@ private fun TranscriptToggle(expanded: Boolean, onToggle: () -> Unit, tag: Strin
 }
 
 @Composable
+private fun TranscriptActions(text: String, copyLabel: String, onCopy: () -> Unit, copyTag: String,
+    onProcess: (() -> Unit)? = null, processTag: String = "process_text", processEnabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalIconButton(onCopy, enabled = text.isNotBlank(), modifier = Modifier.size(48.dp).testTag(copyTag)
+            .semantics { contentDescription = copyLabel }) {
+            val color = LocalContentColor.current
+            Canvas(Modifier.size(20.dp)) {
+                drawRoundRect(color, Offset(size.width * .32f, size.height * .32f), Size(size.width * .58f, size.height * .58f),
+                    CornerRadius(2.dp.toPx()), style = Stroke(2.dp.toPx()))
+                drawPath(Path().apply {
+                    moveTo(size.width * .65f, size.height * .12f); lineTo(size.width * .12f, size.height * .12f)
+                    lineTo(size.width * .12f, size.height * .65f)
+                }, color, style = Stroke(2.dp.toPx()))
+            }
+        }
+        onProcess?.let { process ->
+            val label = stringResource(R.string.text_processing_repeat)
+            FilledIconButton(process, enabled = processEnabled,
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                modifier = Modifier.size(48.dp).testTag(processTag).semantics { contentDescription = label }) { RetryGlyph() }
+        }
+    }
+}
+
+@Composable
+private fun DeleteGlyph() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        val stroke = Stroke(2.dp.toPx())
+        drawRoundRect(color, Offset(size.width * .25f, size.height * .3f), Size(size.width * .5f, size.height * .6f), CornerRadius(1.dp.toPx()), style = stroke)
+        drawLine(color, Offset(size.width * .12f, size.height * .25f), Offset(size.width * .88f, size.height * .25f), stroke.width)
+        drawLine(color, Offset(size.width * .38f, size.height * .1f), Offset(size.width * .62f, size.height * .1f), stroke.width)
+    }
+}
+
+@Composable
+private fun RetryGlyph() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        drawArc(color, -40f, 280f, false, Offset(size.width * .15f, size.height * .15f),
+            Size(size.width * .7f, size.height * .7f), style = Stroke(2.dp.toPx()))
+        drawPath(Path().apply {
+            moveTo(size.width * .8f, size.height * .05f)
+            lineTo(size.width * .8f, size.height * .3f)
+            lineTo(size.width * .55f, size.height * .3f)
+        }, color, style = Stroke(2.dp.toPx()))
+    }
+}
+
+@Composable
 private fun RetryControl(id: String, pending: Boolean, saveReceived: Boolean, enabled: Boolean, onRetry: () -> Unit) {
     val label = stringResource(if (saveReceived) R.string.saved_save_received
         else if (pending) R.string.history_transcribe else R.string.history_retry)
@@ -395,29 +451,20 @@ private fun RetryControl(id: String, pending: Boolean, saveReceived: Boolean, en
             contentColor = MaterialTheme.colorScheme.error)
     FilledIconButton(onRetry, enabled = enabled, colors = colors,
         modifier = Modifier.size(48.dp).testTag("history_retry_$id").semantics { contentDescription = label }) {
-        val color = LocalContentColor.current
-        Canvas(Modifier.size(20.dp)) {
-            drawArc(color, -40f, 280f, false, Offset(size.width * .15f, size.height * .15f),
-                Size(size.width * .7f, size.height * .7f), style = Stroke(2.dp.toPx()))
-            drawPath(Path().apply {
-                moveTo(size.width * .8f, size.height * .05f)
-                lineTo(size.width * .8f, size.height * .3f)
-                lineTo(size.width * .55f, size.height * .3f)
-            }, color, style = Stroke(2.dp.toPx()))
-        }
+        RetryGlyph()
     }
 }
 
 @Composable
-private fun TranscriptBody(text: String, onEdit: ((String) -> Unit)?, onCopy: () -> Unit, textTag: String, copyTag: String) {
+private fun TranscriptBody(text: String, onEdit: ((String) -> Unit)?, onCopy: () -> Unit, textTag: String, copyTag: String,
+    actions: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         if (onEdit != null) BasicTextField(text, onEdit, Modifier.fillMaxWidth().testTag("transcript"),
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
         else SelectionContainer { Text(text, Modifier.testTag(textTag), style = MaterialTheme.typography.bodyLarge) }
-        TextButton(onCopy, Modifier.testTag(copyTag), enabled = text.isNotBlank(), contentPadding = PaddingValues(horizontal = 0.dp)) {
-            Text(stringResource(R.string.copy), style = MaterialTheme.typography.labelMedium)
-        }
+        if (actions != null) actions()
+        else TranscriptActions(text, stringResource(R.string.copy), onCopy, copyTag)
     }
 }
 

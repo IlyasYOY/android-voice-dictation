@@ -1,5 +1,7 @@
 package io.github.ilyasyoy.voicedictation.data
 
+import io.github.ilyasyoy.voicedictation.diagnostics.*
+
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -14,7 +16,7 @@ import org.json.JSONObject
 
 data class TextProcessingSettings(
     val enabled: Boolean = false,
-    val model: String = "gpt-4.1-mini",
+    val model: String = TextModels.DEFAULT,
     val prompt: String = DEFAULT_PROMPT,
 ) {
     val valid get() = model.length in 1..100 && model.all { it.isLetterOrDigit() && it.code < 128 || it in "-._" } &&
@@ -22,7 +24,6 @@ data class TextProcessingSettings(
     override fun toString() = "TextProcessingSettings(enabled=$enabled, promptLength=${prompt.length})"
     companion object {
         const val DEFAULT_PROMPT = "Correct punctuation and remove filler words. Preserve the meaning, facts and language. Return only the edited text."
-        val suggestedModels = listOf("gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano")
     }
 }
 
@@ -38,6 +39,12 @@ class OpenAiTextProcessor(
     private val endpoint: HttpUrl = "https://api.openai.com/v1/responses".toHttpUrl(),
 ) : TextProcessor {
     override suspend fun process(original: String, key: String, settings: TextProcessingSettings): String {
+        Diagnostics.record(DiagnosticArea.TEXT_PROCESSING, DiagnosticAction.START)
+        try { return request(original, key, settings).also { Diagnostics.record(DiagnosticArea.TEXT_PROCESSING, DiagnosticAction.STOP) } }
+        catch (cancel: kotlinx.coroutines.CancellationException) { Diagnostics.record(DiagnosticArea.TEXT_PROCESSING, DiagnosticAction.CANCEL, DiagnosticCode.CANCELLED); throw cancel }
+        catch (error: Exception) { Diagnostics.failure(DiagnosticArea.TEXT_PROCESSING, DiagnosticAction.PROCESS, error); throw error }
+    }
+    private suspend fun request(original: String, key: String, settings: TextProcessingSettings): String {
         require(settings.valid && original.isNotBlank() && original.length <= 200_000)
         require(key.isNotBlank() && key.all { it.code in 33..126 })
         val body = JSONObject().put("model", settings.model).put("store", false).put("max_output_tokens", 16384)

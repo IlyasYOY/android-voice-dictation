@@ -30,16 +30,21 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
     private val processingJob = mutableMapOf<String, Job>()
     private val mutableProcessingFailure = MutableStateFlow<String?>(null)
     val processingFailure = mutableProcessingFailure.asStateFlow()
-    fun processingDefaults(record: SavedRecording): TextProcessingSettings =
-        if (record.processingPrompt.isNotBlank()) TextProcessingSettings(true, record.processingModel, record.processingPrompt)
-        else runCatching { TextProcessingPreferences(getApplication()).read().copy(enabled = true) }.getOrDefault(TextProcessingSettings(true))
-    fun process(id: String, settings: TextProcessingSettings) {
+    fun process(id: String) {
         if (processingJob[id]?.isActive == true) return
         playback.stop(); mutableProcessingFailure.value = null
         processingJob[id] = viewModelScope.launch {
-            try { runProcessing(id, settings) }
+            try {
+                val settings = TextProcessingPreferences(getApplication()).read().copy(enabled = true)
+                runProcessing(id, settings)
+            }
             catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) { mutableProcessingFailure.value = id }
+            catch (error: Exception) {
+                io.github.ilyasyoy.voicedictation.diagnostics.Diagnostics.failure(
+                    io.github.ilyasyoy.voicedictation.diagnostics.DiagnosticArea.TEXT_PROCESSING,
+                    io.github.ilyasyoy.voicedictation.diagnostics.DiagnosticAction.RETRY, error)
+                mutableProcessingFailure.value = id
+            }
         }
     }
     private suspend fun runProcessing(id: String, settings: TextProcessingSettings): String? {

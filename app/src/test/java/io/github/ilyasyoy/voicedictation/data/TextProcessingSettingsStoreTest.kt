@@ -11,6 +11,7 @@ class TextProcessingSettingsStoreTest {
     @Test fun absentSettingsAreDisabledAndExplicitSaveRestoresAsOneSnapshot() {
         val file = File(temporary.root, "processing.properties")
         assertFalse(TextProcessingSettingsStore(file).read().enabled)
+        assertEquals("gpt-6-luna", TextProcessingSettingsStore(file).read().model)
         val desired = TextProcessingSettings(true, "gpt-4.1-nano", "Исправь пунктуацию")
         TextProcessingSettingsStore(file).save(desired)
         assertEquals(desired, TextProcessingSettingsStore(file).read())

@@ -20,6 +20,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.window.layout.*
 import io.github.ilyasyoy.voicedictation.data.*
+import io.github.ilyasyoy.voicedictation.playback.PlaybackState
 import io.github.ilyasyoy.voicedictation.session.*
 import io.github.ilyasyoy.voicedictation.ui.*
 import io.github.ilyasyoy.voicedictation.ui.theme.VoiceDictationTheme
@@ -43,7 +44,8 @@ class TextProcessingRuntimeTest {
         ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().readText().trim()
     }
     private fun capture(name: String) {
-        compose.waitForIdle(); shell("mkdir -p /sdcard/Download/postprocessing")
+        // Include popup enter transitions before taking evidence, rather than an initial transparent frame.
+        compose.mainClock.advanceTimeBy(400); compose.waitForIdle(); shell("mkdir -p /sdcard/Download/postprocessing")
         shell("screencap -p /sdcard/Download/postprocessing/$name.png")
     }
     @Before fun before() {
@@ -60,6 +62,7 @@ class TextProcessingRuntimeTest {
     @After fun after() {
         instrumentation.runOnMainSync {
             MainActivity.testFactory = null; MainActivity.testNotice = null; HistoryViewModel.testProcess = null
+            TextProcessingSettingsViewModel.testModelList = null
             repository.records().forEach { repository.discard(it.id) }; repository.saveText(RecordingTextSlot.MAIN, "")
         }
         TextProcessingPreferences(context).save(previousSettings)
@@ -72,20 +75,21 @@ class TextProcessingRuntimeTest {
         repository.complete(checkNotNull(repository.beginUpload(file)), "Давайте перенесём встречу по дизайн-ревью на четверг утром.")
         return repository.record(file)!!.id
     }
-    @Test fun twoVersionsCanBeCopiedAndRepeatUsesEditedPromptWithoutChangingGlobalSettings() {
-        val global = TextProcessingSettings(true, prompt = "Global editing prompt")
+    @Test fun repeatStartsImmediatelyWithCurrentGlobalSettingsAndBothVersionsStayCopyable() {
+        val global = TextProcessingSettings(false, "gpt-6-luna", "Current global prompt")
         TextProcessingPreferences(context).save(global)
         lateinit var id: String
         instrumentation.runOnMainSync {
-            id = seed(); val token = checkNotNull(repository.beginProcessing(id, global))
+            id = seed(); val token = checkNotNull(repository.beginProcessing(id, global.copy(model = "gpt-4.1", prompt = "Old row prompt")))
             repository.completeProcessing(token, "Перенесём дизайн-ревью на утро четверга.")
         }
-        var calls = 0; var sentPrompt = ""
+        var calls = 0; var sent: TextProcessingSettings? = null
+        val response = CompletableDeferred<String>()
         HistoryViewModel.testProcess = { record, settings ->
             processSavedText(repository, record, settings, { "synthetic" }, TextProcessor { original, _, options ->
-                calls++; sentPrompt = options.prompt
+                calls++; sent = options
                 assertEquals(repository.record(id)!!.transcript, original)
-                "Обновлённый текст для этой попытки."
+                if (calls == 1) response.await() else "Вторая обработка с новыми настройками."
             })
         }
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -100,17 +104,22 @@ class TextProcessingRuntimeTest {
             compose.onNodeWithTag("history_copy_$id").performScrollTo().performClick()
             scenario.onActivity { assertEquals(repository.record(id)!!.transcript,
                 context.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString()) }
-            capture("history-original-light")
             compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
-            compose.onNodeWithTag("processing_prompt").performScrollTo().performTextReplacement("Сделай короче, в деловом стиле.")
-            capture("repeat-prompt-light")
-            scenario.recreate()
-            compose.onNodeWithTag("processing_prompt").performScrollTo().assertTextContains("Сделай короче, в деловом стиле.")
-            compose.onNodeWithTag("confirm_processing").performScrollTo().performClick()
-            compose.waitUntil(15_000) { calls == 1 && repository.record(id)!!.processedText == "Обновлённый текст для этой попытки." }
-            assertEquals("Сделай короче, в деловом стиле.", sentPrompt)
+            compose.waitUntil(15_000) { calls == 1 && repository.record(id)!!.processingStatus == TextProcessingStatus.PROCESSING }
+            compose.onNodeWithTag("confirm_processing").assertDoesNotExist()
+            compose.onNodeWithTag("processing_prompt").assertDoesNotExist()
+            compose.onNodeWithTag("process_text_$id").assertIsNotEnabled()
+            assertEquals(global.copy(enabled = true), sent)
+            scenario.recreate(); assertEquals(1, calls)
+            response.complete("Обновлённый текст для этой попытки.")
+            compose.waitUntil(15_000) { repository.record(id)!!.processedText == "Обновлённый текст для этой попытки." }
             assertEquals(global, TextProcessingPreferences(context).read())
-            assertEquals(1, calls); assertTrue(repository.pending().isEmpty())
+            val next = global.copy(model = "gpt-6.1-sol", prompt = "New global prompt")
+            TextProcessingPreferences(context).save(next)
+            compose.onNodeWithTag("process_text_$id").performScrollTo().performClick()
+            compose.waitUntil(15_000) { calls == 2 && repository.record(id)!!.processingStatus == TextProcessingStatus.COMPLETE }
+            assertEquals(next.copy(enabled = true), sent); assertEquals(next, TextProcessingPreferences(context).read())
+            assertTrue(repository.pending().isEmpty()); capture("history-direct-repeat-light")
         }
     }
     @Test fun mainProcessingFailureOffersOriginalAndHoldCancelsOnlySecondStage() {
@@ -135,6 +144,7 @@ class TextProcessingRuntimeTest {
             assertNotNull(action.label)
             response.completeExceptionally(java.io.IOException("synthetic offline"))
             compose.waitUntil(15_000) { model.state.value.processingFailed }
+            compose.onNodeWithTag("problem").assertTextEquals("Error")
             compose.onNodeWithTag("copy_original").performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithTag("processing_recovery").assertExists()
             capture("processing-failure-light")
@@ -196,52 +206,84 @@ class TextProcessingRuntimeTest {
             }
         } finally { WindowInfoTracker.reset() }
     }
-    @Test fun preferencesExplicitSaveAndReopenPreservesModelPromptAndDefaultOff() {
+    @Test fun dropdownRefreshAndExplicitSaveKeepTheChoiceAcrossErrorsMissingModelsAndRecreation() {
         TextProcessingPreferences(context).save(TextProcessingSettings())
+        var calls = 0; var forbidden = true
+        TextProcessingSettingsViewModel.testModelList = {
+            calls++; if (forbidden) throw ApiFailure(403) else listOf("gpt-6-luna", "gpt-transcribe", "unsupported-model")
+        }
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             compose.onNodeWithTag("open_settings").performClick()
+            assertEquals(0, calls)
             compose.onNodeWithTag("processing_enabled").performScrollTo().assertIsOff().performClick()
-            compose.onNodeWithTag("processing_model").performScrollTo().performTextReplacement("gpt-4.1-nano")
+            compose.onNodeWithTag("processing_model").performScrollTo()
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.SetText)).performClick()
+            capture("models-dropdown-light")
+            compose.onNodeWithTag("processing_model_option_gpt-6.1-sol").performClick()
             compose.onNodeWithTag("processing_prompt").performScrollTo().performTextReplacement("Исправь пунктуацию, сохрани смысл.")
             assertFalse(TextProcessingPreferences(context).read().enabled)
             compose.onNodeWithTag("save_processing_settings").performScrollTo().performClick()
+            compose.onNodeWithTag("refresh_processing_models").performScrollTo().performClick()
+            compose.onNodeWithTag("models_problem").performScrollTo().assertIsDisplayed()
+            assertEquals(1, calls); assertEquals("gpt-6.1-sol", TextProcessingPreferences(context).read().model)
+            forbidden = false
+            compose.onNodeWithTag("refresh_processing_models").performScrollTo().performClick()
+            compose.onNodeWithTag("models_status").performScrollTo().assertTextEquals(context.getString(R.string.text_models_missing))
+            assertEquals(2, calls); assertEquals("gpt-6.1-sol", TextProcessingPreferences(context).read().model)
             scenario.recreate()
             compose.onNodeWithTag("processing_enabled").performScrollTo().assertIsOn()
-            compose.onNodeWithTag("processing_model").performScrollTo().assertTextContains("gpt-4.1-nano")
-            capture("settings-light")
+            compose.onNodeWithTag("processing_model").performScrollTo().assertContentDescriptionEquals("Text model: GPT-6.1 Sol")
+            assertEquals(2, calls); capture("settings-light")
+            shell("cmd uimode night yes")
+            compose.onNodeWithTag("processing_model").performScrollTo().performClick()
+            compose.onNodeWithTag("processing_model_option_gpt-6.1-sol").assertExists()
+            compose.onNodeWithTag("processing_model_option_gpt-6-luna").assertExists()
+            compose.onNodeWithTag("processing_model_option_unsupported-model").assertDoesNotExist()
+            capture("models-dropdown-dark")
             assertEquals("Исправь пунктуацию, сохрани смысл.", TextProcessingPreferences(context).read().prompt)
         }
     }
-    @Test fun repeatDialogAndSettingsRemainReachableInNarrowLargeFontAndWideThemeLayouts() {
-        // A Dialog owns a separate window. Use the real system font setting so it too receives 200% text.
-        shell("settings put system font_scale 2.0")
+    @Test fun alignedIconActionsAndDirectDeleteStayAccessibleAtLargeFontOnBothThemes() {
+        val id = "synthetic-action-row"
         for (dark in listOf(false, true)) {
             shell("cmd uimode night ${if (dark) "yes" else "no"}")
             var compact by mutableStateOf(false)
-            var form by mutableStateOf(false)
+            var calls = 0; var deletes = 0; var copied = ""
+            var rows by mutableStateOf(listOf(SavedRecording(id, 1, 1, SavedRecordingStatus.COMPLETE,
+                transcript = "Recognized synthetic text", processedText = "Processed synthetic text",
+                processingStatus = TextProcessingStatus.FAILED)))
+            val ui = HistoryUiState().apply { expanded.add(id) }
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { it.setContent {
                     val density = LocalDensity.current.density
                     CompositionLocalProvider(LocalDensity provides Density(density, if (compact) 2f else 1f)) {
                         VoiceDictationTheme {
-                            if (form) CompositionLocalProvider(LocalHistoryDialogRegion provides
-                                if (compact) HistoryRegion(0f, 0f, 240f, 360f) else null) {
-                                RepeatProcessingDialog(TextProcessingSettings(true), { form = false }, { form = false })
-                            }
-                            Box(if (compact) Modifier.size(240.dp, 360.dp) else Modifier.fillMaxSize()) {
-                                DictationScreen(DictationState(phase = Phase.PROCESSING), {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-                                    evidenceNotice = "TEST DATA · local synthetic state")
+                            Box(if (compact) Modifier.size(240.dp,360.dp) else Modifier.fillMaxSize()) {
+                                RecordingHistory(RecordingRecoveryState(records = rows), PlaybackState(), { false }, {}, {},
+                                    { deletes++; rows = emptyList() }, { copied = it }, {}, ui = ui, onProcess = { calls++ })
                             }
                         }
                     }
                 } }
-                capture("processing-${if (dark) "dark" else "light"}")
-                compose.runOnIdle { compact = true; form = true }
-                compose.onNodeWithTag("confirm_processing").performScrollTo().assertIsDisplayed()
-                capture("repeat-large-font-${if (dark) "dark" else "light"}")
-                compose.onNodeWithTag("confirm_processing").performClick()
-                compose.onNodeWithTag("processing").performScrollTo().performSemanticsAction(SemanticsActions.OnLongClick) { it() }
-                compose.onNodeWithTag("cancel").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithTag("history_menu_$id").assertDoesNotExist()
+                val copy = compose.onNodeWithTag("history_copy_$id").performScrollTo().assertIsDisplayed()
+                val process = compose.onNodeWithTag("process_text_$id").assertIsDisplayed()
+                val c = copy.getUnclippedBoundsInRoot(); val p = process.getUnclippedBoundsInRoot()
+                assertEquals(c.top.value, p.top.value, 1f); assertTrue(c.right <= p.left)
+                assertTrue(c.right - c.left >= 48.dp && p.right - p.left >= 48.dp)
+                copy.assertContentDescriptionEquals(context.getString(R.string.text_processing_copy_processed)).performClick()
+                assertEquals("Processed synthetic text", copied)
+                process.assertContentDescriptionEquals(context.getString(R.string.text_processing_repeat)).performClick(); assertEquals(1, calls)
+                compose.onNodeWithText(context.getString(R.string.text_processing_failed)).assertTextEquals("Error")
+                capture("history-actions-${if (dark) "dark" else "light"}")
+                compose.runOnIdle { compact = true }
+                compose.onNodeWithTag("history_copy_$id").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithTag("process_text_$id").assertIsDisplayed()
+                capture("history-actions-large-font-${if (dark) "dark" else "light"}")
+                compose.onNodeWithTag("history_delete_$id").performScrollTo().performClick()
+                assertEquals(0, deletes)
+                compose.onNodeWithTag("history_confirm_delete").performScrollTo().performClick()
+                compose.waitForIdle(); assertEquals(1, deletes)
             }
         }
     }

@@ -46,6 +46,10 @@ internal object DictationSessions {
     suspend fun processRetained(context: Context, id: String, settings: TextProcessingSettings): String? =
         processSavedText(AndroidRecordingStorage.repository(context), id, settings,
             loadKey = { keys(context).load() ?: throw MissingSavedKey() }, processor = OpenAiTextProcessor())
+    suspend fun textModels(context: Context): List<String> {
+        val key = keys(context).load() ?: throw MissingSavedKey()
+        return OpenAiTextModels().list(key)
+    }
 }
 
 internal class MissingSavedKey : java.io.IOException("Saved key unavailable")

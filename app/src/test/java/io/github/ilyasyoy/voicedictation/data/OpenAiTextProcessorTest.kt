@@ -24,7 +24,7 @@ class OpenAiTextProcessorTest {
         val request = server.takeRequest(3, TimeUnit.SECONDS)!!
         assertEquals("/v1/responses", request.path); assertEquals("Bearer synthetic-key", request.getHeader("Authorization"))
         val json = JSONObject(request.body.readUtf8())
-        assertEquals("gpt-4.1-mini", json.getString("model")); assertFalse(json.getBoolean("store"))
+        assertEquals("gpt-6-luna", json.getString("model")); assertFalse(json.getBoolean("store"))
         assertFalse(json.has("tools")); assertFalse(json.has("conversation")); assertFalse(json.has("previous_response_id"))
         assertTrue(json.getString("instructions").contains("Shorten")); assertFalse(json.getString("instructions").contains(original))
         val input = json.getJSONArray("input").getJSONObject(0)

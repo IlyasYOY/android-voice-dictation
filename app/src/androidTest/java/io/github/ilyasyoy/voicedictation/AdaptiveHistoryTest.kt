@@ -80,8 +80,7 @@ class AdaptiveHistoryTest {
         compose.onNodeWithTag("history_pane").assertExists()
         compose.onNodeWithTag("test_settings_form").assertExists()
         compose.onAllNodesWithTag("history_content").assertCountEquals(1)
-        compose.onNodeWithTag("history_menu_${row.id}").performScrollTo().performClick()
-        compose.onNodeWithTag("history_delete_${row.id}").performClick()
+        compose.openHistoryDelete("${row.id}")
         compose.runOnIdle { width.value = 400.dp }
         compose.onNodeWithTag("history_sheet").assertExists()
         compose.onAllNodesWithTag("history_confirm_delete").assertCountEquals(1)
