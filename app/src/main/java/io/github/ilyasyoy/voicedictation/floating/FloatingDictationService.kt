@@ -156,12 +156,15 @@ class FloatingDictationService : AccessibilityService() {
     private fun startNew() {
         closeSession(hideWindow = false)
         feedback.resetSignal()
-        original = editor()?.takeIf(EditorPolicy::allowed) ?: return
+        val target = editor()?.takeIf(EditorPolicy::allowed) ?: return
+        original = target
         feedback.expanded = false
         if (!microphoneGranted() || !notificationsAllowed()) {
             offerRecovery("",getString(R.string.floating_need_permission),true); return
         }
-        connection = if (Build.VERSION.SDK_INT >= 33) editorInput?.currentInputConnection?.let(::AndroidEditorConnection) else null
+        connection = if (Build.VERSION.SDK_INT >= 33) editorInput?.takeIf {
+            target.session > 0 && it.editorPackage == target.packageName && it.serial == target.session
+        }?.currentInputConnection?.let(::AndroidEditorConnection) else null
         pending = original
         try { ContextCompat.startForegroundService(this, Intent(this, FloatingDictationService::class.java).setAction(START)) }
         catch (error: Exception) { Diagnostics.failure(DiagnosticArea.OVERLAY, DiagnosticAction.FOREGROUND, error); offerRecovery("",getString(R.string.floating_start_blocked),true) }

@@ -13,6 +13,11 @@ class EditorPolicyTest {
         assertFalse(EditorPolicy.canInsert(e, e.copy(packageName = "other.notes"), 36, "voice"))
         assertFalse(EditorPolicy.canInsert(e, e.copy(windowId = 9), 36, "voice"))
     }
+    @Test fun `node metadata without an active IME session never authorizes insertion`() {
+        val nodeOnly = editor().copy(session = 0)
+        assertTrue(EditorPolicy.allowed(nodeOnly)) // Recording/Copy remains available.
+        assertFalse(EditorPolicy.canInsert(nodeOnly, nodeOnly, 36, "voice"))
+    }
     @Test fun `password numeric security sensitive and unknown editors are excluded`() {
         val e = editor()
         assertFalse(EditorPolicy.allowed(e.copy(password = true)))

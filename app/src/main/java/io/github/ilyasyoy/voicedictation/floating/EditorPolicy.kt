@@ -24,7 +24,7 @@ object EditorPolicy {
             pkg !in setOf("android", "com.android.settings", "com.android.systemui")
     }
     fun canInsert(original: EditorToken, current: EditorToken, sdk: Int, text: String): Boolean =
-        sdk >= 33 && text.isNotBlank() && text.length <= 10_000 && original.sameEditor(current) &&
+        sdk >= 33 && original.session > 0 && text.isNotBlank() && text.length <= 10_000 && original.sameEditor(current) &&
             allowed(original) && allowed(current) && original.selectionStart >= 0 &&
             original.selectionStart == original.selectionEnd && current.selectionStart == original.selectionStart &&
             current.selectionEnd == original.selectionEnd && original.composingStart < 0 && current.composingStart < 0 &&
