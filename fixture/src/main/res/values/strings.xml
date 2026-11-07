@@ -8,4 +8,4 @@
     <string name="submissions">Submissions: %1$d</string>
     <string name="keyboard_banner">Fixture keyboard · TEST ONLY</string>
     <string name="keyboard_description">Independent InputMethodService for compatibility tests</string>
-<item name="choose_keyboard" type="id"/><item name="enable_keyboard" type="id"/></resources>
+<item name="choose_keyboard" type="id"/><item name="enable_keyboard" type="id"/><item name="unknown_offset" type="id"/><item name="no_surrounding" type="id"/><item name="single_line" type="id"/></resources>

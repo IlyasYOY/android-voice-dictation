@@ -7,3 +7,5 @@ An explicit tap starts local Record immediately; no key or network setup delays 
 A successful result may use `FinalTextInsertion` once on the captured API33+ input connection. Gates/caret/ownership are checked again after IO and before commit. Unconfirmed writes never retry or roll back. Unsupported fields/versions use Copy. No full-field replacement, Send, new target adoption or automatic insertion from recovered history occurs.
 
 The compact setup, shared idle preview, count-limit action and persisted drag position are unchanged. See [onboarding](onboarding.md), [position](floating-position.md), [Record](immediate-record.md), [legacy data](record-only.md).
+
+[Editor protocol compatibility and phone acceptance](editor-insertion.md): optional surrounding-text reads do not establish whether the original connection supports commitText; unknown offsets retain independent IME caret checks.

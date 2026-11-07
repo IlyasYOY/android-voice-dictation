@@ -23,14 +23,19 @@ class FixtureActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 32, 12, 12) }
         val viewport = ScrollView(this)
         root.addView(TextView(this).apply { setText(R.string.test_banner); textSize = 16f })
-        fun field(id: Int, initial: String, type: Int, unsupported: Boolean = false): EditText {
-            val editor = if (unsupported) object : EditText(this) {
+        fun field(id: Int, initial: String, type: Int, protocol: String = "normal"): EditText {
+            val editor = if (protocol != "normal") object : EditText(this) {
                 override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
                     super.onCreateInputConnection(outAttrs)?.let { original ->
                         object : InputConnectionWrapper(original, false) {
-                            override fun commitText(text: CharSequence?, newCursorPosition: Int) = false
-                            @RequiresApi(33) override fun commitText(text: CharSequence, newCursorPosition: Int, textAttribute: TextAttribute?) = false
-                            @RequiresApi(31) override fun getSurroundingText(beforeLength: Int, afterLength: Int, flags: Int): SurroundingText? = null
+                            override fun commitText(text: CharSequence?, newCursorPosition: Int) =
+                                protocol != "unsupported" && super.commitText(text, newCursorPosition)
+                            @RequiresApi(33) override fun commitText(text: CharSequence, newCursorPosition: Int, textAttribute: TextAttribute?) =
+                                protocol != "unsupported" && super.commitText(text, newCursorPosition, textAttribute)
+                            @RequiresApi(31) override fun getSurroundingText(beforeLength: Int, afterLength: Int, flags: Int): SurroundingText? =
+                                if (protocol == "unknownOffset") super.getSurroundingText(beforeLength, afterLength, flags)?.let {
+                                    SurroundingText(it.text, it.selectionStart, it.selectionEnd, -1)
+                                } else null
                         }
                     }
             } else EditText(this)
@@ -42,7 +47,10 @@ class FixtureActivity : Activity() {
         val second = field(R.id.second_body, "Other field", plain)
         val secret = field(R.id.secret, "fake-only", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
         val numeric = field(R.id.payment_amount, "", InputType.TYPE_CLASS_NUMBER)
-        val unsupported = field(R.id.unsupported_body, "Unsupported stays unchanged", plain, true)
+        val unsupported = field(R.id.unsupported_body, "Unsupported stays unchanged", plain, "unsupported")
+        val unknownOffset = field(R.id.unknown_offset, "Before  after", plain, "unknownOffset")
+        val noReads = field(R.id.no_surrounding, "Before  after", plain, "noReads")
+        val singleLine = field(R.id.single_line, "Before  after", InputType.TYPE_CLASS_TEXT)
         fun focus(editor: EditText, position: Int = editor.text.length) {
             editor.requestFocus(); editor.setSelection(position)
             editor.post {
@@ -78,9 +86,10 @@ class FixtureActivity : Activity() {
         requestedAction = { command ->
             val target = when (command.getStringExtra("field")) {
                 "body" -> body; "second" -> second; "password" -> secret; "numeric" -> numeric; "unsupported" -> unsupported
+                "unknownOffset" -> unknownOffset; "noReads" -> noReads; "singleLine" -> singleLine
                 else -> null
             }
-            target?.let { focus(it, if (it === body) 7 else it.text.length) }
+            target?.let { focus(it, if (it === body || it === unknownOffset || it === noReads || it === singleLine) 7 else it.text.length) }
             if (command.getBooleanExtra("picker", false)) getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         }
         root.post { requestedAction?.invoke(intent) }

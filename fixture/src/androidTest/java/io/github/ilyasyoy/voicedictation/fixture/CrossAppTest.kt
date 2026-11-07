@@ -310,6 +310,27 @@ class CrossAppTest {
         screenshot("10-moved-bubble-no-recording")
         startRecording(); cancelFloating(); assertFieldUnchanged()
     }
+    /** Actual product service and captured accessibility IME connection; no provider traffic. */
+    @Test fun pEditorProtocolsInsertAtTheCaretOnceWithoutReplacingOrSubmitting() {
+        org.junit.Assume.assumeTrue("Accessibility IME requires Android 13+", Build.VERSION.SDK_INT >= 33)
+        for ((field, id) in listOf("body" to "body", "singleLine" to "single_line",
+            "unknownOffset" to "unknown_offset", "noReads" to "no_surrounding")) {
+            focusField(field)
+            find(fixtureId(id)).click(); focusField(field)
+            val count = fileRequests.get()
+            startRecording()
+            find(appId("floating_stop")).click()
+            val expected = By.res(FIXTURE, id).text("Before voice test after")
+            find(expected, 45_000)
+            find(appId("floating_start"), 15_000)
+            assertEquals("One explicit Stop upload", count + 1, fileRequests.get())
+            assertEquals("Other editor unchanged", "Other field", scrollFind(fixtureId("second_body")).text)
+            screenshot("editor-insertion-$field")
+            checkpoint("Actual product inserted once in $field: prefix/suffix preserved")
+        }
+        assertEquals(0, unexpectedRequests.get())
+        assertEquals("Submissions: 0", scrollFind(fixtureId("submission_count")).text)
+    }
     @Test fun qDefaultRecordUploadsOnlyAfterStopAndNextTapStartsNormally() {
         launch("$APP.floating.DebugFloatingSetupActivity",server.port)
         focusField("body")

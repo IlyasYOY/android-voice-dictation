@@ -62,12 +62,65 @@ class FinalTextInsertionTest {
             assertEquals(InsertionResult.UNCONFIRMED, task.await()); assertEquals(1, writes)
         }
     }
-    @Test fun `unsupported preflight offers Copy without attempting commit`() = runTest {
+    @Test fun `editor without surrounding reads receives one commit and remains unconfirmed`() = runTest {
+        var writes = 0
         val target = object : EditorConnection {
             override suspend fun surrounding(before: Int): EditorSurrounding? = null
-            override fun commit(text: String) = fail("unsupported editor must not receive a write")
+            override fun commit(text: String) { writes++ }
         }
-        assertEquals(InsertionResult.COPY, FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true })
+        assertEquals(InsertionResult.UNCONFIRMED, FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true })
+        assertEquals(1, writes)
+    }
+    @Test fun `unknown buffer offset is valid and confirms against IME caret and local suffix`() = runTest {
+        for (preflightAvailable in listOf(true, false)) {
+            var current = editor(); var writes = 0
+            val target = object : EditorConnection {
+                override suspend fun surrounding(before: Int): EditorSurrounding? = if (writes == 0) {
+                    if (preflightAvailable) EditorSurrounding("", -1, 0, 0) else null
+                } else EditorSurrounding("voice after", -1, 5, 5)
+                override fun commit(text: String) { writes++; current = current.copy(selectionStart = 12, selectionEnd = 12) }
+            }
+            assertEquals(InsertionResult.INSERTED, FinalTextInsertion.insert(editor(), "voice", target, { environment(current) }) { true })
+            assertEquals(1, writes)
+        }
+    }
+    @Test fun `missing surrounding text never bypasses field caret composition or sensitive gates`() = runTest {
+        for (changed in listOf(editor().copy(viewId = "other"), editor().copy(session = 2),
+            editor().copy(selectionStart = 8, selectionEnd = 8), editor().copy(selectionEnd = 9),
+            editor().copy(composingStart = 7, composingEnd = 8), editor().copy(password = true),
+            editor().copy(sensitive = true), editor().copy(inputType = 2))) {
+            val read = CompletableDeferred<EditorSurrounding?>(); var current = editor(); var writes = 0
+            val target = object : EditorConnection {
+                override suspend fun surrounding(before: Int) = read.await()
+                override fun commit(text: String) { writes++ }
+            }
+            val task = async { FinalTextInsertion.insert(editor(), "voice", target, { environment(current) }) { true } }
+            runCurrent(); current = changed; read.complete(null); runCurrent()
+            assertEquals(InsertionResult.COPY, task.await()); assertEquals(0, writes)
+        }
+    }
+    @Test fun `malformed or conflicting surrounding metadata never authorizes a write`() = runTest {
+        for (before in listOf(EditorSurrounding("", -2, 0, 0), EditorSurrounding("", -1, -1, -1),
+            EditorSurrounding("", -1, 1, 1), EditorSurrounding("a", -1, 0, 1),
+            EditorSurrounding("", 8, 0, 0), EditorSurrounding("a", Int.MAX_VALUE, 1, 1))) {
+            val target = object : EditorConnection {
+                override suspend fun surrounding(beforeLength: Int) = before
+                override fun commit(text: String) = fail("Invalid metadata must not receive a write")
+            }
+            assertEquals(InsertionResult.COPY, FinalTextInsertion.insert(editor(), "voice", target, { environment() }) { true })
+        }
+    }
+    @Test fun `suffix alone does not confirm a rejected stale or transformed rich editor commit`() = runTest {
+        for (cursor in listOf(7, 11, 13)) {
+            var writes = 0
+            val target = object : EditorConnection {
+                override suspend fun surrounding(before: Int) = if (writes == 0) null else EditorSurrounding("voice", -1, 5, 5)
+                override fun commit(text: String) { writes++ }
+            }
+            assertEquals(InsertionResult.UNCONFIRMED, FinalTextInsertion.insert(editor(), "voice", target,
+                { environment(if (writes == 0) editor() else editor().copy(selectionStart = cursor, selectionEnd = cursor)) }) { true })
+            assertEquals(1, writes)
+        }
     }
     @Test fun `unverifiable insertion permits another independent dictation with exactly one write each`() = runTest {
         var writes=0; var attempts=0
