@@ -3,7 +3,11 @@ package io.github.ilyasyoy.voicedictation.floating
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
-internal data class EditorSurrounding(val text: CharSequence, val offset: Int, val start: Int, val end: Int)
+internal data class EditorSurrounding(val text: CharSequence, val offset: Int, val start: Int, val end: Int) {
+    // Android explicitly permits offset=-1 for editors without an absolute text buffer.
+    fun matchesCaret(editor: EditorToken): Boolean = offset >= -1 && start in 0..text.length && end == start &&
+        (offset == -1 || offset.toLong() + start == editor.selectionStart.toLong())
+}
 internal interface EditorConnection {
     suspend fun surrounding(before: Int): EditorSurrounding?
     fun commit(text: String)
@@ -17,13 +21,16 @@ internal object FinalTextInsertion {
         var attempted = false
         try {
             if (!environment().visible || !currentOwner()) return InsertionResult.CANCELLED
-            val before = target.surrounding(0) ?: return InsertionResult.COPY
+            val before = target.surrounding(0)
             val fresh = environment()
             val editor = fresh.editor
             // Every environment gate is rechecked after IO, at the actual write boundary.
             if (!fresh.visible || !currentOwner()) return InsertionResult.CANCELLED
-            if (editor == null || !EditorPolicy.canInsert(origin, editor, 33, text) || before.offset < 0 ||
-                before.start != before.end || before.offset + before.start != origin.selectionStart) return InsertionResult.COPY
+            // Surrounding-text reads are optional in Android's editor protocol. A null read
+            // is not evidence that commitText is unsupported. The captured IME session,
+            // focused editor, unchanged collapsed caret and composition remain mandatory.
+            if (editor == null || !EditorPolicy.canInsert(origin, editor, 33, text) ||
+                (before != null && !before.matchesCaret(editor))) return InsertionResult.COPY
             attempted = true
             onCommitAttempt()
             target.commit(text)
@@ -32,8 +39,8 @@ internal object FinalTextInsertion {
             val confirmedEnvironment = environment()
             val now = confirmedEnvironment.editor
             if (!confirmedEnvironment.visible || !currentOwner()) return InsertionResult.UNCONFIRMED
-            val confirmed = now != null && origin.sameEditor(now) && EditorPolicy.allowed(now) && after != null && after.offset >= 0 &&
-                EditorPolicy.confirmed(origin.selectionStart, text, after.offset + after.start, after.offset + after.end, after.text)
+            val confirmed = now != null && origin.sameEditor(now) && EditorPolicy.allowed(now) && after != null && after.matchesCaret(now) &&
+                EditorPolicy.confirmed(origin.selectionStart, text, now.selectionStart, now.selectionEnd, after.text.subSequence(0, after.start))
             return if (confirmed) InsertionResult.INSERTED else InsertionResult.UNCONFIRMED
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { return if (attempted) InsertionResult.UNCONFIRMED else InsertionResult.COPY }
