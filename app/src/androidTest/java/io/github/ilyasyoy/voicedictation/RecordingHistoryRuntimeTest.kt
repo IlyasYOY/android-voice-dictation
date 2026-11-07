@@ -90,7 +90,7 @@ class RecordingHistoryRuntimeTest {
             compose.onNodeWithText("Close").assertDoesNotExist()
             compose.onNodeWithText("Transcribed").assertDoesNotExist()
             compose.onNodeWithTag("history_text_$success").assertDoesNotExist()
-            compose.waitUntil(15000) { compose.onAllNodesWithTag("history_waveform_$success").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15000) { compose.onAllNodesWithTag("history_waveform_$success", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
             capture("02-history-collapsed")
             compose.onNodeWithTag("history_play_$success").performScrollTo().performClick()
             compose.waitUntil(15000) { compose.onAllNodes(hasContentDescription("Pause", substring=true)).fetchSemanticsNodes().isNotEmpty() }

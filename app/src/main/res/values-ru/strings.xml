@@ -54,6 +54,10 @@
   <string name="copy">Скопировать</string>
   <string name="copied">Скопировано в буфер обмена</string>
   <string name="setup">Подключение OpenAI</string>
+  <string name="history_seek">Позиция в записи</string>
+  <string name="history_seek_back">Назад на 10 секунд</string>
+  <string name="history_seek_forward">Вперёд на 10 секунд</string>
+  <string name="history_seek_position">%1$s из %2$s</string>
   <string name="openai_billing">Посмотреть баланс</string>
   <string name="openai_billing_browser">Откроется Billing OpenAI во внешнем браузере.</string>
   <string name="openai_billing_unavailable">Не удалось открыть браузер. Установите или включите его и повторите.</string>

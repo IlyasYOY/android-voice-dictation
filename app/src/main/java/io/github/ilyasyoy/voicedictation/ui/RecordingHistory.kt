@@ -107,6 +107,7 @@ internal fun HistoryPresentation(wide: Boolean, open: Boolean, onDismiss: () -> 
             onProcess = controller::process, onCancelProcessing = controller::cancelProcessing,
             cancellableProcessing = cancellableProcessing,
             processingFailure = processingFailure,
+            onSeek = controller::seek,
             waveform = { id, position, trackModifier -> LoadedAudioTrack(id, repository?.audio(id), position, trackModifier) })
         } })
         } else Box(Modifier.fillMaxSize()) // Keep sheet geometry, without decoding hidden history waveforms.
@@ -143,7 +144,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
     waveform: @Composable (String, Float, Modifier) -> Unit = { id, position, modifier ->
         AudioTrack(null, position, modifier.testTag("history_waveform_pending_$id"))
     }, onProcess: ((String) -> Unit)? = null, onCancelProcessing: (String) -> Unit = {}, processingFailure: String? = null,
-    cancellableProcessing: Set<String> = emptySet()) {
+    cancellableProcessing: Set<String> = emptySet(), onSeek: ((String, Float) -> Unit)? = null) {
     val currentDraft = draft?.takeIf { it.visible }
     val deleteId = ui.deleteId
     val deleteRecord = state.records.firstOrNull { it.id == deleteId }
@@ -203,7 +204,7 @@ internal fun RecordingHistory(state: RecordingRecoveryState, playback: PlaybackS
                     HistoryMessage(record, state, playback, available,
                         rowDraft, if (rowDraft != null) onDraftEdit else null,
                         onPlay, onRetry, { ui.deleteId = record.id }, onCopy, waveform, ui,
-                        onProcess, onCancelProcessing, processingFailure == record.id, record.id in cancellableProcessing)
+                        onProcess, onCancelProcessing, processingFailure == record.id, record.id in cancellableProcessing, onSeek)
                 }
             }
         }
@@ -215,11 +216,14 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
     available: Boolean, draft: HistoryDraft?, onEdit: ((String) -> Unit)?,
     onPlay: (String) -> Unit, onRetry: (String) -> Unit, onDelete: () -> Unit, onCopy: (String) -> Unit,
     waveform: @Composable (String, Float, Modifier) -> Unit, ui: HistoryUiState,
-    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean, canCancelProcessing: Boolean) {
+    onProcess: ((String) -> Unit)?, onCancelProcessing: (String) -> Unit, processingFailure: Boolean, canCancelProcessing: Boolean,
+    onSeek: ((String, Float) -> Unit)?) {
     val expanded = record.id in ui.expanded
     val text = draft?.text ?: state.receivedTexts[record.id] ?: record.transcript
     val owned = record.id in state.ownedIds
     val active = playback.id == record.id
+    var seekPreview by remember(record.id, playback.id) { mutableStateOf<Float?>(null) }
+    val duration = if (active && playback.duration > 0) playback.duration else record.durationSeconds.coerceAtLeast(0) * 1000
     val busy = record.status in setOf(SavedRecordingStatus.CAPTURING, SavedRecordingStatus.UPLOADING)
     val timestamp = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.createdAt))
     val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(record.createdAt))
@@ -249,10 +253,14 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                                 .semantics { contentDescription = "$playLabel, $timestamp" }) {
                             TransportMark(active && playback.playing, active && playback.loading)
                         }
-                        val trackModifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(28.dp)
-                        val position = if (active && playback.duration > 0) playback.position.toFloat() / playback.duration else 0f
-                        if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, trackModifier)
-                        else AudioTrack(null, position, trackModifier)
+                        val position = seekPreview ?: if (active) playback.fraction else 0f
+                        WaveformScrubber(record.id, playback.id, position, duration, timestamp,
+                            enabled = onSeek != null && available && !busy && state.records.none { it.status == SavedRecordingStatus.CAPTURING },
+                            onPreview = { seekPreview = it }, onSeek = { onSeek?.invoke(record.id, it) },
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(48.dp)) { modifier ->
+                            if (available && record.status != SavedRecordingStatus.CAPTURING) waveform(record.id, position, modifier)
+                            else AudioTrack(null, position, modifier)
+                        }
                     } else Text(stringResource(R.string.saved_text_only), Modifier.weight(1f).padding(8.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val hasText = text.isNotBlank() || draft != null
@@ -272,6 +280,7 @@ private fun HistoryMessage(record: SavedRecording, state: RecordingRecoveryState
                 if (record.kind == SavedRecordingKind.RECORD) {
                     Text(
                         if (!available) stringResource(R.string.history_missing_audio)
+                        else if (seekPreview != null) "${clock(((seekPreview ?: 0f) * duration / 1000).toInt())} / ${clock(duration / 1000)}"
                         else if (active) "${clock(playback.position / 1000)} / ${clock(playback.duration / 1000)}" else clock(record.durationSeconds),
                         modifier = Modifier.padding(start = 56.dp, end = 56.dp).testTag("history_duration_${record.id}"),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
