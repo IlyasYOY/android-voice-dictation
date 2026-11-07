@@ -26,6 +26,8 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
     private var desiredSeek: Int? = null
     private var inFlightSeek: Int? = null
     private var playOnReady = false
+    // playing is intent during the initial seek; a Prepared player cannot be physically paused.
+    private var hasStarted = false
     private val mutable = MutableStateFlow(PlaybackState())
     val state = mutable.asStateFlow()
     fun toggle(id: String, file: File) {
@@ -34,11 +36,12 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
         if (current.id == id && !current.loading) {
             try {
                 if (current.playing) {
-                    driver?.pause(); mutable.value = current.copy(playing = false)
+                    if (hasStarted) driver?.pause()
+                    mutable.value = current.copy(playing = false)
                 } else {
                     mutable.value = current.copy(playing = true)
                     if (current.duration > 0 && current.position >= current.duration) seekPrepared(0f)
-                    else if (!current.seeking) driver?.play()
+                    else if (!current.seeking) driver?.let(::startPlayer)
                 }
             } catch (_: Exception) { fail(id) }
             return
@@ -65,7 +68,7 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
                 if (generation == token && driver === player) try {
                     val target = mutable.value.requestedFraction
                     mutable.value = mutable.value.copy(loading = false, playing = playOnReady, duration = player.duration.coerceAtLeast(0))
-                    if (target != null) seekPrepared(target) else if (playOnReady) player.play()
+                    if (target != null) seekPrepared(target) else if (playOnReady) startPlayer(player)
                 } catch (_: Exception) { fail(id) }
             }, ended = { if (generation == token && mutable.value.playing && !mutable.value.seeking) stop() },
                 failed = { if (generation == token) fail(id) })
@@ -77,7 +80,7 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
         val duration = player.duration.coerceAtLeast(0)
         val target = (fraction.toDouble() * duration).toInt().coerceIn(0, duration)
         val atEnd = target == duration
-        if (atEnd && current.playing) player.pause()
+        if (atEnd && current.playing && hasStarted) player.pause()
         desiredSeek = target
         mutable.value = current.copy(position = target, duration = duration, seeking = true,
             requestedFraction = fraction, playing = current.playing && !atEnd)
@@ -95,10 +98,14 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
                 else {
                     desiredSeek = null
                     mutable.value = mutable.value.copy(seeking = false, requestedFraction = null)
-                    if (mutable.value.playing) player.play()
+                    if (mutable.value.playing) startPlayer(player)
                 }
             } catch (_: Exception) { fail(mutable.value.id ?: return@seekTo) }
         }
+    }
+    private fun startPlayer(player: PlaybackDriver) {
+        player.play()
+        if (driver === player) hasStarted = true
     }
     fun tick() {
         val player = driver ?: return
@@ -109,7 +116,7 @@ internal class RecordingPlayback(private val factory: () -> PlaybackDriver) {
     fun stop() {
         generation++
         val old = driver; driver = null
-        desiredSeek = null; inFlightSeek = null; playOnReady = false
+        desiredSeek = null; inFlightSeek = null; playOnReady = false; hasStarted = false
         mutable.value = PlaybackState()
         runCatching { old?.release() }
     }

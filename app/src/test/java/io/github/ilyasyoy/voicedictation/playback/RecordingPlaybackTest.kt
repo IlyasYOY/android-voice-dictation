@@ -21,7 +21,7 @@ class RecordingPlaybackTest {
             this.ready=ready; this.ended=ended; this.failed=failed
         }
         override fun play() { check(!released); plays++ }
-        override fun pause() { pauses++ }
+        override fun pause() { check(plays > 0) { "Cannot pause before the first start" }; pauses++ }
         override fun seekTo(position: Int, completed: () -> Unit) {
             check(!failSeek)
             check(!released); seeks += position
@@ -144,6 +144,28 @@ class RecordingPlaybackTest {
         try {
             owner.toggle("one",file);player.ready();player.failSeek=true;owner.seek("one",file,.5f)
             assertEquals("one",owner.state.value.failedId);assertTrue(player.released);assertTrue(file.exists())
+        } finally {owner.stop();file.delete()}
+    }
+    @Test fun playThenSeekEndDuringLoadingDoesNotPauseAnUnstartedPlayer() {
+        val player=Driver();val owner=RecordingPlayback {player};val file=audio()
+        try {
+            owner.toggle("one",file);owner.seek("one",file,1f);player.ready()
+            assertNull(owner.state.value.failedId);assertEquals("one",owner.state.value.id)
+            assertFalse(owner.state.value.loading);assertFalse(owner.state.value.playing)
+            assertEquals(2000,owner.state.value.position);assertEquals(0,player.pauses);assertEquals(0,player.plays)
+            owner.toggle("one",file);assertTrue(owner.state.value.playing);assertEquals(1,player.plays)
+        } finally {owner.stop();file.delete()}
+    }
+    @Test fun pauseDuringTheInitialSeekOnlyChangesIntentUntilPlaybackStarts() {
+        val player=Driver().apply {deferSeek=true};val owner=RecordingPlayback {player};val file=audio()
+        try {
+            owner.toggle("one",file);owner.seek("one",file,.5f);player.ready()
+            assertTrue(owner.state.value.seeking);assertTrue(owner.state.value.playing)
+            owner.toggle("one",file)
+            assertNull(owner.state.value.failedId);assertEquals(0,player.pauses);assertFalse(owner.state.value.playing)
+            checkNotNull(player.seekDone).invoke()
+            assertFalse(owner.state.value.seeking);assertEquals(0,player.plays)
+            owner.toggle("one",file);assertTrue(owner.state.value.playing);assertEquals(1,player.plays)
         } finally {owner.stop();file.delete()}
     }
 }

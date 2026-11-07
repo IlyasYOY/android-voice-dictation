@@ -125,6 +125,29 @@ class WaveformSeekRuntimeTest {
             assertNull(model.playback.state.value.id)
         }
     }
+    @Test fun playThenSeekEndBeforePreparedDoesNotFail() {
+        lateinit var id: String
+        instrumentation.runOnMainSync { id = seed(12_000) }
+        val owner = AndroidRecordingPlayback.create(context)
+        try {
+            instrumentation.runOnMainSync {
+                AndroidRecordingPlayback.claim(owner)
+                owner.toggle(id, repository.audio(id))
+                owner.seek(id, repository.audio(id), 1f)
+            }
+            compose.waitUntil(15_000) { !owner.state.value.loading && !owner.state.value.seeking }
+            assertNull(owner.state.value.failedId); assertEquals(id, owner.state.value.id)
+            assertFalse(owner.state.value.playing)
+            assertTrue(owner.state.value.duration > 0)
+            assertEquals(owner.state.value.duration, owner.state.value.position)
+            instrumentation.runOnMainSync { owner.toggle(id, repository.audio(id)) }
+            compose.waitUntil(15_000) { !owner.state.value.seeking }
+            assertTrue(owner.state.value.playing); assertNull(owner.state.value.failedId)
+            instrumentation.runOnMainSync { owner.toggle(id, repository.audio(id)) }
+            assertFalse(owner.state.value.playing); assertNull(owner.state.value.failedId)
+            assertTrue(repository.audio(id).exists())
+        } finally { instrumentation.runOnMainSync { AndroidRecordingPlayback.release(owner) } }
+    }
     @Test fun tinyRecordingSeeksToBothEndsAndRewindsBeforePlaying() {
         lateinit var id: String
         instrumentation.runOnMainSync { id = seed(180) }
