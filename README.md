@@ -1,35 +1,68 @@
 # Android Voice Dictation
 
-[Постобработка текста](docs/text-postprocessing.md): необязательный второй запрос с сохранённым OpenAI key, выбором модели и промптом в настройках. Исходный и обработанный текст сохраняются отдельно; повтор из истории использует исходник, не загружает аудио и не вставляет текст в прежнее поле.
+Record speech on Android, transcribe it with your own OpenAI API key, and optionally edit the recognised text with a second model and your prompt. Use the same organic dictation control in the app and beside the keyboard in other apps.
 
-[Local diagnostics](docs/diagnostics.md): Settings → **Save logs ZIP**, retained for up to 7 days / 1 MiB. Manual export only; no dictation content or credentials.
+Android **8.0+ (API 26)** for recording, history and in-app transcription. Automatic insertion from the optional floating control requires **Android 13+ (API 33)** and a supported focused text editor. Kotlin, Jetpack Compose and Material 3; English and Russian interface; adaptive phone/foldable history layout.
 
-[Custom vocabulary / Words](docs/custom-vocabulary.md): saved recognition hints in a History/Words tab inside the existing history panel, with inline Add/Edit/Delete. Terms are sent with each explicit transcription; editing the list sends nothing.
+## What it does
 
-Приватное Android-приложение для записи и распознавания речи. Android 8+ / API 26, compile/target API 36; Kotlin, Compose, Material 3, русский и английский интерфейс.
+- A tap starts local recording immediately. Stop ends the microphone capture and makes one file-transcription request when a usable key is available.
+- Audio, recognised text and optional processed text stay in a shared history. Play and seek through saved audio, copy either text version, or explicitly retry/reprocess. Retrying history never inserts into an old field.
+- Optional text post-processing uses a model dropdown and editable prompt in settings. It is a separate request and can incur additional API charges. The original text is saved first; a second-stage failure keeps it recoverable.
+- The floating control uses the same tap/hold interaction. It inserts at most once into the original eligible editor, otherwise text remains available for Copy. It does not press Send or replace an entire field.
+- Vocabulary terms accompany explicit transcription requests. Manually exported diagnostic ZIPs contain fixed event codes, not dictated text or credentials.
 
-Нажатие на органичную кнопку сразу начинает локальную **запись**, без ожидания ключа и сети. **Stop** останавливает микрофон и запрашивает распознавание файла через `gpt-transcribe`, когда доступен ключ. При отсутствии ключа или ошибке аудио сохраняется для явного повтора. Автоматических повторов при восстановлении сети/ключа, запуске приложения или обновлении нет.
+There is no live audio streaming mode, automatic network retry, developer-operated transcription server or bundled API key. Offline use covers recording, stored audio/text and playback, **not offline speech recognition**.
 
-На первом запуске [onboarding](docs/onboarding.md) предлагает замаскированный API key и необходимые разрешения. **Paste** только вставляет кандидат, **Save and continue** отдельно сохраняет его через AES-GCM/Android Keystore. Ошибка Save не делает staged-ключ активным. **Not now** открывает основной экран для офлайн-записи и истории. API key и биллинг API предоставляются пользователем отдельно; подписка ChatGPT сама по себе их не заменяет. Настройки позволяют сохранить/забыть ключ; проверки провайдера на каждом запуске нет.
+## Screenshots
 
-[Адаптивная история](docs/adaptive-history.md) в широком окне (от 616 dp при обычном шрифте, когда обе панели помещаются) постоянно видна справа от диктовки. В узком окне она открывается свайпом снизу или нажатием на количество сохранённых записей. В сообщении доступны аудио, waveform, раскрытие текста, Copy, явный Retry и подтверждаемое Delete. Аудио и текст сохраняются до явного удаления. По умолчанию лимит **100** записей; при заполнении приложение предлагает очистить историю явно или увеличить лимит, ничего не удаляя автоматически. Старые текстовые записи и черновики читаются без выдуманного аудио и также учитываются в лимите.
+Real 0.19.2 app captures. Main dictation was captured on API 28 from the accepted signed build; history and settings were recaptured on API 28 with synthetic local test data/responses on 2026-11-10. They do not demonstrate a paid API request or universal cross-app compatibility.
 
-Необязательная **floating button** появляется у обычного текстового поля при открытой клавиатуре после согласия и разрешения Accessibility. Тап начинает ту же локальную запись; Stop отправляет её на распознавание. Готовый текст вставляется однократно в исходное поддерживаемое поле, если оно всё ещё безопасно доступно; иначе остаётся для Copy. Восстановление из истории не вставляет текст в старое поле. Приложение не нажимает Send, не заменяет всё поле и не повторяет неопределённую вставку. Перемещённая кнопка [запоминает положение](docs/floating-position.md).
+| Dictation | History |
+| --- | --- |
+| ![Idle dictation control in the light theme](docs/images/dictation-light.png) | ![History with separate recognised and processed text versions](docs/images/history-light.png) |
+| ![History in the dark theme](docs/images/history-dark.png) | ![Text post-processing model dropdown using predefined test choices](docs/images/text-models.png) |
 
-Переключателя режимов нет. Потоковый захват, WebSocket и исполняемые пути Live удалены. [Совместимость старых данных и ограничения](docs/record-only.md).
+## Install and start
 
-## Разработка и проверка
+No tagged GitHub Release is published at this preparation snapshot. [Releases](https://github.com/IlyasYOY/android-voice-dictation/releases) is the future maintainer distribution location; do not assume an APK is available there yet. CI debug APKs and the separate fixture are development artifacts, not verified maintainer releases. To build locally, see below. Maintainers use [manual release preparation](docs/manual-release.md); no automatic signing is enabled.
 
-Используйте подготовленную облачную среду, JDK 17/21 и Gradle Wrapper. Читайте [AGENTS.md](AGENTS.md), [архитектуру](docs/architecture.md) и [настройку среды](docs/cloud-environment.md).
+When a reviewed APK is provided:
 
-```bash
+1. Check its source/version, SHA-256 and signing certificate against the maintainer's verification information. Install only the app APK, not the test fixture. Android may require you to allow installation from the browser/file manager you chose.
+2. For an update, install over the existing app with the same signing identity; do not uninstall first if you want to retain app-private data. A build signed with another developer's key cannot update your current installation. The existing sideload identity has a legacy Android Debug subject; a Play Store signing/migration plan is not configured.
+3. On first launch, save your own OpenAI API key, or choose **Not now** to record offline. Grant microphone access when recording. The key is encrypted locally; it is not supplied by this repository.
+4. Tap the blob to record; tap again to stop. Hold it for the existing contextual actions, including cancellation. Open history to play/copy/retry; use settings for vocabulary, text processing, billing and diagnostic export.
+5. To use the floating control, complete its disclosure/setup and explicitly enable Accessibility plus the required recording/notification permissions. It appears beside the visible keyboard for eligible fields. Revoke its Accessibility access in Android settings when no longer wanted.
+
+## OpenAI API and local data
+
+File transcription uses [`gpt-transcribe`](https://developers.openai.com/api/docs/models/gpt-transcribe) at `/v1/audio/transcriptions`, sending the M4A file and saved vocabulary terms. Optional post-processing uses `/v1/responses`, the original transcript and editing prompt, with `store:false`; its default text model is [`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna). Model refresh is an explicit `/v1/models` request, filtered to the app's known text choices. Model access and quota depend on your API account; a selection is not silently substituted if unavailable.
+
+API usage follows your account's API billing/credits. A ChatGPT subscription alone does not establish this key's available API quota. The Billing button opens the official site externally and does not pass the key in the URL. Review current provider pricing/data controls before sending sensitive material; `store:false` does not guarantee zero provider retention.
+
+Read [PRIVACY.md](PRIVACY.md) for local storage, upload triggers, provider boundaries, Accessibility, clipboard, screenshots, backups and diagnostics. Recordings/text are app-private but are **not separately encrypted by the app**. Saved history remains until explicit deletion; the default count limit is 100 and prompts you rather than silently deleting old items. The API key, history and exported diagnostics have different lifetimes.
+
+## Android and compatibility limits
+
+- Floating insertion is supported only on API 33+ and editors that provide a usable input connection and caret metadata. Older versions and unsupported fields use Copy. Rich editors and OEM keyboards vary; the app's fixtures do not certify every app/device.
+- Changing focus/caret, hiding the keyboard, cancellation or locking prevents a later insertion into a new target. Selected text, active keyboard composition, password/numeric/payment and other excluded fields are deliberately restricted.
+- The floating overlay requests an awake screen while recording/processing. Manual power-off still works; continued recording/transcription while locked is not guaranteed. OEM service/battery restrictions can still matter.
+- Application capture limits are 30 minutes and a guarded 20 MB local file cap; upload validation allows at most 24 MB. These are app limits, not promises about provider quotas or account entitlement.
+- Failed/interrupted operations remain recoverable for explicit retry. A request may already have reached the provider when cancelled or timed out; cancellation cannot retract it or guarantee no charge.
+- No background clipboard watcher, Send automation or automatic replay of uncertain text insertion is used. Copy still exposes the selected text to Android's clipboard and eligible clipboard consumers.
+
+See [editor compatibility](docs/editor-insertion.md), [floating contract](docs/floating-contract.md), [post-processing](docs/text-postprocessing.md), [history/storage](docs/durable-recordings.md) and [diagnostics](docs/diagnostics.md).
+
+## Build and contribute
+
+Use JDK **17 or 21**, Python **3**, Android API **36**, Build Tools **35.0.0**, and the committed Gradle **8.13** wrapper. Set up an SDK explicitly; do not accept its licenses implicitly. [Pinned versions/checksums](docs/toolchain.md), [SDK/cloud setup](docs/cloud-environment.md) and [CONTRIBUTING.md](CONTRIBUTING.md) describe the prerequisites.
+
+```sh
+export ANDROID_HOME=/absolute/path/to/android-sdk
 bash scripts/check.sh
 ```
 
-Скрипт собирает приложение/fixture, запускает lint и JVM-тесты, компилирует Android-тесты. Исполнение Android-сценариев требует работающего устройства и сообщается отдельно; compile-only не является runtime-pass. Реальные ключи, аудио, signing material и `local.properties` не коммитятся. Облачные тесты используют synthetic fixtures, без платных API-запросов.
+This builds the app/fixture, runs lint and JVM tests, and compiles Android test APKs. It does not execute instrumentation. With an available test device/emulator, run `./gradlew :app:connectedDebugAndroidTest` and report the actual device/API and results. Automated tests use synthetic transports/data; do not add a personal key or paid provider request to the test setup.
 
-Контракты: [Record](docs/immediate-record.md), [хранение](docs/durable-recordings.md), [история](docs/recording-history.md), [лимит](docs/history-count-limit.md), [floating](docs/floating-contract.md), [Soft Current](docs/soft-current.md).
-
-[Реакция Soft Current на голос: единый захват, ограничения и проверка на телефоне](docs/audio-reactive-current.md).
-
-Сборка **0.12.2 (25)** объединяет адаптивную историю и реакцию Soft Current на реальный звук. На широком окне диктовка слева, история справа; на узком — история снизу. Мастер настройки остаётся единым экраном с корректной светлой/тёмной подложкой. Это один APK из основной ветки после обоих PR.
+Architecture and safety contracts are in [docs/architecture.md](docs/architecture.md) and [AGENTS.md](AGENTS.md). For vulnerabilities follow [SECURITY.md](SECURITY.md); ordinary issues/PRs must contain no secrets or private dictation. Project code is [MIT licensed](LICENSE); third-party components retain [their own terms and notices](THIRD_PARTY_NOTICES.md).
