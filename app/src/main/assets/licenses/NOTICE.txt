@@ -1,0 +1,24 @@
+Android Voice Dictation
+Copyright (c) 2026 IlyasYOY
+Project code is distributed under the accompanying MIT LICENSE.
+
+Bundled third-party runtime components keep their original licenses:
+AndroidX / Jetpack Compose / Material 3: Apache License 2.0
+  https://android.googlesource.com/platform/frameworks/support/
+Kotlin / kotlinx.coroutines / JetBrains annotations: Apache License 2.0
+  https://github.com/JetBrains/kotlin
+  https://github.com/Kotlin/kotlinx.coroutines
+  https://github.com/JetBrains/java-annotations
+OkHttp / Okio: Apache License 2.0
+  https://github.com/square/okhttp/tree/parent-4.12.0
+  https://github.com/square/okio
+
+The following upstream OkHttp notice applies to its bundled suffix data:
+Note that publicsuffixes.gz is compiled from The Public Suffix List:
+https://publicsuffix.org/list/public_suffix_list.dat
+
+It is subject to the terms of the Mozilla Public License, v. 2.0:
+https://mozilla.org/MPL/2.0/
+
+Unmodified Apache-2.0 and MPL-2.0 license texts accompany this notice.
+Corresponding upstream source is available through the links above.
