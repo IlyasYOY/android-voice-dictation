@@ -34,6 +34,12 @@ def guard(api, item=None):
         check_attempt(item, os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
         require(item['controller'] == os.environ['VD_CONTROLLER'], 'Controller revision mismatch')
         require(item['certificate'] == cert(os.environ['VD_CERTIFICATE']), 'Certificate changed; review identity migration instead of resetting state')
+        _, state = api.load()
+        require(state is not None and item in state['allocations'] and item['code'] == state['next_code'] - 1,
+                'Allocation is no longer current')
+        if mode == 'reconcile':
+            waiting = backlog(state, git('rev-list', '--first-parent', '--reverse', current).splitlines())
+            require(waiting and waiting[0] == item['source'], 'Planned source is no longer the next mainline commit')
     return current
 
 
@@ -79,6 +85,7 @@ def main():
         from publish import recover
         recovered = recover(api, state)
         if recovered != state:
+            backlog(recovered, history)  # Refuse a recovered cursor removed by rewritten main.
             api.save(head, recovered)
             head, state = api.load()
         source, pr = None, None
@@ -92,6 +99,10 @@ def main():
         state, item = reserve(state, history, mode, os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'], os.environ['VD_CONTROLLER'], pr, source)
         if item:
             api.save(head, state)
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+                summary.write(f'Planned `{item["mode"]}`: source `{item["source"]}`, '
+                              f'version `{item["name"]}` / code `{item["code"]}`, PR `{item["pr"]}`.\n\n'
+                              f'Controller `{item["controller"]}`; certificate SHA-256 `{item["certificate"]}`.\n')
             emit('item', item)
             emit('environment', 'apk-stable-signing' if mode == 'reconcile' else 'apk-pr-signing')
             emit('source', item['source'])

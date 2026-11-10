@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT/'release'))
 import model
 import fetch_artifact
 import github_api
+import controller
 import publish
 
 A, B, C, D = (x * 40 for x in 'abcd')
@@ -119,6 +120,33 @@ class AuthorizationTest(unittest.TestCase):
         model.authorize(env, 'reconcile')
         for operation in ('pr', 'initialize'):
             with self.assertRaises(ValueError): model.authorize(env, operation)
+
+    def test_guard_rejects_source_removed_from_main_after_planning(self):
+        state, item = model.reserve(initial(), [A, B, C], 'reconcile', '123', '1', D)
+        class FakeAPI:
+            def call(self, path): return dict(object=dict(sha=C))
+            def load(self): return D, state
+        env = dict(self.env(), GITHUB_EVENT_NAME='push', VD_CONTROLLER=D, VD_CERTIFICATE=CERT,
+                   GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1')
+        def git(*args): return '\n'.join([A, B, C]) if args[0] == 'rev-list' else ''
+        with patch.dict(os.environ, env), patch.object(controller, 'fingerprint', return_value='same'), patch.object(controller, 'git', side_effect=git):
+            controller.guard(FakeAPI(), item)
+            with patch.object(controller, 'git', return_value='\n'.join([A, C])):
+                with self.assertRaises(ValueError): controller.guard(FakeAPI(), item)
+
+    def test_guard_rejects_changed_controller_and_superseded_allocation(self):
+        state, item = model.reserve(initial(), [A, B], 'reconcile', '123', '1', D)
+        class FakeAPI:
+            def call(self, path): return dict(object=dict(sha=C))
+            def load(self): return D, state
+        env = dict(self.env(), GITHUB_EVENT_NAME='push', VD_CONTROLLER=D, VD_CERTIFICATE=CERT,
+                   GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1')
+        with patch.dict(os.environ, env), patch.object(controller, 'git', return_value=''):
+            with patch.object(controller, 'fingerprint', side_effect=['old', 'new']):
+                with self.assertRaises(ValueError): controller.guard(FakeAPI(), item)
+            state['next_code'] += 1
+            with patch.object(controller, 'fingerprint', return_value='same'):
+                with self.assertRaises(ValueError): controller.guard(FakeAPI(), item)
 
 
 class ArchiveTest(unittest.TestCase):
