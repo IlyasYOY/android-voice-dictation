@@ -1,11 +1,13 @@
 # Repository instructions
 
-- Scope: Android/Kotlin/Compose scaffold. Do not turn the preview into real recording or paid AI integration without an explicit task.
-- Preserve private visibility. Do not add secrets, user audio, signing keys or `local.properties` to Git.
-- Read `README.md`, `docs/architecture.md` and `docs/cloud-environment.md` before changing setup.
-- Use JDK 17 or 21 and the committed Gradle Wrapper. Keep Kotlin and Compose compiler plugin versions identical.
-- Run `./scripts/check.sh` before reporting success. Run `./gradlew :app:connectedDebugAndroidTest` only with an available emulator/device; distinguish compile-only from executed UI tests.
-- No implicit SDK license acceptance. Installation requires the user's agreement and `ANDROID_ACCEPT_LICENSES=yes`.
-- Do not create a cloud environment, use a user computer, merge/deploy, change repository visibility, or set up billing unless the current user request authorizes that action.
-- Keep domain logic testable without Android; keep Compose screens stateless. Avoid speculative frameworks/modules.
-- After edits, report exact passed/failed/unrun checks and the verified remote commit. Do not fabricate screenshots.
+- Android/Kotlin/Compose voice-dictation app. Preserve the existing recording, durable history, explicit network requests and single-insertion contracts; read README and the relevant docs before changing them.
+- Never commit credentials, signing material, personal recordings, private document text, local.properties, raw logs or private chat/artifact links. Use synthetic fixtures; do not call paid APIs or send real user dictation without separate explicit authorization.
+- Keep Git author/committer identity suitable for public history. Do not publish a contributor's personal email in reports. Never rewrite history, delete branches/runs/artifacts, change visibility, publish releases or activate signing automation without an explicit instruction for that action. Preparing publication is not permission to make the repository public.
+- Read docs/architecture.md, docs/toolchain.md and docs/cloud-environment.md before changing setup. Use JDK 17/21 and the committed Gradle Wrapper. Keep Kotlin and the Compose compiler plugin versions identical.
+- No implicit SDK license acceptance. Installing SDK tools requires the user's agreement and ANDROID_ACCEPT_LICENSES=yes for the repository installer. Never create a cloud environment or use the user's computer without authorization; no extra worktrees are needed in an already isolated cloud task.
+- Run bash scripts/check.sh before reporting success. Run connectedDebugAndroidTest only on an available device, and distinguish executed tests from compiled test sources. Do not repeatedly broaden passing checks without a new change/failure/concern.
+- Keep domain logic testable without Android and Compose screens stateless. Avoid speculative frameworks and unrelated refactors. Do not add a backend, provider, analytics, automatic request retry or new permission as an incidental change.
+- Keep release signing manual unless separately authorized. Preserve the accepted update certificate; never generate/replace it silently, embed a private key in source/artifacts, or expose signing passwords in command arguments/logs. Draft PR #17 is not active release infrastructure.
+- Read PRIVACY.md when changing data flow and SECURITY.md for vulnerability handling. External provider claims must be checked against official documentation, not inferred from store:false or a passing local test.
+- Before creating a PR, review the actual diff and its source head. Descriptions must stand alone, state validation and material limitations, and contain no private workspace/Page links. Report the verified remote commit, exact passed/failed/skipped/unrun checks and unresolved blockers. Screenshots must be real inspected app pixels with synthetic data; no claim of phone/OEM compatibility from an emulator alone.
+- Respect the active user's scope and approvals. Do not merge a PR unless authorized; publication-preparation PRs stay open for the owner.
