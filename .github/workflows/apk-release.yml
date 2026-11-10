@@ -1,0 +1,259 @@
+name: Signed APK release worker
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Reconcile backlog, owner PR/restore, or one-time owner initialization
+        type: choice
+        options: [reconcile, pr, restore-main, initialize]
+        default: reconcile
+      pr:
+        description: Open PR number (operation=pr)
+        type: string
+      start_after:
+        description: Full first-parent main SHA, excluded from releases (initialize only)
+        type: string
+      base_version:
+        description: Last pre-pipeline SemVer (initialize only)
+        default: '0.19.2'
+        type: string
+      version_code_floor:
+        description: Highest versionCode ever distributed; never lower this (initialize only)
+        default: '42'
+        type: string
+
+permissions: {}
+
+# Shared across stable, PR and restore builds, from allocation through publication.
+# Pending runs may coalesce. The persistent ledger + full first-parent history
+# recover coalesced/rejected/multi-commit events; no event payload counting.
+concurrency:
+  group: apk-distribution
+  cancel-in-progress: false
+
+env:
+  VD_REPOSITORY_ID: ${{ github.repository_id }}
+  VD_OWNER_ID: ${{ github.repository_owner_id }}
+  VD_ACTOR_ID: ${{ github.actor_id }}
+  VD_CONTROLLER: ${{ github.workflow_sha }}
+  VD_MODE: ${{ inputs.operation || 'reconcile' }}
+  VD_RELEASES_ENABLED: ${{ vars.APK_RELEASES_ENABLED }}
+  VD_PR_ENABLED: ${{ vars.APK_PR_BUILDS_ENABLED }}
+  VD_CERTIFICATE: ${{ vars.APK_SIGNING_CERT_SHA256 }}
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  plan:
+    if: >-
+      github.repository_id == '1438924211' && github.repository_owner_id == '18665585' &&
+      github.ref == 'refs/heads/main' &&
+      ((inputs.operation == 'initialize' && github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner) ||
+      ((inputs.operation == 'pr' || inputs.operation == 'restore-main') && vars.APK_PR_BUILDS_ENABLED == 'true' && github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner) ||
+      ((!inputs.operation || inputs.operation == 'reconcile') && vars.APK_RELEASES_ENABLED == 'true'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      has_work: ${{ steps.plan.outputs.has_work }}
+      item: ${{ steps.plan.outputs.item }}
+      source: ${{ steps.plan.outputs.source }}
+      code: ${{ steps.plan.outputs.code }}
+      environment: ${{ steps.plan.outputs.environment }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Reconcile ledger and reserve one ordered version
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VD_PR: ${{ inputs.pr }}
+          VD_ANCHOR: ${{ inputs.start_after }}
+          VD_BASE: ${{ inputs.base_version }}
+          VD_FLOOR: ${{ inputs.version_code_floor }}
+        run: python3 release/controller.py plan
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      VD_ITEM: ${{ needs.plan.outputs.item }}
+      VD_VERSION_CODE: ${{ needs.plan.outputs.code }}
+      VD_VERSION_NAME: ${{ fromJSON(needs.plan.outputs.item).name }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: controller
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.plan.outputs.source }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build exact source without secrets, environment, write token or shared cache
+        working-directory: source
+        run: |
+          export GRADLE_USER_HOME="$RUNNER_TEMP/isolated-gradle"
+          echo '81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f  gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
+          bash scripts/check.sh -Pkotlin.compiler.execution.strategy=in-process
+          # Older compatible PRs need the same distribution notices. This is an
+          # explicit trusted license overlay, not an assertion of reproducibility.
+          mkdir -p app/src/main/assets/licenses
+          cp ../controller/app/src/main/assets/licenses/* app/src/main/assets/licenses/
+          bash gradlew --no-daemon -I ../controller/release/version.init.gradle :app:assembleRelease -Pkotlin.compiler.execution.strategy=in-process
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: source/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  validate:
+    needs: [plan, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VD_ITEM: ${{ needs.plan.outputs.item }}
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: |
+          python3 release/controller.py guard
+          python3 release/fetch_artifact.py source "unsigned-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" incoming
+          python3 release/apk.py incoming/app-release-unsigned.apk validated
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: upload
+        with:
+          name: validated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: validated/*
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    needs: [plan, validate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ needs.plan.outputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VD_ITEM: ${{ needs.plan.outputs.item }}
+      VD_ARTIFACT_ID: ${{ needs.validate.outputs.artifact_id }}
+      VD_ARTIFACT_DIGEST: ${{ needs.validate.outputs.digest }}
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Guard owner/rerun/controller before handling signing material
+        run: |
+          python3 release/controller.py guard
+          python3 release/fetch_artifact.py trusted "$VD_ARTIFACT_ID" incoming
+      - name: Sign only validated immutable artifact; no build code runs here
+        env:
+          APK_SIGNING_KEYSTORE_BASE64: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          APK_SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          APK_SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+          APK_SIGNING_KEY_ALIAS: ${{ vars.APK_SIGNING_KEY_ALIAS }}
+        run: python3 release/sign.py incoming signed
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: upload
+        with:
+          name: signed-internal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: signed/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [plan, sign]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VD_ITEM: ${{ needs.plan.outputs.item }}
+      VD_ARTIFACT_ID: ${{ needs.sign.outputs.artifact_id }}
+      VD_ARTIFACT_DIGEST: ${{ needs.sign.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify signed bytes without keys, publish stable or prepare test download
+        run: |
+          python3 release/controller.py guard
+          python3 release/fetch_artifact.py trusted "$VD_ARTIFACT_ID" incoming
+          python3 release/publish.py incoming final
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: voice-dictation-${{ needs.plan.outputs.code }}
+          path: final/*
+          if-no-files-found: error
+          retention-days: 14
+
+  wake-next:
+    needs: [plan, publish]
+    if: needs.plan.outputs.has_work == 'true' && fromJSON(needs.plan.outputs.item).mode == 'reconcile'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - run: python3 release/controller.py wake

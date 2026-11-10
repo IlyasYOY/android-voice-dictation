@@ -1,8 +1,10 @@
 # Manual release preparation
 
-No signing workflow, signing secret/environment, tag or published Release is added by this change. Draft PR #17 is not a release dependency. Prepare a candidate privately, then rebuild/verify the final accepted merged revision before deliberately publishing it. A successful build does not resolve the separate publication audit.
+The [signed release worker](signed-releases.md) is now prepared but disabled until owner configuration and separate acceptance; no signing secret/environment, tag or published Release is created by preparing it. Draft PR #17 is not a release dependency. Prepare a candidate privately, then rebuild/verify the final accepted merged revision before deliberately publishing it. A successful build does not resolve the separate publication audit.
 
-## Existing update identity
+## Legacy update identity
+
+The owner subsequently chose a new locally generated release identity, accepting a reinstall boundary. Follow [signing-key.md](signing-key.md) before uninstalling anything. The fingerprint below remains the manual verifier's legacy default for old APK checks; the new CI requires the owner's explicit fingerprint and pins it in its ledger, with no legacy fallback. For a new-key manual candidate, supply `--certificate` with its public SHA-256. Do not treat a new-key build as an update to the legacy installation.
 
 The accepted sideloaded APK uses certificate SHA-256:
 
@@ -54,6 +56,6 @@ Adjust version arguments deliberately when releasing a newer version. The report
 
 ## Acceptance and publication gates
 
-Install the previous accepted build, then install the candidate with `adb install -r` without uninstalling between them. Verify version, preserved app UID, startup and representative retained data; UID alone does not establish that every record survived. Check playback/history, explicit transcription/post-processing with a separately consented synthetic provider scenario, and floating behavior on a supported Android 13+ phone. State unrun scenarios explicitly. Do not send personal dictation or paid API requests from automated tests.
+For a same-key update, install a previous build signed with the selected identity, create synthetic history/settings, then install the higher-versionCode candidate with `adb install -r` without uninstalling between them. This does not test migration from the legacy key to a new one: that boundary requires uninstalling, which deletes local data as described in [signing-key.md](signing-key.md). Verify version, preserved app UID, startup and representative retained synthetic data; UID alone does not establish that every record survived. Check playback/history, explicit transcription/post-processing with a separately consented synthetic provider scenario, and floating behavior on a supported Android 13+ phone. State unrun scenarios explicitly. Do not send personal dictation or paid API requests from automated tests.
 
 Before a public Release, accept all publication PRs, rebuild/verify their final merged source, resolve the audit's unavailable artifacts/logs and owner decisions, review vulnerability reporting and the legacy signing limitation. Publish only the reviewed APK plus verification/checksum and license/notice information, with honest device/provider limitations. Do not include private test data, raw logs, keys, temporary aligned APKs or development fixture APKs. Release/tag creation and public visibility are separate owner-authorized actions, not effects of this document or verifier.
