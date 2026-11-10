@@ -48,6 +48,8 @@ def main():
         run([tool, 'sign', '--ks', key, '--ks-key-alias', alias,
              '--ks-pass', 'env:APK_SIGNING_STORE_PASSWORD', '--key-pass', 'env:APK_SIGNING_KEY_PASSWORD',
              '--v1-signing-enabled', 'false', '--v2-signing-enabled', 'true', '--v3-signing-enabled', 'true',
+             # v4 adds an .idsig sidecar; the artifact contract is APK + request only.
+             '--v4-signing-enabled', 'false',
              '--out', outgoing/'app.apk', apk])
     # Drop private values before verification/output. Temp cleanup also runs on exceptions.
     os.environ.pop('APK_SIGNING_STORE_PASSWORD', None)
