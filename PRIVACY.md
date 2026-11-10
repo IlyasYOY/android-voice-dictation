@@ -1,6 +1,6 @@
 # Privacy and data flow
 
-Applies to the Android app in main as reviewed on 2026-11-10 (0.19.2). This describes the shipped code, not a promise about a phone's OS, a document provider, another app or OpenAI's account-specific policies. No account or developer-operated transcription server is required by this project. You supply your own OpenAI API key.
+Applies to the Android app in main as reviewed on 2026-11-10 (0.19.2). This describes the shipped code, not a promise about a phone's OS, a document provider, another app or OpenAI's account-specific policies. No separate project account or developer-operated transcription server is required. You supply your own OpenAI API key.
 
 ## What stays on your device
 
