@@ -25,3 +25,7 @@ key.properties
 keystore.properties
 *.apk
 *.aab
+
+# Python tooling caches.
+__pycache__/
+*.pyc

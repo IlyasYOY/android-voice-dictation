@@ -4,7 +4,7 @@ Small, focused pull requests are easiest to review. Explain the user-visible pro
 
 ## Build and test
 
-Use JDK **17 or 21**, the committed Gradle **8.13** wrapper, Android API **36** and Build Tools **35.0.0**. Versions and checksums are in [the toolchain guide](docs/toolchain.md). Android Studio can use a locally installed SDK; keep `local.properties` untracked. On Unix:
+Use JDK **17 or 21**, Python **3**, the committed Gradle **8.13** wrapper, Android API **36** and Build Tools **35.0.0**. Versions and checksums are in [the toolchain guide](docs/toolchain.md). Android Studio can use a locally installed SDK; keep `local.properties` untracked. On Unix:
 
 ```sh
 export ANDROID_HOME=/absolute/path/to/android-sdk
