@@ -16,3 +16,16 @@ captures/
 
 # Runtime captures and generated proof belong in external artifacts.
 docs/runtime-evidence/
+
+# Private signing inputs and generated distribution files.
+*.p12
+*.pfx
+*.key
+key.properties
+keystore.properties
+*.apk
+*.aab
+
+# Python tooling caches.
+__pycache__/
+*.pyc
