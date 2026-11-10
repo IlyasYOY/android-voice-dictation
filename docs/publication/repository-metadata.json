@@ -1,0 +1,12 @@
+{
+  "description": "Android voice dictation with local recording, OpenAI transcription, optional text editing, and a floating keyboard control.",
+  "topics": [
+    "android",
+    "kotlin",
+    "jetpack-compose",
+    "dictation",
+    "speech-to-text",
+    "openai",
+    "accessibility"
+  ]
+}
