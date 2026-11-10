@@ -94,7 +94,7 @@ def main():
             json.dump(report, target, indent=2); target.write('\n')
         print(json.dumps(report))
         return 0
-    except (ValueError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
+    except Exception as error:
         # Only fixed validation messages are emitted; underlying IO exception text is private.
         print(str(error) if isinstance(error, VerificationError) else 'Release verification failed', file=sys.stderr)
         return 1
