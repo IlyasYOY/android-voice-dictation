@@ -15,7 +15,9 @@ command -v shasum >/dev/null 2>&1 || fail 'shasum is required.'
 [[ $# -eq 0 ]] || fail 'No arguments accepted. The script asks for values privately.'
 
 printf '%s\n' 'Creates a NEW Android signing identity. It cannot update the old installation.' \
-  'Before uninstalling the old app, save important history/audio/text/settings. Uninstall may delete them.' \
+  'Uninstall deletes local recordings, history, vocabulary, settings and the stored API key.' \
+  'Only text from individual history items can be copied separately. Audio/vocabulary/settings have no export/import.' \
+  'Do not uninstall if you need these local data. This script does not preserve or migrate them.' \
   'Certificate names are self-declared; Android does not guarantee showing a developer name.' \
   'No upload, GitHub secret change, password file, clipboard operation or shell command with a literal password is performed.'
 read -r -p 'Continue creating a new identity? Type CREATE: ' answer

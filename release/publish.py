@@ -96,7 +96,10 @@ def main():
     require(current == state and current_head == head, 'Ledger changed during publication; draft retained for recovery')
     record['ready'] = True
     body = ('Android Voice Dictation by IlyasYOY.\n\n'
-            'Signed APK, verification metadata and checksums. A new signing identity requires reinstalling the legacy app; save local data first. '
+            'Signed APK, verification metadata and checksums. A new signing identity requires reinstalling the legacy app. '
+            'Uninstall deletes local recordings, history, vocabulary, settings and the stored API key. '
+            'Only text from individual history items can be copied separately; audio/vocabulary/settings have no export/import. '
+            'Do not uninstall if you need these local data. '
             'Build checks do not establish phone/OEM compatibility. No live provider request was made by CI.\n\n'
             f'Source: `{item["source"]}`; Android versionCode: `{item["code"]}`. '
             'See README, PRIVACY and THIRD_PARTY_NOTICES in this source revision.'
