@@ -1,5 +1,7 @@
 # Local diagnostics and ZIP export
 
+See the user-facing [privacy and data-flow statement](../PRIVACY.md). Exported copies are outside internal retention and may be synced by the document provider you choose.
+
 Settings → **Save logs ZIP** opens Android's system file picker (`CreateDocument`,
 `application/zip`). Choose a location, save, then attach the ZIP manually to a bug
 report with the approximate time and steps. No automatic upload, network request,
@@ -61,10 +63,10 @@ visibility polling does not log accessibility events, field contents or app name
 
 ## Manual acceptance (no video)
 
-1. Install 0.14.0 (29), open Settings; **Diagnostics** and **Save logs ZIP** should be
+1. Install the version under review, open Settings; **Diagnostics** and **Save logs ZIP** should be
    visible without entering an API key. Check light/dark and narrow/wide Fold windows.
 2. Save to Downloads. Open ZIP: exactly `manifest.json`, `events.jsonl`, `README.txt`.
-   Verify `app_version_code:29`, Android API and plausible timestamps/codes.
+   Verify `app_version_code` matches the installed build, Android API and plausible timestamps/codes.
 3. Cancel the picker, retry, rotate/fold while the picker or save is active. Settings
    stays usable; one save per selection; only completed writes say “Logs saved.”
 4. Reproduce an offline transcription error and explicit History retry. Save ZIP and
