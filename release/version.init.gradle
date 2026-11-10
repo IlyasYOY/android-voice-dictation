@@ -1,0 +1,10 @@
+// Trusted build overlay: exact source SHA, one ledger allocation, no key or signing task.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.defaultConfig.versionCode = Integer.parseInt(System.getenv('VD_VERSION_CODE'))
+            android.defaultConfig.versionName = System.getenv('VD_VERSION_NAME')
+            android.buildTypes.getByName('release').signingConfig = null
+        }
+    }
+}

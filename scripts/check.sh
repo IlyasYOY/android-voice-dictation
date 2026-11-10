@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/android-env.sh"
 cd "$ANDROID_PROJECT_ROOT"
 bash scripts/doctor.sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_verify_release.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 # Test APK compilation is not the same as running UI/instrumentation tests.
 bash ./gradlew --no-daemon \
     :app:assembleDebug \

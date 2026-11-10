@@ -1,8 +1,10 @@
 # Manual release preparation
 
-No signing workflow, signing secret/environment, tag or published Release is added by this change. Draft PR #17 is not a release dependency. Prepare a candidate privately, then rebuild/verify the final accepted merged revision before deliberately publishing it. A successful build does not resolve the separate publication audit.
+The [signed release worker](signed-releases.md) is now prepared but disabled until owner configuration and separate acceptance; no signing secret/environment, tag or published Release is created by preparing it. Draft PR #17 is not a release dependency. Prepare a candidate privately, then rebuild/verify the final accepted merged revision before deliberately publishing it. A successful build does not resolve the separate publication audit.
 
-## Existing update identity
+## Legacy update identity
+
+The owner subsequently chose a new locally generated release identity, accepting a reinstall boundary. Follow [signing-key.md](signing-key.md) before uninstalling anything. The fingerprint below remains the manual verifier's legacy default for old APK checks; the new CI requires the owner's explicit fingerprint and pins it in its ledger, with no legacy fallback. For a new-key manual candidate, supply `--certificate` with its public SHA-256. Do not treat a new-key build as an update to the legacy installation.
 
 The accepted sideloaded APK uses certificate SHA-256:
 

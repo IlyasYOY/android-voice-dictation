@@ -25,7 +25,9 @@ Real 0.19.2 app captures. Main dictation was captured on API 28 from the accepte
 
 ## Install and start
 
-No tagged GitHub Release is published at this preparation snapshot. [Releases](https://github.com/IlyasYOY/android-voice-dictation/releases) is the future maintainer distribution location; do not assume an APK is available there yet. CI debug APKs and the separate fixture are development artifacts, not verified maintainer releases. To build locally, see below. Maintainers use [manual release preparation](docs/manual-release.md); no automatic signing is enabled.
+No tagged GitHub Release is published at this preparation snapshot. [Releases](https://github.com/IlyasYOY/android-voice-dictation/releases) is the future maintainer distribution location; do not assume an APK is available there yet. CI debug APKs and the separate fixture are development artifacts, not verified maintainer releases. To build locally, see below. Maintainers use [manual release preparation](docs/manual-release.md); the [signed release worker](docs/signed-releases.md) is prepared but disabled until owner setup and acceptance.
+
+Maintainer: [IlyasYOY](https://github.com/IlyasYOY). The owner chose to create a new release identity locally; see [the Mac key script and reinstall/data-loss precautions](docs/signing-key.md). This preparation does not change an installed app's certificate or guarantee a developer-name display in Android.
 
 When a reviewed APK is provided:
 
