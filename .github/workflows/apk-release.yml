@@ -165,7 +165,9 @@ jobs:
     needs: [plan, validate]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment: ${{ needs.plan.outputs.environment }}
+    environment:
+      name: ${{ needs.plan.outputs.environment }}
+      deployment: false
     permissions:
       contents: read
       actions: read
