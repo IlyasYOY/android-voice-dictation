@@ -76,6 +76,67 @@ class HistoryCapacityTest {
         assertEquals(checkNotNull(store.record(fresh)).id, store.records().single().id)
     }
 
+    @Test fun deferredCleanupDoesNotApplyALaterDecreaseUntilAnotherRecordingIsKept() {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root)
+        store.setHistoryLimit(2)
+        val oldest = pending(store, "A")
+        val next = pending(store, "B")
+        assertNotNull(store.beginUpload(oldest))
+        val newest = pending(store, "C")
+        assertEquals(3, store.records().size)
+
+        store.setHistoryLimit(1)
+        val reopened = RecordingRepository(root)
+        assertEquals(1, reopened.capacity().limit)
+        assertFalse(oldest.exists())
+        assertEquals("B", next.readText())
+        assertEquals("C", newest.readText())
+        assertEquals(2, reopened.records().size)
+
+        val fresh = pending(reopened, "D")
+        assertEquals("D", fresh.readText())
+        assertFalse(next.exists())
+        assertFalse(newest.exists())
+        assertEquals(1, reopened.records().size)
+    }
+
+    @Test fun earlierCleanupCannotGrowAfterAnotherSaveAtAHigherLimit() {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root)
+        store.setHistoryLimit(1)
+        val oldest = pending(store, "A")
+        assertNotNull(store.beginUpload(oldest))
+        val second = pending(store, "B")
+        store.setHistoryLimit(2)
+        val third = pending(store, "C")
+        assertEquals(3, store.records().size)
+        store.setHistoryLimit(1)
+
+        val reopened = RecordingRepository(root)
+        assertFalse(oldest.exists())
+        assertEquals("B", second.readText())
+        assertEquals("C", third.readText())
+        assertEquals(2, reopened.records().size)
+    }
+
+    @Test fun increasingTheLimitCancelsNowUnnecessaryDeferredCleanup() {
+        val root = temporary.newFolder()
+        val store = RecordingRepository(root)
+        store.setHistoryLimit(1)
+        val oldest = pending(store, "A")
+        assertNotNull(store.beginUpload(oldest))
+        val newest = pending(store, "B")
+        store.setHistoryLimit(2)
+
+        val reopened = RecordingRepository(root)
+        assertEquals(2, reopened.records().size)
+        assertEquals("A", oldest.readText())
+        assertEquals("B", newest.readText())
+        reopened.setHistoryLimit(1)
+        assertEquals(2, RecordingRepository(root).records().size)
+    }
+
     @Test fun failedSaveNeverEvictsAndDeferredDeleteResumesAfterRestart() {
         val root = temporary.newFolder()
         var failDelete = false
