@@ -21,14 +21,14 @@ class HistoryCapacitySessionTest {
         override fun stop(): File = checkNotNull(file).also { store.finalized(it); file = null }
         override fun cancel() { file?.let { store.discardOwned(it) }; file = null }
     }
-    @Test fun fullHistoryBlocksMicrophoneWithoutNetworkErrorOrMutation() = runTest {
+    @Test fun fullHistoryAllowsCaptureAndCancelKeepsOldRecording() = runTest {
         val store = RecordingRepository(temporary.newFolder()); store.setHistoryLimit(1)
         val kept = store.allocate().apply { writeText("kept failed audio") }; store.finalized(kept); store.retain(kept, SavedRecordingFailure.NETWORK)
         val recorder = Recorder(store); var uploads = 0
         val session = DictationSession(backgroundScope, recorder, Transcriber { _, _ -> uploads++; "unused" }, recordings = StoredRecordingRetention(store))
         session.start(true); runCurrent()
-        assertTrue(session.state.value.capacityBlocked); assertNull(session.state.value.problem)
-        assertEquals(0, recorder.starts); assertEquals(0, uploads); assertEquals("kept failed audio", kept.readText())
+        assertFalse(session.state.value.capacityBlocked); assertNull(session.state.value.problem)
+        assertEquals(1, recorder.starts); assertEquals(0, uploads); assertEquals("kept failed audio", kept.readText())
         session.close(); assertEquals(1, store.records().size)
     }
     @Test fun failedCurrentRecordingCanRetryAtCapacityAndKeepSuccessAudioAndText() = runTest {
@@ -43,16 +43,16 @@ class HistoryCapacitySessionTest {
         assertEquals(2, uploads); assertEquals("successful retry words", store.records().single().transcript)
         assertTrue(store.audio(store.records().single().id).exists()); session.close()
     }
-    @Test fun admittedRecordCanFinishAfterLimitReductionWithoutEviction() = runTest {
+    @Test fun admittedRecordFinishesAndAppliesTheNewLimit() = runTest {
         val store = RecordingRepository(temporary.newFolder()); store.setHistoryLimit(2)
         val kept = store.allocate().apply { writeText("older") }; store.finalized(kept); store.retain(kept)
         val session = DictationSession(backgroundScope, Recorder(store), Transcriber { _, _ -> "new words" }, recordings = StoredRecordingRetention(store))
         session.setKey("synthetic"); session.start(true); store.setHistoryLimit(1)
         session.stop(); runCurrent()
-        assertEquals(2, store.capacity().used); assertEquals("older", kept.readText())
+        assertEquals(1, store.capacity().used); assertFalse(kept.exists())
         assertTrue(store.records().any { it.transcript == "new words" }); session.close()
     }
-    @Test fun floatingUsesSameCapacityGateWithoutChangingEditor() = runTest {
+    @Test fun floatingCanStartAtTheLimitWithoutChangingEditor() = runTest {
         val store = RecordingRepository(temporary.newFolder()); store.setHistoryLimit(1)
         store.allocate().also { it.writeText("kept"); store.finalized(it); store.retain(it) }
         val recorder = Recorder(store)
@@ -62,7 +62,7 @@ class HistoryCapacitySessionTest {
         var blocked = false
         val capture = FloatingCapture(backgroundScope, session, editor, { environment }, { fail("editor valid") }, { blocked = it.capacityBlocked })
         capture.start(); runCurrent()
-        assertTrue(blocked); assertEquals(0, recorder.starts); assertEquals(editor, environment.editor)
+        assertFalse(blocked); assertEquals(1, recorder.starts); assertEquals(editor, environment.editor)
         capture.close(); assertEquals(1, store.records().size)
     }
 }

@@ -56,11 +56,11 @@ class HistoryCapacityRuntimeTest {
         instrumentation.runOnMainSync { success = seed(false); failed = seed(true); store.setHistoryLimit(2) }
         val bytes = store.records().associate { it.id to store.audio(it.id).readBytes() }
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.onNodeWithTag("history_capacity_notice").assertIsDisplayed()
-            compose.onNodeWithTag("record").assertIsNotEnabled()
+            compose.onNodeWithTag("history_capacity_notice").assertDoesNotExist()
+            compose.onNodeWithTag("record").assertIsEnabled()
             compose.onNodeWithTag("problem").assertDoesNotExist()
             capture("01-main-full")
-            compose.onNodeWithTag("capacity_open_limit").performClick()
+            compose.onNodeWithTag("open_settings").performClick()
             compose.onNodeWithTag("history_limit_input").performScrollTo().performTextReplacement("0")
             compose.onNodeWithTag("history_limit_invalid").assertExists()
             compose.onNodeWithTag("save_history_limit").assertIsNotEnabled()
@@ -70,7 +70,7 @@ class HistoryCapacityRuntimeTest {
             bytes.forEach { (id, expected) -> assertArrayEquals(expected, store.audio(id).readBytes()) }
             capture("02-limit-lowered-existing-kept")
             compose.onNodeWithTag("close_settings").performScrollTo().performClick()
-            compose.onNodeWithTag("capacity_open_history").performClick()
+            compose.onNodeWithTag("saved_recordings").performClick()
             compose.onNodeWithTag("history_retry_$failed").performScrollTo().assertIsEnabled()
             compose.onNodeWithTag("history_play_$success").performScrollTo().performClick()
             compose.waitUntil(15000) { compose.onAllNodes(hasContentDescription("Pause", substring = true)).fetchSemanticsNodes().isNotEmpty() }

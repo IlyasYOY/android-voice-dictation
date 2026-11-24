@@ -43,7 +43,7 @@ File transcription uses [`gpt-transcribe`](https://developers.openai.com/api/doc
 
 API usage follows your account's API billing/credits. A ChatGPT subscription alone does not establish this key's available API quota. The Billing button opens the official site externally and does not pass the key in the URL. Review current provider pricing/data controls before sending sensitive material; `store:false` does not guarantee zero provider retention.
 
-Read [PRIVACY.md](PRIVACY.md) for local storage, upload triggers, provider boundaries, Accessibility, clipboard, screenshots, backups and diagnostics. Recordings/text are app-private but are **not separately encrypted by the app**. Saved history remains until explicit deletion; the default count limit is 100 and prompts you rather than silently deleting old items. The API key, history and exported diagnostics have different lifetimes.
+Read [PRIVACY.md](PRIVACY.md) for local storage, upload triggers, provider boundaries, Accessibility, clipboard, screenshots, backups and diagnostics. Recordings/text are app-private but are **not separately encrypted by the app**. History keeps the newest recordings (100 by default). When a new recording is saved at the limit, the oldest entries are removed from local history, including their audio and text. The API key, history and exported diagnostics have different lifetimes.
 
 ## Android and compatibility limits
 

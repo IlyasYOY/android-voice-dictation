@@ -39,16 +39,17 @@ class LegacyTextUpgradeTest {
         val store=RecordingRepository(root);val audio=store.allocate().apply {writeText("kept audio")}
         store.finalized(audio);store.retain(audio,SavedRecordingFailure.NETWORK)
         assertEquals(100,store.capacity().used);assertTrue(store.capacity().full)
-        assertThrows(HistoryCapacityReached::class.java){store.allocate()}
+        assertTrue(store.capacity().canStart)
         assertTrue(store.complete(checkNotNull(store.beginUpload(audio)),"explicit retry result"))
         assertEquals("kept audio",audio.readText());assertEquals(100,RecordingRepository(root).capacity().used)
     }
-    @Test fun loweringLimitPreservesLegacyTextAndAlreadyAllocatedAudio() {
+    @Test fun loweringLimitDefersLegacyTextEvictionUntilTheIncomingAudioIsKept() {
         val root=temporary.newFolder();val id=legacy(root)
         val store=RecordingRepository(root);store.setHistoryLimit(2)
         val audio=store.allocate().apply {writeText("active audio")};store.setHistoryLimit(1)
+        assertEquals("historical words",store.record(id)?.transcript)
         store.finalized(audio);store.retain(audio)
-        assertEquals(2,store.capacity().used);assertEquals("historical words",store.record(id)?.transcript)
+        assertEquals(1,store.capacity().used);assertNull(store.record(id))
         assertEquals("active audio",audio.readText());assertTrue(store.capacity().full)
     }
     @Test fun restartKeepsInterruptedTextAndStagedMetadataFailuresCountedWithoutEphemeralAdmissions() {
