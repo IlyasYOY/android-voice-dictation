@@ -87,7 +87,7 @@ internal class StoredRecordingRetention(private val open: () -> RecordingReposit
     }
     override fun completed(audio: File, transcript: String) = stored {
         val token = checkNotNull(attempts[audio])
-        check(repository.complete(token, transcript))
+        check(repository.complete(token, transcript, protectResult = true))
         sourceId=token.id
         attempts.remove(audio)
         Unit

@@ -311,17 +311,22 @@ internal class RecordingRepository(
         return token
     }
 
-    @Synchronized fun complete(token: RecordingUpload, transcript: String): Boolean {
+    @Synchronized fun complete(token: RecordingUpload, transcript: String, protectResult: Boolean = false): Boolean {
         require(transcript.isNotBlank())
         val record = owned(token) ?: return false
+        val protectedId = token.id.takeIf { protectResult || it in reserved }
         try {save(record.copy(status = SavedRecordingStatus.COMPLETE, transcript = transcript, failure = null, updatedAt = clock(),
             rollover = record.rollover ?: rolloverFor(token.id)))}
         catch(e:Exception) {received[token.id]=transcript;changed();throw e}
         received.remove(token.id)
         uploading -= token; reserved -= token.id
-        trimHistory(protectedId = token.id)
+        trimHistory(protectedId)
         changed()
         return true
+    }
+
+    @Synchronized fun resumeHistoryCleanup() {
+        trimHistory()
     }
 
     @Synchronized fun failed(token: RecordingUpload, failure: SavedRecordingFailure?): Boolean {

@@ -76,6 +76,36 @@ class HistoryCapacityTest {
         assertEquals(checkNotNull(store.record(fresh)).id, store.records().single().id)
     }
 
+    @Test fun successfulHistoryRetryReleasesDeferredCleanup() {
+        val store = RecordingRepository(temporary.newFolder())
+        store.setHistoryLimit(1)
+        val oldest = pending(store, "A")
+        val token = checkNotNull(store.beginUpload(oldest))
+        val newest = pending(store, "B")
+        assertEquals(2, store.records().size)
+        assertTrue(store.complete(token, "recognized words"))
+        assertFalse(oldest.exists())
+        assertEquals("B", newest.readText())
+        assertEquals(1, store.records().size)
+    }
+
+    @Test fun retryResultCanBeKeptUntilPostProcessingFinishes() {
+        val store = RecordingRepository(temporary.newFolder())
+        store.setHistoryLimit(1)
+        val oldest = pending(store, "A")
+        val id = checkNotNull(store.record(oldest)).id
+        val token = checkNotNull(store.beginUpload(oldest))
+        val newest = pending(store, "B")
+        assertTrue(store.complete(token, "recognized words", protectResult = true))
+        val processing = checkNotNull(store.beginProcessing(id, TextProcessingSettings()))
+        store.resumeHistoryCleanup()
+        assertTrue(oldest.exists())
+        assertTrue(store.completeProcessing(processing, "refined words"))
+        assertFalse(oldest.exists())
+        assertEquals("B", newest.readText())
+        assertEquals(1, store.records().size)
+    }
+
     @Test fun deferredCleanupDoesNotApplyALaterDecreaseUntilAnotherRecordingIsKept() {
         val root = temporary.newFolder()
         val store = RecordingRepository(root)

@@ -83,7 +83,7 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
             try {
                 val context = getApplication<Application>()
                 val settings = runCatching { TextProcessingPreferences(context).read() }
-                owner.retry(id) { audio -> DebugFloatingConfiguration.transcribeRetained(context, audio)
+                owner.retry(id, protectResult = settings.getOrNull()?.enabled == true) { audio -> DebugFloatingConfiguration.transcribeRetained(context, audio)
                     ?: DictationSessions.transcribeRetained(context, audio) }?.let {
                     val options = settings.getOrThrow()
                     val text = if (options.enabled) runProcessing(id, options) ?: return@let else it
@@ -91,7 +91,11 @@ internal class HistoryViewModel(application: Application) : AndroidViewModel(app
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutableProcessingFailure.value = id }
-            finally { mutableCancellableProcessing.value -= id }
+            finally {
+                // Finish an eviction deferred until optional post-processing consumed the row.
+                repository?.resumeHistoryCleanup()
+                mutableCancellableProcessing.value -= id
+            }
         }
     }
     fun delete(id: String) { playback.stop(); owner.discard(id) }
