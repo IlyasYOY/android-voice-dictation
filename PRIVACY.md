@@ -6,7 +6,7 @@ Applies to the Android app in main as reviewed on 2026-11-10 (0.19.2). This desc
 
 | Data | Storage and lifetime |
 | --- | --- |
-| Audio and original/processed text | App-private, no-backup recording repository. Record starts locally. Saved recordings and text remain until explicit deletion; the default count limit is 100 and does not automatically erase old items. Audio and text are **not separately encrypted by the app**; Android app isolation/device storage protection still apply. |
+| Audio and original/processed text | App-private, no-backup recording repository. Record starts locally. When a new recording is kept, the configurable count limit (100 by default) removes the oldest saved entries and their audio and text. Changing the limit alone does not remove existing entries. Audio and text are **not separately encrypted by the app**; Android app isolation/device storage protection still apply. |
 | API key | AES-GCM ciphertext plus a random IV in private preferences; encryption key in Android Keystore. Forget key removes the payload and Keystore alias, not your saved history. This does not protect against every rooted/compromised device or process inspection. |
 | Vocabulary | App-private no-backup vocabulary repository. Terms persist until you change/delete them. |
 | Text editing settings | Model, enablement and prompt in a private settings file. A prompt can contain personal data; it is not an API key and is not encrypted by this settings store. |

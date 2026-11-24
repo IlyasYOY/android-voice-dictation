@@ -73,7 +73,7 @@ internal class RecordingRecovery {
         publish(if(storageProblem)RecordingRetryFailure.STORAGE else failure ?: mutable.value.failure)
         return file
     }
-    suspend fun retry(id:String?=null,upload: suspend (File)->String): String? {
+    suspend fun retry(id:String?=null, protectResult: Boolean = false, upload: suspend (File)->String): String? {
         if(retrying)return null
         val store=repository
         val source=available().firstOrNull {id==null || store?.record(it)?.id==id} ?: return null
@@ -94,7 +94,7 @@ internal class RecordingRecovery {
             val text=store?.record(audio)?.let {store.receivedText(it.id)} ?: upload(audio)
             currentCoroutineContext().ensureActive()
             require(text.isNotBlank())
-            if(store!=null)try {check(store.complete(checkNotNull(token),text))} catch(e:Exception) {throw RecordingStorageFailure(e)} else audio.delete()
+            if(store!=null)try {check(store.complete(checkNotNull(token),text, protectResult))} catch(e:Exception) {throw RecordingStorageFailure(e)} else audio.delete()
             storageProblem=store?.migrationPending==true
             Diagnostics.record(DiagnosticArea.RECOVERY, DiagnosticAction.PROCESS)
             return text

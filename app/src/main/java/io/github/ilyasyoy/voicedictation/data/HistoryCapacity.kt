@@ -5,7 +5,7 @@ data class HistoryCapacity(val limit: Int = DEFAULT_LIMIT, val stored: Int = 0,
     val readable: Boolean = true) {
     val used get() = stored
     val full get() = readable && used >= limit
-    val canStart get() = readable && used < limit
+    val canStart get() = readable
     companion object {
         const val DEFAULT_LIMIT = 100
         fun parse(value: String): Int? = value.trim().takeIf { it.isNotEmpty() && it.all { c -> c in '0'..'9' } }

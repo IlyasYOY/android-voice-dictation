@@ -28,6 +28,7 @@ internal interface RecordingDeletion {
     fun sync(directory:File) {AtomicRecordingCommit.syncDirectory(directory)}
 }
 internal object DurableRecordingDeletion:RecordingDeletion
+internal data class HistoryRollover(val limit: Int, val throughCreatedAt: Long, val throughId: String)
 internal data class SavedRecording(
     val id: String,
     val createdAt: Long,
@@ -45,6 +46,7 @@ internal data class SavedRecording(
     val processingModel: String = "",
     val processingPrompt: String = "",
     val processingAttempt: Long = 0,
+    val rollover: HistoryRollover? = null,
 ) {
     override fun toString()="SavedRecording(id=$id, status=$status, transcriptLength=${transcript.length}, kind=$kind)"
 }
@@ -119,13 +121,12 @@ internal class RecordingRepository(
                 else -> Unit
             }
         }
+        trimHistory()
     }
 
     @Synchronized fun capacity() = HistoryCapacity(countLimit, rows.size, limitReadable)
     @Synchronized fun requireCapacity() {
         if (!limitReadable) throw IOException("History limit unavailable")
-        val state = capacity()
-        if (state.full) throw HistoryCapacityReached(state)
     }
     @Synchronized fun setHistoryLimit(limit: Int) {
         require(limit > 0)
@@ -150,7 +151,51 @@ internal class RecordingRepository(
             countLimit = restored; limitReadable = true
         } catch (_: Exception) { limitReadable = false }
     }
-    @Synchronized fun records(): List<SavedRecording> = rows.values.sortedByDescending { it.createdAt }
+    private val historyOrder get() = compareBy<SavedRecording>({ it.createdAt }, { it.id })
+    @Synchronized fun records(): List<SavedRecording> = rows.values.sortedWith(historyOrder.reversed())
+
+    // Give newly kept clips a stable position even on same-millisecond starts or clock rollback.
+    private fun nextCreatedAt(now: Long): Long {
+        val latest = rows.values.maxOfOrNull { it.createdAt } ?: return now
+        return if (latest == Long.MAX_VALUE) now else maxOf(now, latest + 1)
+    }
+
+    private fun countsForRollover(row: SavedRecording) =
+        row.status !in setOf(SavedRecordingStatus.UNAVAILABLE, SavedRecordingStatus.DELETING)
+
+    private fun rolloverFor(id: String): HistoryRollover? {
+        if (!limitReadable || id !in reserved) return null
+        val kept = rows.values.filter { countsForRollover(it) && (it.id == id || it.id !in reserved) }
+        val excess = kept.size - countLimit
+        if (excess <= 0) return null
+        val last = kept.sortedWith(historyOrder)[excess - 1]
+        return HistoryRollover(countLimit, last.createdAt, last.id)
+    }
+
+    // Persist the limit and the last eligible older row with the incoming recording.
+    // A later setting decrease or new capture cannot move that boundary forward.
+    private fun trimHistory(protectedId: String? = null) {
+        if (!limitReadable) return
+        val pending = rows.values.filter { it.rollover != null && countsForRollover(it) && it.id !in reserved }
+        if (pending.isEmpty()) return
+        val saved = rows.values.filter { countsForRollover(it) && it.id !in reserved }.sortedWith(historyOrder)
+        val trimCount = pending.maxOf { row ->
+            val marker = checkNotNull(row.rollover)
+            val end = saved.binarySearch { older ->
+                compareValues(older.createdAt, marker.throughCreatedAt).takeUnless { it == 0 }
+                    ?: compareValues(older.id, marker.throughId)
+            }
+            val eligible = if (end < 0) -end - 1 else end + 1
+            minOf(eligible, (saved.size - maxOf(marker.limit, countLimit)).coerceAtLeast(0))
+        }
+        for (oldest in saved.take(trimCount)) {
+            if (oldest.id == protectedId || !runCatching { discard(oldest.id) }.getOrDefault(false)) return
+        }
+        pending.forEach { row ->
+            val current = rows[row.id]
+            if (current != null) runCatching { save(current.copy(rollover = null)) }
+        }
+    }
     @Synchronized fun pending(): List<SavedRecording> = rows.values.filter {
         it.id !in reserved && it.kind==SavedRecordingKind.RECORD && audio(it.id).length()>0 &&
             it.status in setOf(SavedRecordingStatus.PENDING, SavedRecordingStatus.FAILED, SavedRecordingStatus.INTERRUPTED)
@@ -203,7 +248,7 @@ internal class RecordingRepository(
         reserved += id
         try {
             AtomicRecordingCommit.syncDirectory(root)
-            save(SavedRecording(id, now, now, SavedRecordingStatus.CAPTURING))
+            save(SavedRecording(id, nextCreatedAt(now), now, SavedRecordingStatus.CAPTURING))
         }
         catch (e: Exception) {
             // Track even a partially committed allocation. No audio has started yet;
@@ -239,14 +284,19 @@ internal class RecordingRepository(
             new
         }
         check(record.status !in setOf(SavedRecordingStatus.COMPLETE, SavedRecordingStatus.DELETING, SavedRecordingStatus.UNAVAILABLE))
+        val rollover = record.rollover ?: if (record.status != SavedRecordingStatus.CAPTURING && file.length() > 0)
+            rolloverFor(record.id) else null
         uploading.removeAll { it.id == record.id }
         reserved -= record.id
         val detached=record.copy(status = if (failure == null) SavedRecordingStatus.PENDING else SavedRecordingStatus.FAILED,
-            failure = failure, updatedAt = clock())
-        try { save(detached) } catch (_: Exception) {
+            failure = failure, updatedAt = clock(), rollover = rollover)
+        try {
+            save(detached)
+            trimHistory(protectedId = record.id)
+        } catch (_: Exception) {
             // Already-durable bytes still have their previous disk record. Release resources even
             // when storage is full; restart conservatively restores any old UPLOADING state.
-            rows[record.id]=detached.copy(failure=SavedRecordingFailure.STORAGE)
+            rows[record.id]=detached.copy(failure=SavedRecordingFailure.STORAGE, rollover = record.rollover)
         }
         changed()
         return audio(record.id)
@@ -261,16 +311,22 @@ internal class RecordingRepository(
         return token
     }
 
-    @Synchronized fun complete(token: RecordingUpload, transcript: String): Boolean {
+    @Synchronized fun complete(token: RecordingUpload, transcript: String, protectResult: Boolean = false): Boolean {
         require(transcript.isNotBlank())
         val record = owned(token) ?: return false
-        // User policy: keep BOTH successful audio and transcript until explicit discard.
-        try {save(record.copy(status = SavedRecordingStatus.COMPLETE, transcript = transcript, failure = null, updatedAt = clock()))}
+        val protectedId = token.id.takeIf { protectResult || it in reserved }
+        try {save(record.copy(status = SavedRecordingStatus.COMPLETE, transcript = transcript, failure = null, updatedAt = clock(),
+            rollover = record.rollover ?: rolloverFor(token.id)))}
         catch(e:Exception) {received[token.id]=transcript;changed();throw e}
         received.remove(token.id)
         uploading -= token; reserved -= token.id
+        trimHistory(protectedId)
         changed()
         return true
+    }
+
+    @Synchronized fun resumeHistoryCleanup() {
+        trimHistory()
     }
 
     @Synchronized fun failed(token: RecordingUpload, failure: SavedRecordingFailure?): Boolean {
@@ -280,6 +336,7 @@ internal class RecordingRepository(
             rows[record.id]=failed.copy(failure=SavedRecordingFailure.STORAGE)
             throw e
         } finally {uploading -= token;changed()}
+        if (token.id !in reserved) trimHistory()
         changed()
         return true
     }
@@ -311,7 +368,7 @@ internal class RecordingRepository(
         require(text.isNotBlank())
         val record = processingOwned(token) ?: return false
         save(record.copy(processedText = text, processingStatus = TextProcessingStatus.COMPLETE, updatedAt = clock()))
-        processing -= token; changed()
+        processing -= token; trimHistory(); changed()
         return true
     }
     @Synchronized fun endProcessing(token: TextProcessingAttempt, interrupted: Boolean = false) {
@@ -322,6 +379,7 @@ internal class RecordingRepository(
             // Even failed storage cannot authorize a late response or keep a dead owner reserved.
             rows[token.id] = next; processing -= token; changed()
         }
+        trimHistory()
     }
 
     @Synchronized fun discard(id: String): Boolean {
@@ -388,6 +446,11 @@ internal class RecordingRepository(
             setProperty("processedText", record.processedText); setProperty("processingStatus", record.processingStatus.name)
             setProperty("processingModel", record.processingModel); setProperty("processingPrompt", record.processingPrompt)
             setProperty("processingAttempt", record.processingAttempt.toString())
+            record.rollover?.let {
+                setProperty("rolloverLimit", it.limit.toString())
+                setProperty("rolloverThroughCreatedAt", it.throughCreatedAt.toString())
+                setProperty("rolloverThroughId", it.throughId)
+            }
             record.failure?.let { setProperty("failure", it.name) }; record.legacyName?.let { setProperty("legacyName", it) }
         }
         commit.write(metadata(record.id), values)
@@ -397,12 +460,18 @@ internal class RecordingRepository(
     private fun read(directory: File): SavedRecording {
         val p = Properties().apply { File(directory, "record.properties").inputStream().use { load(it) } }
         require(p.getProperty("format") == "1" && p.getProperty("id") == directory.name)
+        val limit = p.getProperty("rolloverLimit")?.toIntOrNull()?.takeIf { it > 0 }
+        val throughCreatedAt = p.getProperty("rolloverThroughCreatedAt")?.toLongOrNull()
+        val throughId = p.getProperty("rolloverThroughId")?.takeIf(::validId)
+        val rollover = if (limit != null && throughCreatedAt != null && throughId != null)
+            HistoryRollover(limit, throughCreatedAt, throughId) else null
         return SavedRecording(directory.name, p.getProperty("createdAt").toLong(), p.getProperty("updatedAt").toLong(),
             SavedRecordingStatus.valueOf(p.getProperty("status")), p.getProperty("seconds").toInt(), p.getProperty("transcript"),
             p.getProperty("failure")?.let(SavedRecordingFailure::valueOf), p.getProperty("attempt").toLong(), p.getProperty("legacyName"),
             SavedRecordingKind.fromStored(p.getProperty("kind","RECORD")),p.getProperty("partial","false").toBooleanStrict(),
             p.getProperty("processedText", ""), TextProcessingStatus.valueOf(p.getProperty("processingStatus", "NONE")),
-            p.getProperty("processingModel", ""), p.getProperty("processingPrompt", ""), p.getProperty("processingAttempt", "0").toLong())
+            p.getProperty("processingModel", ""), p.getProperty("processingPrompt", ""), p.getProperty("processingAttempt", "0").toLong(),
+            rollover)
     }
     companion object { private fun validId(id: String) = runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) }
 }

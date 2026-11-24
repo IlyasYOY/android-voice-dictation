@@ -51,7 +51,7 @@ fun DictationScreen(
     onRefreshTextModels: (() -> Unit)? = null,
     onOpenBilling: () -> Boolean = { false },
 ) {
-    val capacityFull = historyCapacity?.full ?: state.capacityBlocked
+    val capacityFull = state.capacityBlocked
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
