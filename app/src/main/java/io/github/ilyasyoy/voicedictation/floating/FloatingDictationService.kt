@@ -117,7 +117,9 @@ class FloatingDictationService : AccessibilityService() {
         // During IME entry animation, Accessibility can report a non-final top (or empty
         // bounds). Do not attach the overlay at that transient position. Once visible,
         // keep ordinary keyboard resizing responsive and leave the drag anchor unchanged.
-        if (!openingKeyboard.canShow(keyboard, SystemClock.uptimeMillis(), window?.isShowing == true)) {
+        val alreadyShowing = window?.isShowing == true
+        val openingDisplay = if (alreadyShowing) null else window?.displayHeight()
+        if (!openingKeyboard.canShow(keyboard, SystemClock.uptimeMillis(), alreadyShowing, openingDisplay)) {
             editorEligible = false
             scheduleRefresh(if (keyboard.usable) FloatingKeyboardOpening.SAMPLE_INTERVAL_MS else 150)
             return
