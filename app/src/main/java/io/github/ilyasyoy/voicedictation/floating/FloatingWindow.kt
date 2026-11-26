@@ -13,6 +13,10 @@ import android.view.*
 import android.widget.*
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
+import io.github.ilyasyoy.voicedictation.diagnostics.BubblePlacementStage
+import io.github.ilyasyoy.voicedictation.diagnostics.bubblePlacementNow
+import io.github.ilyasyoy.voicedictation.diagnostics.bubblePlacementTrace
 import io.github.ilyasyoy.voicedictation.R
 import io.github.ilyasyoy.voicedictation.ui.design.*
 import kotlin.math.abs
@@ -149,7 +153,7 @@ internal class FloatingWindow(
                 if (attached) {
                     val old = listOf(params.x, params.y, params.width, params.height)
                     if (!clamp()) hide()
-                    else if (old != listOf(params.x, params.y, params.width, params.height)) update()
+                    else if (old != listOf(params.x, params.y, params.width, params.height)) update(BubblePlacementStage.INSETS_REQUEST)
                 }
             }
             insets
@@ -188,7 +192,13 @@ internal class FloatingWindow(
         setupButton.visibility = if(panel && needsSetup)View.VISIBLE else View.GONE
         discardButton.visibility = if(panel)View.VISIBLE else View.GONE
         if (!clamp()) { hide(); return }
-        if(!attached) { wm.addView(root,params); attached=true; ViewCompat.requestApplyInsets(root) } else update()
+        if (!attached) {
+            traceRequest(BubblePlacementStage.ADD_REQUEST)
+            wm.addView(root, params)
+            attached = true
+            traceDraw(BubblePlacementStage.FIRST_PRE_DRAW)
+            ViewCompat.requestApplyInsets(root)
+        } else update(BubblePlacementStage.SERVICE_REQUEST)
         setScreenOn(keepScreenOn)
         mark.start()
     }
@@ -231,7 +241,25 @@ internal class FloatingWindow(
         params.y=params.y.coerceIn(area.top,maxOf(area.top,area.bottom-params.height))
         return true
     }
-    private fun update() { if(attached) runCatching { wm.updateViewLayout(root,params) } }
+    private fun traceRequest(stage: BubblePlacementStage) {
+        bubblePlacementTrace.sample(bubblePlacementNow(), stage, params.x, params.y, params.width, params.height)
+    }
+    private fun traceDraw(stage: BubblePlacementStage) {
+        if (!bubblePlacementTrace.isCapturing(bubblePlacementNow())) return
+        root.doOnPreDraw {
+            if (attached && bubblePlacementTrace.isCapturing(bubblePlacementNow())) {
+                val screen = IntArray(2)
+                icon.getLocationOnScreen(screen)
+                bubblePlacementTrace.sample(bubblePlacementNow(), stage, params.x, params.y, screen[0], screen[1])
+            }
+        }
+    }
+    private fun update(traceStage: BubblePlacementStage? = null) {
+        if (!attached) return
+        if (traceStage != null) traceRequest(traceStage)
+        if (runCatching { wm.updateViewLayout(root, params) }.isSuccess && traceStage != null)
+            traceDraw(BubblePlacementStage.LATER_PRE_DRAW)
+    }
     /** ViewRoot maps this to FLAG_KEEP_SCREEN_ON only while the overlay is visible.
      * No CPU wake lock, screen-timeout setting, brightness override, or keyguard bypass.
      */
