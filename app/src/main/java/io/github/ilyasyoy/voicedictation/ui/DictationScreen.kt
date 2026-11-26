@@ -56,6 +56,7 @@ fun DictationScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var billingFailed by rememberSaveable { mutableStateOf(false) }
+    var bubbleTraceArmed by remember { mutableStateOf(false) }
     // As on the overlay, hold reveals Cancel without stopping or uploading. A finished
     // session must never leave an old control panel open for the next recording.
     var controlsOpen by remember(state.audioBusy) { mutableStateOf(false) }
@@ -108,6 +109,14 @@ fun DictationScreen(
                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.titleMedium)
                             Text(stringResource(R.string.diagnostics_retention), style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton({
+                                io.github.ilyasyoy.voicedictation.diagnostics.bubblePlacementTrace.arm(
+                                    io.github.ilyasyoy.voicedictation.diagnostics.bubblePlacementNow())
+                                bubbleTraceArmed = true
+                            }, Modifier.fillMaxWidth().testTag("arm_bubble_trace")) {
+                                Text(stringResource(R.string.diagnostics_bubble_arm))
+                            }
+                            if (bubbleTraceArmed) Text(stringResource(R.string.diagnostics_bubble_armed), style = MaterialTheme.typography.bodySmall)
                             OutlinedButton(onExportLogs, Modifier.fillMaxWidth().testTag("export_logs"), enabled = !logExportState.busy) {
                                 Text(stringResource(if (logExportState.busy) R.string.diagnostics_saving else R.string.diagnostics_export))
                             }
