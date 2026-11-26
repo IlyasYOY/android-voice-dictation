@@ -10,17 +10,26 @@ internal data class FloatingKeyboardGeometry(
     val usable get() = right > left && bottom > top
 }
 
+/** Vertically matches the display used to place the floating window. */
+internal data class FloatingDisplayHeight(val top: Int, val bottom: Int) {
+    fun contains(keyboard: FloatingKeyboardGeometry) =
+        keyboard.usable && keyboard.top >= top && keyboard.bottom <= bottom
+}
+
 /** Keeps transient IME bounds out of the first visible overlay frame. */
 internal class FloatingKeyboardOpening {
     private var candidate: FloatingKeyboardGeometry? = null
     private var unchangedSince = 0L
 
-    fun canShow(geometry: FloatingKeyboardGeometry, nowMs: Long, alreadyShowing: Boolean): Boolean {
+    fun canShow(geometry: FloatingKeyboardGeometry, nowMs: Long, alreadyShowing: Boolean,
+                display: FloatingDisplayHeight?): Boolean {
         if (alreadyShowing) {
             reset()
             return true
         }
-        if (!geometry.usable) {
+        // Some IMEs publish a complete but translated rectangle below the display.
+        // Its stale coordinates can remain identical for longer than SETTLE_MS.
+        if (display?.contains(geometry) != true) {
             reset()
             return false
         }

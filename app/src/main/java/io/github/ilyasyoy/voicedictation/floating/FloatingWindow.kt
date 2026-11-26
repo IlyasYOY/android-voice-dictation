@@ -192,6 +192,16 @@ internal class FloatingWindow(
         setScreenOn(keepScreenOn)
         mark.start()
     }
+    private fun legacyDisplayBounds(): android.graphics.Rect {
+        val legacy = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(legacy)
+        return android.graphics.Rect(0, 0, legacy.widthPixels, legacy.heightPixels)
+    }
+    fun displayHeight(): FloatingDisplayHeight {
+        val screen = if (Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds else legacyDisplayBounds()
+        return FloatingDisplayHeight(screen.top, screen.bottom)
+    }
     private fun safeArea(): FloatingArea? {
         val screen: android.graphics.Rect
         val insets: WindowInsetsCompat?
@@ -200,10 +210,7 @@ internal class FloatingWindow(
             screen = metrics.bounds
             insets = WindowInsetsCompat.toWindowInsetsCompat(metrics.windowInsets)
         } else {
-            val legacy = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            wm.defaultDisplay.getRealMetrics(legacy)
-            screen = android.graphics.Rect(0, 0, legacy.widthPixels, legacy.heightPixels)
+            screen = legacyDisplayBounds()
             insets = ViewCompat.getRootWindowInsets(root)
         }
         val bars = insets?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
