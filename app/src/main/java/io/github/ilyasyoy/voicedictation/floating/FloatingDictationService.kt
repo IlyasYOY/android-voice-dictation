@@ -114,6 +114,8 @@ class FloatingDictationService : AccessibilityService() {
             if (model != null) DebugFloatingConfiguration.trace(this, "hide: keyboard=${keyboard != null}, editor=${current != null}, allowed=${current?.let(EditorPolicy::allowed)}, awake=${awake()}")
             closeSession(); return
         }
+        bubblePlacementTrace.sample(bubblePlacementNow(), BubblePlacementStage.IME_SAMPLE,
+            keyboard.left, keyboard.top, keyboard.right, keyboard.bottom)
         // During IME entry animation, Accessibility can report a non-final top (or empty
         // bounds). Do not attach the overlay at that transient position. Once visible,
         // keep ordinary keyboard resizing responsive and leave the drag anchor unchanged.
@@ -127,6 +129,8 @@ class FloatingDictationService : AccessibilityService() {
         }
         editorEligible = true
         imeTop = keyboard.top
+        bubblePlacementTrace.sample(bubblePlacementNow(), BubblePlacementStage.IME_ACCEPTED,
+            keyboard.left, keyboard.top, keyboard.right, keyboard.bottom)
         val origin = original
         if (origin != null && !inserting && (model?.state?.value?.busy == true || pending != null) &&
             (!origin.sameEditor(current) || origin.selectionStart != current.selectionStart || origin.selectionEnd != current.selectionEnd)) {
