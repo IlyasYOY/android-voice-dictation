@@ -183,4 +183,6 @@
     <string name="diagnostics_saving">Сохранение…</string>
     <string name="diagnostics_saved">Логи сохранены. Приложите ZIP к описанию ошибки.</string>
     <string name="diagnostics_failed">Не удалось сохранить логи. Выберите другое место.</string>
+    <string name="diagnostics_bubble_arm">Записать следующее появление кляксы</string>
+    <string name="diagnostics_bubble_armed">В течение 90 секунд откройте клавиатуру в другом приложении. Дождитесь кляксы, затем сохраните ZIP с логами. Записываются только координаты.</string>
 </resources>
