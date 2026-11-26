@@ -86,12 +86,17 @@ internal class DiagnosticStore(private val directory: File, private val clock: (
 
 internal object DiagnosticArchive {
     /** No temporary ZIP or public cache files. Empty logs still produce a valid, explained archive. */
-    fun write(output: OutputStream, events: ByteArray, appVersion: Int, androidApi: Int, dropped: Long, writeFailures: Long) {
+    fun write(output: OutputStream, events: ByteArray, appVersion: Int, androidApi: Int, dropped: Long, writeFailures: Long,
+              bubblePlacement: ByteArray? = null) {
         require(events.size <= DiagnosticStore.MAX_BYTES)
         ZipOutputStream(output).use { zip ->
             fun entry(name: String, bytes: ByteArray) { zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry() }
             entry("manifest.json", """{"schema":1,"app_version_code":$appVersion,"android_api":$androidApi,"max_age_days":7,"max_log_bytes":1048576,"dropped_events":${dropped.coerceAtLeast(0)},"write_failures":${writeFailures.coerceAtLeast(0)},"empty":${events.isEmpty()}}""".toByteArray())
             entry("events.jsonl", events)
+            bubblePlacement?.let {
+                require(it.size <= 16_384)
+                entry("bubble-placement.csv", it)
+            }
             entry("README.txt", "Local diagnostics, schema 1. UTC epoch milliseconds. Up to 7 days / 1 MiB; oldest segments rotate first. Fixed event codes only. No audio, dictated text, dictionary, clipboard, keys, server bodies, URLs, editor or third-party app data. No automatic upload. Empty events.jsonl means no retained diagnostic events. Queue drops and storage failures are counted in manifest.json. Saved copies are managed by you.\n".toByteArray())
         }
     }
