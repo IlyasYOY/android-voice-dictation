@@ -524,7 +524,21 @@ class CrossAppTest {
         assertFieldUnchanged(); evidence("01-dragged-circle")
         device.pressBack()
         assertTrue(device.wait(Until.gone(appId("floating_start")), 15_000))
-        reopenEditor(); near(chosen); evidence("02-keyboard-reopened")
+        // Tap the already-visible field directly. Assert its first observed circle bounds,
+        // without the eventual-position retry used for rotation and process relaunch.
+        device.findObject(fixtureId("body")).click()
+        val reopenDeadline = SystemClock.elapsedRealtime() + 15_000
+        var firstBounds: android.graphics.Rect? = null
+        while (firstBounds == null && SystemClock.elapsedRealtime() < reopenDeadline) {
+            firstBounds = try { device.findObject(appId("floating_start"))?.visibleBounds }
+            catch (_: StaleObjectException) { null }
+            if (firstBounds == null) SystemClock.sleep(25)
+        }
+        val actual = checkNotNull(firstBounds) { "The circle did not return after reopening the keyboard" }
+        val tolerance = (6 * density).toInt()
+        assertTrue("First observed x: $chosen / $actual", kotlin.math.abs(chosen.centerX()-actual.centerX()) <= tolerance)
+        assertTrue("First observed y: $chosen / $actual", kotlin.math.abs(chosen.centerY()-actual.centerY()) <= tolerance)
+        near(chosen); evidence("02-keyboard-reopened")
         device.pressHome(); reopenEditor(); near(chosen)
         try {
             device.setOrientationLeft()

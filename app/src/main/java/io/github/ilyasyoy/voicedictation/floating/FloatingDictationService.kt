@@ -45,6 +45,7 @@ class FloatingDictationService : AccessibilityService() {
     private var inserting = false
     private var commitAttempted = false
     private var imeTop = 0
+    private val openingKeyboard = FloatingKeyboardOpening()
     private var editorEligible = false
     private var nextRefreshAt = Long.MAX_VALUE
     private var disposed = false
@@ -79,8 +80,12 @@ class FloatingDictationService : AccessibilityService() {
             handler.removeCallbacks(refresh); nextRefreshAt = due; handler.postDelayed(refresh, delay)
         }
     }
-    private fun keyboardBounds(): Rect? = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-        ?.let { Rect().apply { it.getBoundsInScreen(this) } }
+    private fun keyboardWindow() = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    private fun keyboardGeometry(): FloatingKeyboardGeometry? {
+        val keyboard = keyboardWindow() ?: return null
+        val bounds = Rect().apply { keyboard.getBoundsInScreen(this) }
+        return FloatingKeyboardGeometry(keyboard.id, bounds.left, bounds.top, bounds.right, bounds.bottom)
+    }
     private fun editor(): EditorToken? {
         val appWindow = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isFocused } ?: return null
         val node = appWindow.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
@@ -102,12 +107,20 @@ class FloatingDictationService : AccessibilityService() {
     private fun awake() = getSystemService(PowerManager::class.java).isInteractive && !getSystemService(KeyguardManager::class.java).isKeyguardLocked
     private fun updateVisibility() {
         if (disposed) return
-        val keyboard = keyboardBounds()
+        val keyboard = keyboardGeometry()
         val current = editor()
         if (!FloatingPreferences.enabled(this) || !awake() || keyboard == null || current == null || !EditorPolicy.allowed(current)) {
             editorEligible = false
             if (model != null) DebugFloatingConfiguration.trace(this, "hide: keyboard=${keyboard != null}, editor=${current != null}, allowed=${current?.let(EditorPolicy::allowed)}, awake=${awake()}")
-            closeSession(); window?.hide(); return
+            closeSession(); return
+        }
+        // During IME entry animation, Accessibility can report a non-final top (or empty
+        // bounds). Do not attach the overlay at that transient position. Once visible,
+        // keep ordinary keyboard resizing responsive and leave the drag anchor unchanged.
+        if (!openingKeyboard.canShow(keyboard, SystemClock.uptimeMillis(), window?.isShowing == true)) {
+            editorEligible = false
+            scheduleRefresh(if (keyboard.usable) FloatingKeyboardOpening.SAMPLE_INTERVAL_MS else 150)
+            return
         }
         if (model?.state?.value?.busy == true && (!microphoneGranted() || !notificationsAllowed())) {
             cancelKeepingText(getString(R.string.floating_need_permission)); feedback.needsSetup = true
@@ -172,7 +185,7 @@ class FloatingDictationService : AccessibilityService() {
             START -> {
                 val token = pending; pending = null
                 val current = editor()
-                if (token != null && current != null && token.sameEditor(current) && EditorPolicy.allowed(current) && token.selectionStart == current.selectionStart && token.selectionEnd == current.selectionEnd && keyboardBounds() != null && awake() && FloatingPreferences.enabled(this)) begin()
+                if (token != null && current != null && token.sameEditor(current) && EditorPolicy.allowed(current) && token.selectionStart == current.selectionStart && token.selectionEnd == current.selectionEnd && keyboardWindow() != null && awake() && FloatingPreferences.enabled(this)) begin()
                 else stopSelf(startId)
             }
             STOP -> stopFromUser()
@@ -222,13 +235,13 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun invalidStart() {
         Diagnostics.record(DiagnosticArea.OVERLAY, DiagnosticAction.START, DiagnosticCode.BLOCKED)
-        if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
+        if (!FloatingPreferences.enabled(this) || !awake() || keyboardWindow() == null) { closeSession(); return }
         val permissionLost = !microphoneGranted() || !notificationsAllowed()
         cancelKeepingText(getString(if (permissionLost) R.string.floating_need_permission else R.string.floating_focus_changed))
         if (permissionLost) { feedback.needsSetup = true; render() }
     }
     private fun environment() = FloatingEnvironment(editor(), FloatingPreferences.enabled(this), awake(),
-        keyboardBounds() != null, microphoneGranted(), notificationsAllowed())
+        keyboardWindow() != null, microphoneGranted(), notificationsAllowed())
     private fun stopFromUser() {
         if (model?.state?.value?.phase != Phase.RECORDING) { cancelFromUser(); return }
         finishRequested = true; model?.stop()
@@ -242,7 +255,7 @@ class FloatingDictationService : AccessibilityService() {
     }
     private fun insert(text: String) {
         insertionAttempted = true; finishRequested = false
-        if (!FloatingPreferences.enabled(this) || !awake() || keyboardBounds() == null) { closeSession(); return }
+        if (!FloatingPreferences.enabled(this) || !awake() || keyboardWindow() == null) { closeSession(); return }
         val token = original; val current = editor(); val input = connection
         if (token == null || current == null || input == null ||
             !EditorPolicy.canInsert(token, current, Build.VERSION.SDK_INT, text) || Build.VERSION.SDK_INT < 33) {
@@ -313,7 +326,11 @@ class FloatingDictationService : AccessibilityService() {
         capture?.close(); capture = null; endForeground()
         if (discardFeedback) feedback.discard() else feedback.dismiss()
         inserting = false
-        if (hideWindow) window?.hide()
+        if (hideWindow) {
+            editorEligible = false
+            openingKeyboard.reset()
+            window?.hide()
+        }
     }
     private fun openSetup() { startActivity(Intent(this, FloatingSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     private fun openRecovery() { startActivity(Intent(this,io.github.ilyasyoy.voicedictation.SavedRecordingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
