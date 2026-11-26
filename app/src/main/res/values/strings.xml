@@ -181,4 +181,6 @@
     <string name="diagnostics_saving">Saving…</string>
     <string name="diagnostics_saved">Logs saved. Share the ZIP when reporting a problem.</string>
     <string name="diagnostics_failed">Couldn’t save logs. Try another location.</string>
+    <string name="diagnostics_bubble_arm">Capture next bubble appearance</string>
+    <string name="diagnostics_bubble_armed">Within 90 seconds, open a keyboard in another app. Wait for the bubble, then save the logs ZIP. Only coordinates are recorded.</string>
 </resources>
