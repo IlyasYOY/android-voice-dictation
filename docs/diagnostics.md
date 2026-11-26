@@ -78,6 +78,27 @@ visibility polling does not log accessibility events, field contents or app name
    saved ZIPs in Downloads remain under your control. Automated tests use a fake clock
    and fill the store to exercise exact time/byte boundaries without waiting a week.
 
+## Temporary bubble placement diagnostic
+
+This diagnostic PR does not change overlay placement. In Settings → Diagnostics,
+tap **Capture next bubble appearance**, then open a blank field in another app
+within 90 seconds. After the bubble appears, return and use **Save logs ZIP** within
+10 minutes. No typing or recording is necessary. Keep the app process running.
+
+The optional `bubble-placement.csv` is held only in memory (one opening, up to
+2.5 seconds and 128 rows). Re-arming replaces the previous trace. No audio, editor
+identity, package name, text, key, or absolute timestamp is included in this trace.
+Nothing is sent automatically. Ordinary exported events are unchanged.
+
+| Stage | Columns a, b, c, d |
+| --- | --- |
+| IME_SAMPLE, IME_ACCEPTED | IME left, top, right, bottom in screen pixels |
+| ADD_REQUEST, SERVICE_REQUEST, INSETS_REQUEST | requested window x, y, width, height |
+| FIRST_PRE_DRAW, LATER_PRE_DRAW | current requested window x, y and actual icon screen x, y |
+
+A pre-draw observation is not proof of an actual displayed frame. Compare with the
+device symptom; this PR is not intended to be merged.
+
 ## Automated evidence
 
 `DiagnosticStoreTest` covers exact age, restart, rotation/size/count, corruption,
